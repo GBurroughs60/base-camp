@@ -20,15 +20,15 @@ export default async function DashboardPage() {
 
   const cards = [
     { href: "/contacts", label: "Contacts", count: contactCount ?? 0 },
-    { href: "/companies", label: "Companies & Venues", count: companyCount ?? 0 },
+    { href: "/companies", label: "Venues", count: companyCount ?? 0 },
     { href: "/events", label: "Events", count: eventCount ?? 0 },
     { href: "/plays", label: "Plays", count: playCount ?? 0 },
   ];
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-1">Dashboard</h1>
-      <p className="text-black/60 dark:text-white/60 mb-8">
+      <h1 className="font-display text-3xl font-medium mb-1">Dashboard</h1>
+      <p className="italic text-black/60 dark:text-white/60 mb-8">
         Welcome back. Here&apos;s what&apos;s in the CRM right now.
       </p>
 
@@ -37,9 +37,10 @@ export default async function DashboardPage() {
           <Link
             key={card.href}
             href={card.href}
-            className="border border-black/10 dark:border-white/10 rounded-lg p-5 hover:border-black/30 dark:hover:border-white/30 transition-colors"
+            className="group relative overflow-hidden border border-black/10 dark:border-white/10 rounded-lg p-5 hover:border-ridge-orange/50 hover:shadow-sm transition-colors bg-white dark:bg-neutral-900"
           >
-            <div className="text-3xl font-semibold">{card.count}</div>
+            <span className="absolute inset-x-0 top-0 h-0.5 bg-ridge-orange scale-x-0 group-hover:scale-x-100 origin-left transition-transform" />
+            <div className="text-3xl font-semibold tabular-nums">{card.count}</div>
             <div className="text-sm text-black/60 dark:text-white/60 mt-1">
               {card.label}
             </div>
@@ -53,7 +54,7 @@ export default async function DashboardPage() {
           {artists?.map((artist) => (
             <li
               key={artist.id}
-              className="border border-black/10 dark:border-white/10 rounded-lg px-4 py-3"
+              className="border border-black/10 dark:border-white/10 rounded-lg px-4 py-3 bg-white dark:bg-neutral-900"
             >
               {artist.name}
             </li>

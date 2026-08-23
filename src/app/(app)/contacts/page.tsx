@@ -9,12 +9,12 @@ export default async function ContactsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-1">Contacts</h1>
+      <h1 className="font-display text-3xl font-medium mb-1">Contacts</h1>
       <p className="text-black/60 dark:text-white/60 mb-6">
         {contacts?.length ?? 0} people
       </p>
 
-      <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg">
+      <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
         <table className="w-full text-sm">
           <thead className="bg-black/[.03] dark:bg-white/[.06] text-left">
             <tr>
@@ -29,7 +29,7 @@ export default async function ContactsPage() {
             {contacts?.map((c) => (
               <tr
                 key={c.id}
-                className="border-t border-black/10 dark:border-white/10"
+                className="border-t border-black/10 dark:border-white/10 hover:bg-black/[.02] dark:hover:bg-white/[.03] transition-colors"
               >
                 <td className="px-4 py-2">{c.full_name}</td>
                 <td className="px-4 py-2">

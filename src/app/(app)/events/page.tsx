@@ -21,6 +21,8 @@ export default async function EventsPage({
   const { visibility } = await searchParams;
   const supabase = await createClient();
 
+  const activeFilter = visibility ?? "public";
+
   let query = supabase
     .from("events")
     .select(
@@ -28,33 +30,32 @@ export default async function EventsPage({
     )
     .order("name");
 
-  if (visibility === "public") query = query.eq("is_public", true);
-  if (visibility === "private") query = query.eq("is_public", false);
+  if (activeFilter === "public") query = query.eq("is_public", true);
+  if (activeFilter === "private") query = query.eq("is_public", false);
 
   const { data } = await query;
   const events = data as unknown as EventRow[] | null;
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-1">Events</h1>
+      <h1 className="font-display text-3xl font-medium mb-1">Events</h1>
       <p className="text-black/60 dark:text-white/60 mb-4">
         {events?.length ?? 0} events
       </p>
 
       <div className="flex gap-2 mb-6 text-sm">
         {[
-          { key: undefined, label: "All" },
           { key: "public", label: "Public" },
           { key: "private", label: "Private" },
+          { key: "all", label: "All" },
         ].map((f) => (
           <a
-            key={f.label}
-            href={f.key ? `/events?visibility=${f.key}` : "/events"}
-            className={`px-3 py-1 rounded-full border ${
-              visibility === f.key ||
-              (!visibility && f.key === undefined)
-                ? "bg-black text-white dark:bg-white dark:text-black border-transparent"
-                : "border-black/15 dark:border-white/15"
+            key={f.key}
+            href={`/events?visibility=${f.key}`}
+            className={`px-3 py-1 rounded-full border transition-colors ${
+              activeFilter === f.key
+                ? "bg-ridge-orange text-white border-transparent"
+                : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
             }`}
           >
             {f.label}
@@ -62,7 +63,7 @@ export default async function EventsPage({
         ))}
       </div>
 
-      <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg">
+      <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
         <table className="w-full text-sm">
           <thead className="bg-black/[.03] dark:bg-white/[.06] text-left">
             <tr>
@@ -78,12 +79,12 @@ export default async function EventsPage({
             {events?.map((e) => (
               <tr
                 key={e.id}
-                className="border-t border-black/10 dark:border-white/10"
+                className="border-t border-black/10 dark:border-white/10 hover:bg-black/[.02] dark:hover:bg-white/[.03] transition-colors"
               >
                 <td className="px-4 py-2">
                   <Link
                     href={`/events/${e.id}`}
-                    className="underline underline-offset-4 hover:no-underline"
+                    className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
                   >
                     {e.name}
                   </Link>

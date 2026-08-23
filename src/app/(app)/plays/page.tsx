@@ -33,30 +33,30 @@ export default async function PlaysPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-1">Plays</h1>
+      <h1 className="font-display text-3xl font-medium mb-1">Plays</h1>
       <p className="text-black/60 dark:text-white/60 mb-4">
         {plays?.length ?? 0} shows{year ? ` in ${year}` : ""}
       </p>
 
       <div className="flex gap-2 mb-6 text-sm">
-        <a
+        <Link
           href="/plays"
-          className={`px-3 py-1 rounded-full border ${
+          className={`px-3 py-1 rounded-full border transition-colors ${
             !year
-              ? "bg-black text-white dark:bg-white dark:text-black border-transparent"
-              : "border-black/15 dark:border-white/15"
+              ? "bg-ridge-orange text-white border-transparent"
+              : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
           }`}
         >
           All
-        </a>
+        </Link>
         {years.map((y) => (
           <a
             key={y}
             href={`/plays?year=${y}`}
-            className={`px-3 py-1 rounded-full border ${
+            className={`px-3 py-1 rounded-full border transition-colors ${
               year === y
-                ? "bg-black text-white dark:bg-white dark:text-black border-transparent"
-                : "border-black/15 dark:border-white/15"
+                ? "bg-ridge-orange text-white border-transparent"
+                : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
             }`}
           >
             {y}
@@ -64,7 +64,7 @@ export default async function PlaysPage({
         ))}
       </div>
 
-      <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg">
+      <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
         <table className="w-full text-sm">
           <thead className="bg-black/[.03] dark:bg-white/[.06] text-left">
             <tr>
@@ -83,10 +83,15 @@ export default async function PlaysPage({
             {plays?.map((t) => (
               <tr
                 key={t.id}
-                className="border-t border-black/10 dark:border-white/10"
+                className="border-t border-black/10 dark:border-white/10 hover:bg-black/[.02] dark:hover:bg-white/[.03] transition-colors"
               >
                 <td className="px-4 py-2 whitespace-nowrap">
-                  {t.show_date ?? "—"}
+                  <Link
+                    href={`/plays/${t.id}`}
+                    className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                  >
+                    {t.show_date ?? "View play"}
+                  </Link>
                 </td>
                 <td className="px-4 py-2">
                   {(t.artists as unknown as { name: string } | null)?.name ?? "—"}
@@ -99,7 +104,7 @@ export default async function PlaysPage({
                   {t.event_id ? (
                     <Link
                       href={`/events/${t.event_id}`}
-                      className="underline underline-offset-4 hover:no-underline"
+                      className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
                     >
                       {(t.events as unknown as { name: string } | null)?.name ??
                         "View event"}

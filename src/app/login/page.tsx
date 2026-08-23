@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -45,22 +46,45 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center px-6">
+    <div className="flex-1 flex items-center justify-center px-6 bg-neutral-50 dark:bg-neutral-950">
       <div className="w-full max-w-sm">
-        <h1 className="text-xl font-semibold mb-1">Base Camp</h1>
-        <p className="text-sm text-black/60 dark:text-white/60 mb-6">
-          {mode === "sign-in"
-            ? "Sign in to your account"
-            : "Create a team account"}
-        </p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <div className="flex flex-col items-center text-center mb-8">
+          <Image
+            src="/brand/ridge-dark-lockup.png"
+            alt="The Ridge Music Group"
+            width={128}
+            height={128}
+            className="mb-5 dark:hidden"
+            priority
+          />
+          <Image
+            src="/brand/ridge-light-lockup.png"
+            alt="The Ridge Music Group"
+            width={128}
+            height={128}
+            className="mb-5 hidden dark:block"
+            priority
+          />
+          <h1 className="font-display text-2xl font-medium tracking-tight">
+            Base Camp
+          </h1>
+          <p className="text-sm text-black/60 dark:text-white/60 mt-1">
+            {mode === "sign-in"
+              ? "Sign in to your account"
+              : "Create a team account"}
+          </p>
+        </div>
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-3 bg-white dark:bg-neutral-900 border border-black/10 dark:border-white/10 rounded-xl p-6 shadow-sm"
+        >
           <input
             type="email"
             required
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="border border-black/15 dark:border-white/15 rounded-md px-3 py-2 bg-transparent"
+            className="border border-black/15 dark:border-white/15 rounded-md px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-ridge-orange/40 focus:border-ridge-orange transition-colors"
           />
           <input
             type="password"
@@ -69,12 +93,12 @@ export default function LoginPage() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="border border-black/15 dark:border-white/15 rounded-md px-3 py-2 bg-transparent"
+            className="border border-black/15 dark:border-white/15 rounded-md px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-ridge-orange/40 focus:border-ridge-orange transition-colors"
           />
           <button
             type="submit"
             disabled={loading}
-            className="rounded-md bg-black text-white dark:bg-white dark:text-black py-2 font-medium disabled:opacity-50"
+            className="rounded-md bg-ridge-orange hover:bg-ridge-orange-dark text-white py-2 font-medium transition-colors disabled:opacity-50"
           >
             {loading
               ? "Please wait…"
@@ -89,7 +113,7 @@ export default function LoginPage() {
           </p>
         )}
         <button
-          className="text-sm mt-4 text-black/60 dark:text-white/60 hover:underline"
+          className="text-sm mt-4 text-black/60 dark:text-white/60 hover:text-ridge-orange transition-colors block mx-auto"
           onClick={() =>
             setMode(mode === "sign-in" ? "sign-up" : "sign-in")
           }
