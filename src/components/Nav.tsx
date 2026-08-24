@@ -13,7 +13,11 @@ const links = [
   { href: "/plays", label: "Plays" },
 ];
 
-export default function Nav() {
+export default function Nav({
+  counts,
+}: {
+  counts?: Record<string, number>;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
@@ -65,7 +69,17 @@ export default function Nav() {
                   (active ? "opacity-100" : "opacity-0 group-hover:opacity-40")
                 }
               />
-              <span className="pl-2">{link.label}</span>
+              <span className="pl-2 flex-1">{link.label}</span>
+              {counts?.[link.href] !== undefined && (
+                <span
+                  className={
+                    "text-xs tabular-nums pr-1 " +
+                    (active ? "text-white/70" : "text-white/35 group-hover:text-white/60")
+                  }
+                >
+                  {counts[link.href]}
+                </span>
+              )}
             </Link>
           );
         })}
