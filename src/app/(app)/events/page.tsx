@@ -8,8 +8,8 @@ type EventRow = {
   city: string | null;
   state: string | null;
   country: string | null;
-  companies: { name: string } | null;
-  contacts: { full_name: string } | null;
+  companies: { id: string; name: string } | null;
+  contacts: { id: string; full_name: string } | null;
   plays: { id: string }[] | null;
 };
 
@@ -26,7 +26,7 @@ export default async function EventsPage({
   let query = supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, companies(name), contacts(full_name), plays(id)"
+      "id, name, is_public, city, state, country, companies(id, name), contacts(id, full_name), plays(id)"
     )
     .order("name");
 
@@ -89,13 +89,35 @@ export default async function EventsPage({
                     {e.name}
                   </Link>
                 </td>
-                <td className="px-4 py-2">{e.companies?.name ?? "—"}</td>
+                <td className="px-4 py-2">
+                  {e.companies ? (
+                    <Link
+                      href={`/companies/${e.companies.id}`}
+                      className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                    >
+                      {e.companies.name}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-4 py-2">
                   {[e.city, e.state, e.country !== "USA" ? e.country : null]
                     .filter(Boolean)
                     .join(", ") || "—"}
                 </td>
-                <td className="px-4 py-2">{e.contacts?.full_name ?? "—"}</td>
+                <td className="px-4 py-2">
+                  {e.contacts ? (
+                    <Link
+                      href={`/contacts/${e.contacts.id}`}
+                      className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                    >
+                      {e.contacts.full_name}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-4 py-2">
                   {e.is_public ? "Public" : "Private"}
                 </td>

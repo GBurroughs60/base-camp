@@ -7,7 +7,7 @@ export default async function ContactsPage() {
     await Promise.all([
       supabase
         .from("contacts")
-        .select("id, full_name, email, phone, title, companies(name)")
+        .select("id, full_name, email, phone, title, companies(id, name)")
         .order("full_name"),
       supabase.from("events").select("primary_contact_id").not("primary_contact_id", "is", null),
       supabase.from("plays").select("primary_contact_id").not("primary_contact_id", "is", null),
@@ -63,7 +63,22 @@ export default async function ContactsPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-2">
-                    {(c.companies as unknown as { name: string } | null)?.name ?? "—"}
+                    {(() => {
+                      const company = c.companies as unknown as {
+                        id: string;
+                        name: string;
+                      } | null;
+                      return company ? (
+                        <Link
+                          href={`/companies/${company.id}`}
+                          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                        >
+                          {company.name}
+                        </Link>
+                      ) : (
+                        "—"
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-2">{c.email ?? "—"}</td>
                   <td className="px-4 py-2">{c.phone ?? "—"}</td>

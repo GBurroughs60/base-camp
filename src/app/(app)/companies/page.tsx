@@ -1,12 +1,22 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 
+type CompanyRow = {
+  id: string;
+  name: string;
+  type: string;
+  city: string | null;
+  state: string | null;
+  contacts: { id: string; full_name: string }[] | null;
+};
+
 export default async function CompaniesPage() {
   const supabase = await createClient();
-  const { data: companies } = await supabase
+  const { data } = await supabase
     .from("companies")
-    .select("id, name, type, city, state")
+    .select("id, name, type, city, state, contacts(id, full_name)")
     .order("name");
+  const companies = data as unknown as CompanyRow[] | null;
 
   return (
     <div>
@@ -23,6 +33,7 @@ export default async function CompaniesPage() {
               <th className="px-4 py-2 font-medium">Type</th>
               <th className="px-4 py-2 font-medium">City</th>
               <th className="px-4 py-2 font-medium">State</th>
+              <th className="px-4 py-2 font-medium">Contacts</th>
             </tr>
           </thead>
           <tbody>
@@ -42,6 +53,25 @@ export default async function CompaniesPage() {
                 <td className="px-4 py-2 capitalize">{c.type}</td>
                 <td className="px-4 py-2">{c.city ?? "—"}</td>
                 <td className="px-4 py-2">{c.state ?? "—"}</td>
+                <td className="px-4 py-2">
+                  {c.contacts?.length ? (
+                    <span className="space-x-1">
+                      {c.contacts.map((contact, i) => (
+                        <span key={contact.id}>
+                          <Link
+                            href={`/contacts/${contact.id}`}
+                            className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                          >
+                            {contact.full_name}
+                          </Link>
+                          {i < c.contacts!.length - 1 ? "," : ""}
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

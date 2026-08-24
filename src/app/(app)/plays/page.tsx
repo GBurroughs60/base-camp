@@ -17,7 +17,7 @@ export default async function PlaysPage({
   let query = supabase
     .from("plays")
     .select(
-      "id, show_date, venue_name, city, state, set_type, attendance, tickets_sold, gross_revenue, contract_status, event_id, artists(name), events(name)"
+      "id, show_date, venue_name, venue_id, city, state, set_type, attendance, tickets_sold, gross_revenue, contract_status, event_id, artists(name), events(name), venue:companies!plays_venue_id_fkey(id, name)"
     )
     .order("show_date", { ascending: true });
 
@@ -96,7 +96,22 @@ export default async function PlaysPage({
                 <td className="px-4 py-2">
                   {(t.artists as unknown as { name: string } | null)?.name ?? "—"}
                 </td>
-                <td className="px-4 py-2">{t.venue_name ?? "—"}</td>
+                <td className="px-4 py-2">
+                  {(() => {
+                    const venue = t.venue as unknown as { id: string; name: string } | null;
+                    if (venue) {
+                      return (
+                        <Link
+                          href={`/companies/${venue.id}`}
+                          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                        >
+                          {venue.name}
+                        </Link>
+                      );
+                    }
+                    return t.venue_name ?? "—";
+                  })()}
+                </td>
                 <td className="px-4 py-2">
                   {[t.city, t.state].filter(Boolean).join(", ") || "—"}
                 </td>
