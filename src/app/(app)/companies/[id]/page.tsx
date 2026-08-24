@@ -25,6 +25,12 @@ export default async function VenueDetailPage({
     .eq("venue_id", id)
     .order("name");
 
+  const { data: contacts } = await supabase
+    .from("contacts")
+    .select("id, full_name, email, phone, title")
+    .eq("company_id", id)
+    .order("full_name");
+
   const { data: playsData } = await supabase
     .from("plays")
     .select(
@@ -70,19 +76,41 @@ export default async function VenueDetailPage({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
           <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
-            Contact Info
+            Contacts
           </h2>
-          <div className="text-sm space-y-1">
-            {venue.phone && (
-              <div className="text-black/60 dark:text-white/60">{venue.phone}</div>
-            )}
-            {venue.website && (
-              <div className="text-black/60 dark:text-white/60">{venue.website}</div>
-            )}
-            {!venue.phone && !venue.website && (
-              <p className="text-black/60 dark:text-white/60">No contact info on file.</p>
-            )}
-          </div>
+          {contacts?.length ? (
+            <ul className="text-sm space-y-3">
+              {contacts.map((c) => (
+                <li key={c.id}>
+                  <div className="font-medium">
+                    {c.full_name}
+                    {c.title && (
+                      <span className="font-normal text-black/50 dark:text-white/50">
+                        {" "}
+                        · {c.title}
+                      </span>
+                    )}
+                  </div>
+                  {c.email && (
+                    <div className="text-black/60 dark:text-white/60">{c.email}</div>
+                  )}
+                  {c.phone && (
+                    <div className="text-black/60 dark:text-white/60">{c.phone}</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-black/60 dark:text-white/60">
+              No contacts on file for this venue.
+            </p>
+          )}
+          {(venue.phone || venue.website) && (
+            <div className="text-sm text-black/50 dark:text-white/50 mt-3 pt-3 border-t border-black/10 dark:border-white/10 space-y-0.5">
+              {venue.phone && <div>{venue.phone}</div>}
+              {venue.website && <div>{venue.website}</div>}
+            </div>
+          )}
         </div>
 
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">

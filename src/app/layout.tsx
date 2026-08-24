@@ -29,7 +29,7 @@ const dilemma = localFont({
 
 export const metadata: Metadata = {
   title: "Base Camp",
-  description: "The Ridge Music Group's internal CRM",
+  description: "Base Camp — Ridge Music Group's internal booking and venue management tool",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
