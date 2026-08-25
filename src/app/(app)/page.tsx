@@ -166,11 +166,13 @@ export default async function DashboardPage() {
         <h2 className="text-lg font-medium mb-3">Artists / Roster</h2>
         <ul className="flex flex-col gap-2">
           {artists?.map((artist) => (
-            <li
-              key={artist.id}
-              className="border border-black/10 dark:border-white/10 rounded-lg px-4 py-3 bg-white dark:bg-neutral-900"
-            >
-              {artist.name}
+            <li key={artist.id}>
+              <Link
+                href={`/artists/${artist.id}`}
+                className="block border border-black/10 dark:border-white/10 rounded-lg px-4 py-3 bg-white dark:bg-neutral-900 text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+              >
+                {artist.name}
+              </Link>
             </li>
           ))}
           {!artists?.length && (

@@ -3,6 +3,7 @@ import Link from "next/link";
 export type PlaysTableRow = {
   id: string;
   show_date: string | null;
+  artist_id: string | null;
   artist_name: string | null;
   guarantee_amount: number | null;
   deal_terms: string | null;
@@ -62,7 +63,18 @@ export default function PlaysTable({
                     {p.show_date ?? "View play"}
                   </Link>
                 </td>
-                <td className="px-4 py-2">{p.artist_name ?? "—"}</td>
+                <td className="px-4 py-2">
+                  {p.artist_id ? (
+                    <Link
+                      href={`/artists/${p.artist_id}`}
+                      className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                    >
+                      {p.artist_name ?? "View artist"}
+                    </Link>
+                  ) : (
+                    p.artist_name ?? "—"
+                  )}
+                </td>
                 <td className="px-4 py-2">
                   {p.context_href ? (
                     <Link

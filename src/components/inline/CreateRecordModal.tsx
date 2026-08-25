@@ -11,6 +11,7 @@ const ROUTE: Record<TableName, string> = {
   companies: "/companies",
   events: "/events",
   plays: "/plays",
+  artists: "/artists",
 };
 
 const TITLE: Record<TableName, string> = {
@@ -18,6 +19,7 @@ const TITLE: Record<TableName, string> = {
   companies: "New Venue",
   events: "New Event",
   plays: "New Play",
+  artists: "New Artist",
 };
 
 const COMPANY_TYPES = [
@@ -131,11 +133,13 @@ export default function CreateRecordModal({
           ? { name, type, city: city || null, state: state || null }
           : table === "events"
             ? { name, city: city || null, state: state || null }
-            : {
-                show_date: showDate || null,
-                venue_id: venue?.id ?? null,
-                event_id: event?.id ?? null,
-              };
+            : table === "artists"
+              ? { name }
+              : {
+                  show_date: showDate || null,
+                  venue_id: venue?.id ?? null,
+                  event_id: event?.id ?? null,
+                };
 
     setSubmitting(true);
     const res = await createRecord(table, data);

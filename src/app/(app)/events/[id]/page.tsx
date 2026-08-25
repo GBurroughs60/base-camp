@@ -65,7 +65,7 @@ export default async function EventDetailPage({
   const { data: playsData } = await supabase
     .from("plays")
     .select(
-      "id, show_date, artists(name), contract_status, guarantee_amount, deal_terms, venue:companies!plays_venue_id_fkey(id, name)"
+      "id, show_date, artist_id, artists(name), contract_status, guarantee_amount, deal_terms, venue:companies!plays_venue_id_fkey(id, name)"
     )
     .eq("event_id", id)
     .order("show_date", { ascending: true });
@@ -76,6 +76,7 @@ export default async function EventDetailPage({
     return {
       id: p.id,
       show_date: p.show_date,
+      artist_id: p.artist_id,
       artist_name: artist?.name ?? null,
       guarantee_amount: p.guarantee_amount,
       deal_terms: p.deal_terms,

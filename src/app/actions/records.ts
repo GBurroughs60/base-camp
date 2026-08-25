@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 
-export type TableName = "contacts" | "companies" | "events" | "plays";
+export type TableName = "contacts" | "companies" | "events" | "plays" | "artists";
 
 // Whitelist of columns each table allows editing/creating through the
 // generic inline-edit and quick-create UI. This is the single source of
@@ -67,6 +67,15 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "primary_contact_id",
     "artist_id",
   ]),
+  artists: new Set([
+    "name",
+    "status",
+    "notes",
+    "ridge_manages",
+    "ridge_books",
+    "management_commission_pct",
+    "booking_agent_commission_pct",
+  ]),
 };
 
 const REQUIRED_ON_CREATE: Record<TableName, string[]> = {
@@ -74,6 +83,7 @@ const REQUIRED_ON_CREATE: Record<TableName, string[]> = {
   companies: ["name"],
   events: ["name"],
   plays: [],
+  artists: ["name"],
 };
 
 type ActionResult<T = undefined> =
@@ -163,6 +173,29 @@ export async function createRecord(
         .order("name")
         .limit(1);
       if (artists?.[0]) data.artist_id = artists[0].id;
+    }
+
+    if (data.artist_id) {
+      // Prefill commission %s from the artist's standard splits so a new
+      // play doesn't start blank -- still fully editable per-show after,
+      // same as every other field here.
+      const { data: artist } = await supabase
+        .from("artists")
+        .select("management_commission_pct, booking_agent_commission_pct")
+        .eq("id", data.artist_id as string)
+        .maybeSingle();
+      if (
+        artist?.management_commission_pct != null &&
+        data.management_commission_pct === undefined
+      ) {
+        data.management_commission_pct = artist.management_commission_pct;
+      }
+      if (
+        artist?.booking_agent_commission_pct != null &&
+        data.booking_agent_commission_pct === undefined
+      ) {
+        data.booking_agent_commission_pct = artist.booking_agent_commission_pct;
+      }
     }
   }
 
@@ -399,6 +432,37 @@ export async function makePrimaryContact(
   if (oldContactId && oldContactId !== contactId) {
     await supabase.from(joinTable).insert({ contact_id: oldContactId, [targetCol]: targetId });
   }
+  return { ok: true, data: undefined };
+}
+
+// Artist team roster (contact_artists): unlike the venue/event/play contact
+// associations above, there's no single "primary" contact for an artist --
+// a Manager and a Booking Agent are different roles entirely, and each can
+// hold any number of contacts. So this is its own small set of actions
+// rather than reusing AssociationKind, which has no room for a role.
+export type ArtistTeamRole = "manager" | "agent" | "tour_manager" | "publicist" | "other";
+
+export async function addArtistTeamMember(
+  artistId: string,
+  contactId: string,
+  role: ArtistTeamRole
+): Promise<ActionResult<{ id: string }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("contact_artists")
+    .insert({ artist_id: artistId, contact_id: contactId, role })
+    .select("id")
+    .single();
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: { id: data.id as string } };
+}
+
+export async function removeArtistTeamMember(rowId: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("contact_artists").delete().eq("id", rowId);
+
+  if (error) return { ok: false, error: error.message };
   return { ok: true, data: undefined };
 }
 

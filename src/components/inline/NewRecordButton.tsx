@@ -5,6 +5,7 @@ import type { TableName } from "@/app/actions/records";
 import CreateRecordModal from "./CreateRecordModal";
 
 const TYPES: { key: TableName; label: string }[] = [
+  { key: "artists", label: "Artist" },
   { key: "contacts", label: "Contact" },
   { key: "companies", label: "Venue" },
   { key: "events", label: "Event" },
