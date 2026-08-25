@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
+import GlobalSearchBar from "@/components/GlobalSearchBar";
 
 
 function formatDate(d: string | null) {
@@ -70,9 +71,13 @@ export default async function DashboardPage() {
         <h1 className="font-display text-3xl font-medium mb-1">Dashboard</h1>
         <NewRecordButton />
       </div>
-      <p className="italic text-black/60 dark:text-white/60 mb-8">
+      <p className="italic text-black/60 dark:text-white/60 mb-6">
         Welcome back. Here&apos;s what&apos;s in Base Camp right now.
       </p>
+
+      <div className="mb-8">
+        <GlobalSearchBar />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-10">
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">

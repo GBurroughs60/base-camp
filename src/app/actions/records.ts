@@ -153,6 +153,121 @@ export async function createRecord(
   return { ok: true, data: { id: inserted.id as string } };
 }
 
+export type GlobalSearchGroup = {
+  table: TableName;
+  label: string;
+  results: { id: string; label: string; sublabel: string | null; href: string }[];
+};
+
+// Site-wide search from the Dashboard. Scoped to structured fields only --
+// notes/free-text/deal-terms fields are excluded so results stay precise
+// (matching only real names, locations, contact info, and statuses) rather
+// than surfacing noisy substring hits buried in long-form notes.
+export async function globalSearch(query: string): Promise<GlobalSearchGroup[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const supabase = await createClient();
+  const esc = q.replace(/[%,]/g, "");
+  if (!esc) return [];
+
+  const [contactsRes, companiesRes, eventsRes, playsRes] = await Promise.all([
+    supabase
+      .from("contacts")
+      .select("id, full_name, email, phone, title")
+      .or(
+        `full_name.ilike.%${esc}%,email.ilike.%${esc}%,phone.ilike.%${esc}%,title.ilike.%${esc}%`
+      )
+      .order("full_name")
+      .limit(6),
+    supabase
+      .from("companies")
+      .select("id, name, type, city, state, phone, website")
+      .or(
+        `name.ilike.%${esc}%,city.ilike.%${esc}%,state.ilike.%${esc}%,phone.ilike.%${esc}%,website.ilike.%${esc}%`
+      )
+      .order("name")
+      .limit(6),
+    supabase
+      .from("events")
+      .select("id, name, city, state")
+      .or(`name.ilike.%${esc}%,city.ilike.%${esc}%,state.ilike.%${esc}%`)
+      .order("name")
+      .limit(6),
+    supabase
+      .from("plays")
+      .select(
+        "id, show_date, venue_name, city, state, set_type, contract_status, deposit_status, artists(name)"
+      )
+      .or(
+        `venue_name.ilike.%${esc}%,city.ilike.%${esc}%,state.ilike.%${esc}%,set_type.ilike.%${esc}%,contract_status.ilike.%${esc}%,deposit_status.ilike.%${esc}%`
+      )
+      .order("show_date", { ascending: false })
+      .limit(6),
+  ]);
+
+  const groups: GlobalSearchGroup[] = [];
+
+  if (contactsRes.data?.length) {
+    groups.push({
+      table: "contacts",
+      label: "Contacts",
+      results: contactsRes.data.map((c) => ({
+        id: c.id,
+        label: c.full_name,
+        sublabel: c.title || c.email || c.phone || null,
+        href: `/contacts/${c.id}`,
+      })),
+    });
+  }
+
+  if (companiesRes.data?.length) {
+    groups.push({
+      table: "companies",
+      label: "Venues & Companies",
+      results: companiesRes.data.map((c) => ({
+        id: c.id,
+        label: c.name,
+        sublabel: [c.city, c.state].filter(Boolean).join(", ") || null,
+        href: `/companies/${c.id}`,
+      })),
+    });
+  }
+
+  if (eventsRes.data?.length) {
+    groups.push({
+      table: "events",
+      label: "Events",
+      results: eventsRes.data.map((e) => ({
+        id: e.id,
+        label: e.name,
+        sublabel: [e.city, e.state].filter(Boolean).join(", ") || null,
+        href: `/events/${e.id}`,
+      })),
+    });
+  }
+
+  if (playsRes.data?.length) {
+    groups.push({
+      table: "plays",
+      label: "Plays",
+      results: playsRes.data.map((p) => {
+        const artist = p.artists as unknown as { name: string } | null;
+        return {
+          id: p.id,
+          label: [artist?.name, p.venue_name].filter(Boolean).join(" @ ") || "Play",
+          sublabel:
+            [p.show_date, [p.city, p.state].filter(Boolean).join(", ")]
+              .filter(Boolean)
+              .join(" · ") || null,
+          href: `/plays/${p.id}`,
+        };
+      }),
+    });
+  }
+
+  return groups;
+}
+
 export type SearchTable = "companies" | "events" | "contacts";
 
 export async function searchRecords(

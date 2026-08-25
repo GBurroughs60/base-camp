@@ -1,11 +1,126 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
+import DataTable, { type Column } from "@/components/DataTable";
 
 function formatMoney(n: number | null) {
   if (n === null || n === undefined) return "—";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
+
+type PlayRow = {
+  id: string;
+  show_date: string | null;
+  venue_name: string | null;
+  venue_id: string | null;
+  city: string | null;
+  state: string | null;
+  set_type: string | null;
+  attendance: number | null;
+  tickets_sold: number | null;
+  guarantee_amount: number | null;
+  deal_terms: string | null;
+  event_id: string | null;
+  artists: { name: string } | null;
+  events: { name: string } | null;
+  venue: { id: string; name: string } | null;
+};
+
+const columns: Column<PlayRow>[] = [
+  {
+    key: "date",
+    label: "Date",
+    render: (t) => (
+      <Link
+        href={`/plays/${t.id}`}
+        className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4 whitespace-nowrap"
+      >
+        {t.show_date ?? "View play"}
+      </Link>
+    ),
+    sortValue: (t) => t.show_date,
+    searchValue: (t) => t.show_date ?? "",
+  },
+  {
+    key: "artist",
+    label: "Artist",
+    render: (t) => t.artists?.name ?? "—",
+    sortValue: (t) => t.artists?.name ?? null,
+    searchValue: (t) => t.artists?.name ?? "",
+  },
+  {
+    key: "venue",
+    label: "Venue",
+    render: (t) =>
+      t.venue ? (
+        <Link
+          href={`/companies/${t.venue.id}`}
+          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+        >
+          {t.venue.name}
+        </Link>
+      ) : (
+        t.venue_name ?? "—"
+      ),
+    sortValue: (t) => t.venue?.name ?? t.venue_name,
+    searchValue: (t) => t.venue?.name ?? t.venue_name ?? "",
+  },
+  {
+    key: "city",
+    label: "City",
+    render: (t) => t.city ?? "—",
+    sortValue: (t) => t.city,
+    searchValue: (t) => t.city ?? "",
+  },
+  {
+    key: "state",
+    label: "State",
+    render: (t) => t.state ?? "—",
+    sortValue: (t) => t.state,
+    searchValue: (t) => t.state ?? "",
+  },
+  {
+    key: "event",
+    label: "Event",
+    render: (t) =>
+      t.event_id ? (
+        <Link
+          href={`/events/${t.event_id}`}
+          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+        >
+          {t.events?.name ?? "View event"}
+        </Link>
+      ) : (
+        "—"
+      ),
+    sortValue: (t) => t.events?.name ?? null,
+    searchValue: (t) => t.events?.name ?? "",
+  },
+  {
+    key: "set",
+    label: "Set",
+    render: (t) => t.set_type ?? "—",
+    sortValue: (t) => t.set_type,
+    searchValue: (t) => t.set_type ?? "",
+  },
+  {
+    key: "attendance",
+    label: "Attendance",
+    render: (t) => t.attendance ?? "—",
+    sortValue: (t) => t.attendance,
+    searchValue: (t) => (t.attendance != null ? String(t.attendance) : ""),
+  },
+  {
+    key: "deal",
+    label: "Deal",
+    render: (t) => (t.guarantee_amount ? formatMoney(t.guarantee_amount) : t.deal_terms ?? "—"),
+    sortValue: (t) => t.guarantee_amount,
+    searchValue: (t) =>
+      [t.guarantee_amount != null ? formatMoney(t.guarantee_amount) : null, t.deal_terms]
+        .filter(Boolean)
+        .join(" "),
+  },
+];
 
 export default async function PlaysPage({
   searchParams,
@@ -28,7 +143,8 @@ export default async function PlaysPage({
       .lte("show_date", `${year}-12-31`);
   }
 
-  const { data: plays } = await query;
+  const { data } = await query;
+  const plays = (data ?? []) as unknown as PlayRow[];
 
   const years = ["2022", "2023", "2024", "2025", "2026", "2027"];
 
@@ -39,7 +155,7 @@ export default async function PlaysPage({
         <NewRecordButton />
       </div>
       <p className="text-black/60 dark:text-white/60 mb-4">
-        {plays?.length ?? 0} shows{year ? ` in ${year}` : ""}
+        {plays.length} shows{year ? ` in ${year}` : ""}
       </p>
 
       <div className="flex gap-2 mb-6 text-sm">
@@ -68,86 +184,13 @@ export default async function PlaysPage({
         ))}
       </div>
 
-      <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
-        <table className="w-full text-sm">
-          <thead className="bg-black/[.03] dark:bg-white/[.06] text-left">
-            <tr>
-              <th className="px-4 py-2 font-medium">Date</th>
-              <th className="px-4 py-2 font-medium">Artist</th>
-              <th className="px-4 py-2 font-medium">Venue</th>
-              <th className="px-4 py-2 font-medium">City</th>
-              <th className="px-4 py-2 font-medium">State</th>
-              <th className="px-4 py-2 font-medium">Event</th>
-              <th className="px-4 py-2 font-medium">Set</th>
-              <th className="px-4 py-2 font-medium">Attendance</th>
-              <th className="px-4 py-2 font-medium">Deal</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plays?.map((t) => (
-              <tr
-                key={t.id}
-                className="border-t border-black/10 dark:border-white/10 hover:bg-black/[.02] dark:hover:bg-white/[.03] transition-colors"
-              >
-                <td className="px-4 py-2 whitespace-nowrap">
-                  <Link
-                    href={`/plays/${t.id}`}
-                    className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                  >
-                    {t.show_date ?? "View play"}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">
-                  {(t.artists as unknown as { name: string } | null)?.name ?? "—"}
-                </td>
-                <td className="px-4 py-2">
-                  {(() => {
-                    const venue = t.venue as unknown as { id: string; name: string } | null;
-                    if (venue) {
-                      return (
-                        <Link
-                          href={`/companies/${venue.id}`}
-                          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                        >
-                          {venue.name}
-                        </Link>
-                      );
-                    }
-                    return t.venue_name ?? "—";
-                  })()}
-                </td>
-                <td className="px-4 py-2">{t.city ?? "—"}</td>
-                <td className="px-4 py-2">{t.state ?? "—"}</td>
-                <td className="px-4 py-2">
-                  {t.event_id ? (
-                    <Link
-                      href={`/events/${t.event_id}`}
-                      className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                    >
-                      {(t.events as unknown as { name: string } | null)?.name ??
-                        "View event"}
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="px-4 py-2">{t.set_type ?? "—"}</td>
-                <td className="px-4 py-2">{t.attendance ?? "—"}</td>
-                <td className="px-4 py-2">
-                  {t.guarantee_amount
-                    ? formatMoney(t.guarantee_amount)
-                    : t.deal_terms ?? "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!plays?.length && (
-          <p className="p-6 text-sm text-black/60 dark:text-white/60">
-            No plays yet.
-          </p>
-        )}
-      </div>
+      <DataTable
+        rows={plays}
+        columns={columns}
+        searchPlaceholder="Search plays..."
+        emptyMessage="No plays yet."
+        defaultSortKey="date"
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
+import DataTable, { type Column } from "@/components/DataTable";
 
 type EventRow = {
   id: string;
@@ -12,6 +13,78 @@ type EventRow = {
   companies: { id: string; name: string } | null;
   contacts: { id: string; full_name: string } | null;
 };
+
+const columns: Column<EventRow>[] = [
+  {
+    key: "name",
+    label: "Name",
+    render: (e) => (
+      <Link
+        href={`/events/${e.id}`}
+        className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+      >
+        {e.name}
+      </Link>
+    ),
+    sortValue: (e) => e.name,
+    searchValue: (e) => e.name,
+  },
+  {
+    key: "venue",
+    label: "Venue",
+    render: (e) =>
+      e.companies ? (
+        <Link
+          href={`/companies/${e.companies.id}`}
+          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+        >
+          {e.companies.name}
+        </Link>
+      ) : (
+        "—"
+      ),
+    sortValue: (e) => e.companies?.name ?? null,
+    searchValue: (e) => e.companies?.name ?? "",
+  },
+  {
+    key: "city",
+    label: "City",
+    render: (e) => e.city ?? "—",
+    sortValue: (e) => e.city,
+    searchValue: (e) => e.city ?? "",
+  },
+  {
+    key: "state",
+    label: "State",
+    render: (e) => e.state ?? (e.country && e.country !== "USA" ? e.country : "—"),
+    sortValue: (e) => e.state ?? e.country,
+    searchValue: (e) => [e.state, e.country].filter(Boolean).join(" "),
+  },
+  {
+    key: "contact",
+    label: "Contact",
+    render: (e) =>
+      e.contacts ? (
+        <Link
+          href={`/contacts/${e.contacts.id}`}
+          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+        >
+          {e.contacts.full_name}
+        </Link>
+      ) : (
+        "—"
+      ),
+    sortValue: (e) => e.contacts?.full_name ?? null,
+    searchValue: (e) => e.contacts?.full_name ?? "",
+  },
+  {
+    key: "visibility",
+    label: "Visibility",
+    render: (e) => (e.is_public ? "Public" : "Private"),
+    sortValue: (e) => (e.is_public ? "Public" : "Private"),
+    searchValue: (e) => (e.is_public ? "Public" : "Private"),
+  },
+];
 
 export default async function EventsPage({
   searchParams,
@@ -34,7 +107,7 @@ export default async function EventsPage({
   if (activeFilter === "private") query = query.eq("is_public", false);
 
   const { data } = await query;
-  const events = data as unknown as EventRow[] | null;
+  const events = (data ?? []) as unknown as EventRow[];
 
   return (
     <div>
@@ -43,7 +116,7 @@ export default async function EventsPage({
         <NewRecordButton />
       </div>
       <p className="text-black/60 dark:text-white/60 mb-4">
-        {events?.length ?? 0} events
+        {events.length} events
       </p>
 
       <div className="flex gap-2 mb-6 text-sm">
@@ -66,73 +139,13 @@ export default async function EventsPage({
         ))}
       </div>
 
-      <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
-        <table className="w-full text-sm">
-          <thead className="bg-black/[.03] dark:bg-white/[.06] text-left">
-            <tr>
-              <th className="px-4 py-2 font-medium">Name</th>
-              <th className="px-4 py-2 font-medium">Venue</th>
-              <th className="px-4 py-2 font-medium">City</th>
-              <th className="px-4 py-2 font-medium">State</th>
-              <th className="px-4 py-2 font-medium">Contact</th>
-              <th className="px-4 py-2 font-medium">Visibility</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events?.map((e) => (
-              <tr
-                key={e.id}
-                className="border-t border-black/10 dark:border-white/10 hover:bg-black/[.02] dark:hover:bg-white/[.03] transition-colors"
-              >
-                <td className="px-4 py-2">
-                  <Link
-                    href={`/events/${e.id}`}
-                    className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                  >
-                    {e.name}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">
-                  {e.companies ? (
-                    <Link
-                      href={`/companies/${e.companies.id}`}
-                      className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                    >
-                      {e.companies.name}
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="px-4 py-2">{e.city ?? "—"}</td>
-                <td className="px-4 py-2">
-                  {e.state ?? (e.country && e.country !== "USA" ? e.country : "—")}
-                </td>
-                <td className="px-4 py-2">
-                  {e.contacts ? (
-                    <Link
-                      href={`/contacts/${e.contacts.id}`}
-                      className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                    >
-                      {e.contacts.full_name}
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="px-4 py-2">
-                  {e.is_public ? "Public" : "Private"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!events?.length && (
-          <p className="p-6 text-sm text-black/60 dark:text-white/60">
-            No events yet.
-          </p>
-        )}
-      </div>
+      <DataTable
+        rows={events}
+        columns={columns}
+        searchPlaceholder="Search events..."
+        emptyMessage="No events yet."
+        defaultSortKey="name"
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
+import DataTable, { type Column } from "@/components/DataTable";
 
 type CompanyRow = {
   id: string;
@@ -11,13 +12,74 @@ type CompanyRow = {
   contacts: { id: string; full_name: string }[] | null;
 };
 
+const columns: Column<CompanyRow>[] = [
+  {
+    key: "name",
+    label: "Name",
+    render: (c) => (
+      <Link
+        href={`/companies/${c.id}`}
+        className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+      >
+        {c.name}
+      </Link>
+    ),
+    sortValue: (c) => c.name,
+    searchValue: (c) => c.name,
+  },
+  {
+    key: "type",
+    label: "Type",
+    render: (c) => <span className="capitalize">{c.type}</span>,
+    sortValue: (c) => c.type,
+    searchValue: (c) => c.type,
+  },
+  {
+    key: "city",
+    label: "City",
+    render: (c) => c.city ?? "—",
+    sortValue: (c) => c.city,
+    searchValue: (c) => c.city ?? "",
+  },
+  {
+    key: "state",
+    label: "State",
+    render: (c) => c.state ?? "—",
+    sortValue: (c) => c.state,
+    searchValue: (c) => c.state ?? "",
+  },
+  {
+    key: "contacts",
+    label: "Contacts",
+    render: (c) =>
+      c.contacts?.length ? (
+        <span className="space-x-1">
+          {c.contacts.map((contact, i) => (
+            <span key={contact.id}>
+              <Link
+                href={`/contacts/${contact.id}`}
+                className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+              >
+                {contact.full_name}
+              </Link>
+              {i < c.contacts!.length - 1 ? "," : ""}
+            </span>
+          ))}
+        </span>
+      ) : (
+        "—"
+      ),
+    searchValue: (c) => c.contacts?.map((x) => x.full_name).join(" ") ?? "",
+  },
+];
+
 export default async function CompaniesPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("companies")
     .select("id, name, type, city, state, contacts(id, full_name)")
     .order("name");
-  const companies = data as unknown as CompanyRow[] | null;
+  const companies = (data ?? []) as unknown as CompanyRow[];
 
   return (
     <div>
@@ -26,66 +88,16 @@ export default async function CompaniesPage() {
         <NewRecordButton />
       </div>
       <p className="text-black/60 dark:text-white/60 mb-6">
-        {companies?.length ?? 0} records
+        {companies.length} records
       </p>
 
-      <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
-        <table className="w-full text-sm">
-          <thead className="bg-black/[.03] dark:bg-white/[.06] text-left">
-            <tr>
-              <th className="px-4 py-2 font-medium">Name</th>
-              <th className="px-4 py-2 font-medium">Type</th>
-              <th className="px-4 py-2 font-medium">City</th>
-              <th className="px-4 py-2 font-medium">State</th>
-              <th className="px-4 py-2 font-medium">Contacts</th>
-            </tr>
-          </thead>
-          <tbody>
-            {companies?.map((c) => (
-              <tr
-                key={c.id}
-                className="border-t border-black/10 dark:border-white/10 hover:bg-black/[.02] dark:hover:bg-white/[.03] transition-colors"
-              >
-                <td className="px-4 py-2">
-                  <Link
-                    href={`/companies/${c.id}`}
-                    className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                  >
-                    {c.name}
-                  </Link>
-                </td>
-                <td className="px-4 py-2 capitalize">{c.type}</td>
-                <td className="px-4 py-2">{c.city ?? "—"}</td>
-                <td className="px-4 py-2">{c.state ?? "—"}</td>
-                <td className="px-4 py-2">
-                  {c.contacts?.length ? (
-                    <span className="space-x-1">
-                      {c.contacts.map((contact, i) => (
-                        <span key={contact.id}>
-                          <Link
-                            href={`/contacts/${contact.id}`}
-                            className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                          >
-                            {contact.full_name}
-                          </Link>
-                          {i < c.contacts!.length - 1 ? "," : ""}
-                        </span>
-                      ))}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!companies?.length && (
-          <p className="p-6 text-sm text-black/60 dark:text-white/60">
-            No companies yet.
-          </p>
-        )}
-      </div>
+      <DataTable
+        rows={companies}
+        columns={columns}
+        searchPlaceholder="Search venues..."
+        emptyMessage="No companies yet."
+        defaultSortKey="name"
+      />
     </div>
   );
 }
