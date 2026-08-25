@@ -3,19 +3,24 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
-import InlineSelectField from "@/components/inline/InlineSelectField";
+import InlineLocationField from "@/components/inline/InlineLocationField";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
 import { websiteHref } from "@/lib/url";
 
-const VENUE_TYPE_OPTIONS = [
-  { value: "venue", label: "Venue" },
-  { value: "promoter", label: "Promoter" },
-  { value: "agency", label: "Agency" },
-  { value: "vendor", label: "Vendor" },
-  { value: "other", label: "Other" },
-];
+// Non-venue company types (promoter, agency, vendor, other) exist in the
+// data but we haven't designed how those should work in the product yet --
+// showing this as an editable dropdown implied more structure than we've
+// actually decided on. Displayed as plain text for now; revisit once
+// promoters/agencies/etc get their own real handling.
+const VENUE_TYPE_LABEL: Record<string, string> = {
+  venue: "Venue",
+  promoter: "Promoter",
+  agency: "Agency",
+  vendor: "Vendor",
+  other: "Other",
+};
 
 export default async function VenueDetailPage({
   params,
@@ -101,29 +106,14 @@ export default async function VenueDetailPage({
           />
         </h1>
         <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
-          <InlineEditField
+          <InlineLocationField
             table="companies"
             id={venue.id}
-            field="city"
-            value={venue.city}
-            placeholder="Add city"
-          />
-          <span>,</span>
-          <InlineEditField
-            table="companies"
-            id={venue.id}
-            field="state"
-            value={venue.state}
-            placeholder="state"
+            city={venue.city}
+            state={venue.state}
           />
           <span>·</span>
-          <InlineSelectField
-            table="companies"
-            id={venue.id}
-            field="type"
-            value={venue.type}
-            options={VENUE_TYPE_OPTIONS}
-          />
+          <span>{VENUE_TYPE_LABEL[venue.type] ?? venue.type}</span>
         </p>
       </div>
 

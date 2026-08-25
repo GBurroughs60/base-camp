@@ -99,6 +99,29 @@ export async function updateField(
   return { ok: true, data: undefined };
 }
 
+// Multi-column sibling of updateField -- used where two DB columns are
+// edited together as one logical value (e.g. city + state as "location")
+// and need to commit in a single write rather than two separate ones.
+export async function updateFields(
+  table: TableName,
+  id: string,
+  fields: Record<string, string | number | boolean | null>
+): Promise<ActionResult> {
+  const data: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(fields)) {
+    if (!EDITABLE_FIELDS[table]?.has(field)) {
+      return { ok: false, error: `"${field}" is not editable on ${table}` };
+    }
+    data[field] = value === "" ? null : value;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from(table).update(data).eq("id", id);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: undefined };
+}
+
 function pickAllowed(table: TableName, data: Record<string, unknown>) {
   const allowed = EDITABLE_FIELDS[table];
   const out: Record<string, unknown> = {};

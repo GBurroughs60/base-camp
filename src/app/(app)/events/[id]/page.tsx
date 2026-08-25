@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
+import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineSelectField from "@/components/inline/InlineSelectField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
 import AdditionalContacts, {
@@ -105,20 +106,11 @@ export default async function EventDetailPage({
             />
           </h1>
           <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
-            <InlineEditField
+            <InlineLocationField
               table="events"
               id={event.id}
-              field="city"
-              value={event.city}
-              placeholder="Add city"
-            />
-            <span>,</span>
-            <InlineEditField
-              table="events"
-              id={event.id}
-              field="state"
-              value={event.state}
-              placeholder="state"
+              city={event.city}
+              state={event.state}
             />
             {event.country && event.country !== "USA" && (
               <span className="text-black/40 dark:text-white/40">

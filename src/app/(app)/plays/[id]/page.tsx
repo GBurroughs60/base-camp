@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ContractUpload from "./ContractUpload";
 import InlineEditField from "@/components/inline/InlineEditField";
+import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
 import AdditionalContacts, {
   type LinkedContactItem,
@@ -147,20 +148,11 @@ export default async function PlayDetailPage({
                   placeholder="Add venue name"
                 />
                 <span>·</span>
-                <InlineEditField
+                <InlineLocationField
                   table="plays"
                   id={play.id}
-                  field="city"
-                  value={play.city}
-                  placeholder="city"
-                />
-                <span>,</span>
-                <InlineEditField
-                  table="plays"
-                  id={play.id}
-                  field="state"
-                  value={play.state}
-                  placeholder="state"
+                  city={play.city}
+                  state={play.state}
                 />
               </div>
             )}
