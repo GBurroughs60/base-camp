@@ -5,6 +5,9 @@ import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineSelectField from "@/components/inline/InlineSelectField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
+import AdditionalContacts, {
+  type LinkedContactItem,
+} from "@/components/inline/AdditionalContacts";
 import { websiteHref } from "@/lib/url";
 
 const VISIBILITY_OPTIONS = [
@@ -44,6 +47,19 @@ export default async function EventDetailPage({
     email: string | null;
     phone: string | null;
   } | null;
+
+  const { data: linkedContactsData } = await supabase
+    .from("contact_events")
+    .select("id, contacts(id, full_name)")
+    .eq("event_id", id)
+    .order("created_at");
+
+  const linkedContacts: LinkedContactItem[] = (linkedContactsData ?? [])
+    .map((row) => {
+      const c = row.contacts as unknown as { id: string; full_name: string } | null;
+      return c ? { rowId: row.id, contactId: c.id, label: c.full_name } : null;
+    })
+    .filter((v): v is LinkedContactItem => v !== null);
 
   const { data: playsData } = await supabase
     .from("plays")
@@ -204,6 +220,7 @@ export default async function EventDetailPage({
               </>
             )}
           </div>
+          <AdditionalContacts kind="event" targetId={event.id} items={linkedContacts} />
         </div>
       </div>
 
