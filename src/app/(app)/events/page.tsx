@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
-import DataTable, { type Column } from "@/components/DataTable";
+import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
 
 type EventRow = {
   id: string;
@@ -14,26 +14,29 @@ type EventRow = {
   contacts: { id: string; full_name: string } | null;
 };
 
-const columns: Column<EventRow>[] = [
-  {
-    key: "name",
-    label: "Name",
-    render: (e) => (
-      <Link
-        href={`/events/${e.id}`}
-        className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-      >
-        {e.name}
-      </Link>
-    ),
-    sortValue: (e) => e.name,
-    searchValue: (e) => e.name,
-  },
-  {
-    key: "venue",
-    label: "Venue",
-    render: (e) =>
-      e.companies ? (
+const columns: ColumnMeta[] = [
+  { key: "name", label: "Name", sortable: true },
+  { key: "venue", label: "Venue", sortable: true },
+  { key: "city", label: "City", sortable: true },
+  { key: "state", label: "State", sortable: true },
+  { key: "contact", label: "Contact", sortable: true },
+  { key: "visibility", label: "Visibility", sortable: true },
+];
+
+function toRow(e: EventRow): DataRow {
+  const stateOrCountry = e.state ?? (e.country && e.country !== "USA" ? e.country : null);
+  return {
+    id: e.id,
+    cells: {
+      name: (
+        <Link
+          href={`/events/${e.id}`}
+          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+        >
+          {e.name}
+        </Link>
+      ),
+      venue: e.companies ? (
         <Link
           href={`/companies/${e.companies.id}`}
           className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
@@ -43,28 +46,9 @@ const columns: Column<EventRow>[] = [
       ) : (
         "—"
       ),
-    sortValue: (e) => e.companies?.name ?? null,
-    searchValue: (e) => e.companies?.name ?? "",
-  },
-  {
-    key: "city",
-    label: "City",
-    render: (e) => e.city ?? "—",
-    sortValue: (e) => e.city,
-    searchValue: (e) => e.city ?? "",
-  },
-  {
-    key: "state",
-    label: "State",
-    render: (e) => e.state ?? (e.country && e.country !== "USA" ? e.country : "—"),
-    sortValue: (e) => e.state ?? e.country,
-    searchValue: (e) => [e.state, e.country].filter(Boolean).join(" "),
-  },
-  {
-    key: "contact",
-    label: "Contact",
-    render: (e) =>
-      e.contacts ? (
+      city: e.city ?? "—",
+      state: stateOrCountry ?? "—",
+      contact: e.contacts ? (
         <Link
           href={`/contacts/${e.contacts.id}`}
           className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
@@ -74,17 +58,29 @@ const columns: Column<EventRow>[] = [
       ) : (
         "—"
       ),
-    sortValue: (e) => e.contacts?.full_name ?? null,
-    searchValue: (e) => e.contacts?.full_name ?? "",
-  },
-  {
-    key: "visibility",
-    label: "Visibility",
-    render: (e) => (e.is_public ? "Public" : "Private"),
-    sortValue: (e) => (e.is_public ? "Public" : "Private"),
-    searchValue: (e) => (e.is_public ? "Public" : "Private"),
-  },
-];
+      visibility: e.is_public ? "Public" : "Private",
+    },
+    sortValues: {
+      name: e.name,
+      venue: e.companies?.name ?? null,
+      city: e.city,
+      state: stateOrCountry,
+      contact: e.contacts?.full_name ?? null,
+      visibility: e.is_public ? "Public" : "Private",
+    },
+    searchText: [
+      e.name,
+      e.companies?.name,
+      e.city,
+      stateOrCountry,
+      e.contacts?.full_name,
+      e.is_public ? "Public" : "Private",
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
+  };
+}
 
 export default async function EventsPage({
   searchParams,
@@ -140,7 +136,7 @@ export default async function EventsPage({
       </div>
 
       <DataTable
-        rows={events}
+        rows={events.map(toRow)}
         columns={columns}
         searchPlaceholder="Search events..."
         emptyMessage="No events yet."

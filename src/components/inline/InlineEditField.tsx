@@ -7,6 +7,43 @@ import { PencilIcon } from "./icons";
 
 type FieldType = "text" | "textarea" | "number" | "date";
 
+// Named presets, not raw functions -- this is a Client Component ("use
+// client" above) that gets rendered directly from async Server Components
+// (the detail pages). React Server Components can only pass serializable
+// props across that boundary, and a function closure isn't serializable,
+// so `format` used to blow up every play detail page at request time
+// (functions can't cross the RSC boundary) even though it type-checked and
+// built cleanly. Formatting now lives here, selected by a plain string key.
+type FormatPreset = "money" | "date" | "percent";
+
+function formatMoney(n: number | null) {
+  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function formatLongDate(d: string | null) {
+  if (!d) return "—";
+  const parsed = new Date(`${d}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function applyFormat(preset: FormatPreset | undefined, v: string | number | null) {
+  if (!preset) return v;
+  switch (preset) {
+    case "money":
+      return formatMoney(typeof v === "number" ? v : v === null ? null : Number(v));
+    case "date":
+      return formatLongDate(v as string | null);
+    case "percent":
+      return v === null || v === "" ? "—" : `${v}%`;
+  }
+}
+
 export default function InlineEditField({
   table,
   id,
@@ -25,8 +62,8 @@ export default function InlineEditField({
   value: string | number | null;
   type?: FieldType;
   placeholder?: string;
-  /** Format the value for read-mode display (e.g. money). Defaults to raw value. */
-  format?: (v: string | number | null) => React.ReactNode;
+  /** Named formatting preset for read-mode display. Defaults to raw value. */
+  format?: FormatPreset;
   /** When set and the field has a value, render it as a real link (opens in
    * a new tab) instead of click-to-edit text -- editing then happens only
    * via the pencil icon. Used for website fields. */
@@ -99,7 +136,7 @@ export default function InlineEditField({
     });
   }
 
-  const displayValue = format ? format(current) : current;
+  const displayValue = applyFormat(format, current);
 
   if (editing) {
     const commonProps = {

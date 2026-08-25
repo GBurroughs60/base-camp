@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
-import DataTable, { type Column } from "@/components/DataTable";
+import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
 
 type Company = { id: string; name: string; city: string | null; state: string | null };
 type ContactRow = {
@@ -13,26 +13,29 @@ type ContactRow = {
   companies: Company | null;
 };
 
-const columns: Column<ContactRow>[] = [
-  {
-    key: "name",
-    label: "Name",
-    render: (c) => (
-      <Link
-        href={`/contacts/${c.id}`}
-        className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-      >
-        {c.full_name}
-      </Link>
-    ),
-    sortValue: (c) => c.full_name,
-    searchValue: (c) => c.full_name,
-  },
-  {
-    key: "company",
-    label: "Company",
-    render: (c) =>
-      c.companies ? (
+const columns: ColumnMeta[] = [
+  { key: "name", label: "Name", sortable: true },
+  { key: "company", label: "Company", sortable: true },
+  { key: "city", label: "City", sortable: true },
+  { key: "state", label: "State", sortable: true },
+  { key: "email", label: "Email", sortable: true },
+  { key: "phone", label: "Phone", sortable: true },
+  { key: "title", label: "Title", sortable: true },
+];
+
+function toRow(c: ContactRow): DataRow {
+  return {
+    id: c.id,
+    cells: {
+      name: (
+        <Link
+          href={`/contacts/${c.id}`}
+          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+        >
+          {c.full_name}
+        </Link>
+      ),
+      company: c.companies ? (
         <Link
           href={`/companies/${c.companies.id}`}
           className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
@@ -42,45 +45,35 @@ const columns: Column<ContactRow>[] = [
       ) : (
         "—"
       ),
-    sortValue: (c) => c.companies?.name ?? null,
-    searchValue: (c) => c.companies?.name ?? "",
-  },
-  {
-    key: "city",
-    label: "City",
-    render: (c) => c.companies?.city ?? "—",
-    sortValue: (c) => c.companies?.city ?? null,
-    searchValue: (c) => c.companies?.city ?? "",
-  },
-  {
-    key: "state",
-    label: "State",
-    render: (c) => c.companies?.state ?? "—",
-    sortValue: (c) => c.companies?.state ?? null,
-    searchValue: (c) => c.companies?.state ?? "",
-  },
-  {
-    key: "email",
-    label: "Email",
-    render: (c) => c.email ?? "—",
-    sortValue: (c) => c.email ?? null,
-    searchValue: (c) => c.email ?? "",
-  },
-  {
-    key: "phone",
-    label: "Phone",
-    render: (c) => c.phone ?? "—",
-    sortValue: (c) => c.phone ?? null,
-    searchValue: (c) => c.phone ?? "",
-  },
-  {
-    key: "title",
-    label: "Title",
-    render: (c) => c.title ?? "—",
-    sortValue: (c) => c.title ?? null,
-    searchValue: (c) => c.title ?? "",
-  },
-];
+      city: c.companies?.city ?? "—",
+      state: c.companies?.state ?? "—",
+      email: c.email ?? "—",
+      phone: c.phone ?? "—",
+      title: c.title ?? "—",
+    },
+    sortValues: {
+      name: c.full_name,
+      company: c.companies?.name ?? null,
+      city: c.companies?.city ?? null,
+      state: c.companies?.state ?? null,
+      email: c.email,
+      phone: c.phone,
+      title: c.title,
+    },
+    searchText: [
+      c.full_name,
+      c.companies?.name,
+      c.companies?.city,
+      c.companies?.state,
+      c.email,
+      c.phone,
+      c.title,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
+  };
+}
 
 export default async function ContactsPage() {
   const supabase = await createClient();
@@ -101,7 +94,7 @@ export default async function ContactsPage() {
       </p>
 
       <DataTable
-        rows={contacts}
+        rows={contacts.map(toRow)}
         columns={columns}
         searchPlaceholder="Search contacts..."
         emptyMessage="No contacts yet."

@@ -5,24 +5,6 @@ import ContractUpload from "./ContractUpload";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
 
-function formatMoney(n: number | null) {
-  if (n === null || n === undefined) return "—";
-  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
-
-function moneyFormatter(v: string | number | null) {
-  return formatMoney(typeof v === "number" ? v : v === null ? null : Number(v));
-}
-
-function formatDate(d: string | null) {
-  if (!d) return "—";
-  return new Date(`${d}T00:00:00`).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
 export default async function PlayDetailPage({
   params,
 }: {
@@ -92,7 +74,7 @@ export default async function PlayDetailPage({
               field="show_date"
               value={play.show_date}
               type="date"
-              format={(v) => formatDate(v as string | null)}
+              format="date"
               placeholder="Add date"
             />
             <span>·</span>
@@ -189,7 +171,7 @@ export default async function PlayDetailPage({
           <dl className="text-sm grid grid-cols-2 gap-y-2">
             <dt className="text-black/50 dark:text-white/50">Guarantee</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="guarantee_amount" value={play.guarantee_amount} type="number" format={moneyFormatter} placeholder="Add" />
+              <InlineEditField table="plays" id={play.id} field="guarantee_amount" value={play.guarantee_amount} type="number" format="money" placeholder="Add" />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Deal terms</dt>
             <dd>
@@ -229,19 +211,19 @@ export default async function PlayDetailPage({
             </dd>
             <dt className="text-black/50 dark:text-white/50">Ticket price</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="ticket_price" value={play.ticket_price} type="number" format={moneyFormatter} placeholder="Add" />
+              <InlineEditField table="plays" id={play.id} field="ticket_price" value={play.ticket_price} type="number" format="money" placeholder="Add" />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Gross revenue</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="gross_revenue" value={play.gross_revenue} type="number" format={moneyFormatter} placeholder="Add" />
+              <InlineEditField table="plays" id={play.id} field="gross_revenue" value={play.gross_revenue} type="number" format="money" placeholder="Add" />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Gross merch sales</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="gross_merch_sales" value={play.gross_merch_sales} type="number" format={moneyFormatter} placeholder="Add" />
+              <InlineEditField table="plays" id={play.id} field="gross_merch_sales" value={play.gross_merch_sales} type="number" format="money" placeholder="Add" />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Band %</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="band_percentage" value={play.band_percentage} type="number" format={(v) => (v === null || v === "" ? "—" : `${v}%`)} placeholder="Add" />
+              <InlineEditField table="plays" id={play.id} field="band_percentage" value={play.band_percentage} type="number" format="percent" placeholder="Add" />
             </dd>
           </dl>
         </div>
@@ -259,15 +241,15 @@ export default async function PlayDetailPage({
             </dd>
             <dt className="text-black/50 dark:text-white/50">Contract due</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="contract_due_date" value={play.contract_due_date} type="date" format={(v) => formatDate(v as string | null)} placeholder="Add" />
+              <InlineEditField table="plays" id={play.id} field="contract_due_date" value={play.contract_due_date} type="date" format="date" placeholder="Add" />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Deposit</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="deposit_amount" value={play.deposit_amount} type="number" format={moneyFormatter} placeholder="Add" />
+              <InlineEditField table="plays" id={play.id} field="deposit_amount" value={play.deposit_amount} type="number" format="money" placeholder="Add" />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Deposit due</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="deposit_due_date" value={play.deposit_due_date} type="date" format={(v) => formatDate(v as string | null)} placeholder="Add" />
+              <InlineEditField table="plays" id={play.id} field="deposit_due_date" value={play.deposit_due_date} type="date" format="date" placeholder="Add" />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Deposit status</dt>
             <dd>
@@ -279,7 +261,7 @@ export default async function PlayDetailPage({
             </dd>
             <dt className="text-black/50 dark:text-white/50">Amount due to agency</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="amount_due_to_agency" value={play.amount_due_to_agency} type="number" format={moneyFormatter} placeholder="Add" />
+              <InlineEditField table="plays" id={play.id} field="amount_due_to_agency" value={play.amount_due_to_agency} type="number" format="money" placeholder="Add" />
             </dd>
           </dl>
         </div>

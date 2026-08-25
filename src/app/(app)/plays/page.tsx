@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
-import DataTable, { type Column } from "@/components/DataTable";
+import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
 
 function formatMoney(n: number | null) {
   if (n === null || n === undefined) return "—";
@@ -26,33 +26,33 @@ type PlayRow = {
   venue: { id: string; name: string } | null;
 };
 
-const columns: Column<PlayRow>[] = [
-  {
-    key: "date",
-    label: "Date",
-    render: (t) => (
-      <Link
-        href={`/plays/${t.id}`}
-        className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4 whitespace-nowrap"
-      >
-        {t.show_date ?? "View play"}
-      </Link>
-    ),
-    sortValue: (t) => t.show_date,
-    searchValue: (t) => t.show_date ?? "",
-  },
-  {
-    key: "artist",
-    label: "Artist",
-    render: (t) => t.artists?.name ?? "—",
-    sortValue: (t) => t.artists?.name ?? null,
-    searchValue: (t) => t.artists?.name ?? "",
-  },
-  {
-    key: "venue",
-    label: "Venue",
-    render: (t) =>
-      t.venue ? (
+const columns: ColumnMeta[] = [
+  { key: "date", label: "Date", sortable: true },
+  { key: "artist", label: "Artist", sortable: true },
+  { key: "venue", label: "Venue", sortable: true },
+  { key: "city", label: "City", sortable: true },
+  { key: "state", label: "State", sortable: true },
+  { key: "event", label: "Event", sortable: true },
+  { key: "set", label: "Set", sortable: true },
+  { key: "attendance", label: "Attendance", sortable: true },
+  { key: "deal", label: "Deal", sortable: true },
+];
+
+function toRow(t: PlayRow): DataRow {
+  const dealDisplay = t.guarantee_amount ? formatMoney(t.guarantee_amount) : t.deal_terms ?? "—";
+  return {
+    id: t.id,
+    cells: {
+      date: (
+        <Link
+          href={`/plays/${t.id}`}
+          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4 whitespace-nowrap"
+        >
+          {t.show_date ?? "View play"}
+        </Link>
+      ),
+      artist: t.artists?.name ?? "—",
+      venue: t.venue ? (
         <Link
           href={`/companies/${t.venue.id}`}
           className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
@@ -62,28 +62,9 @@ const columns: Column<PlayRow>[] = [
       ) : (
         t.venue_name ?? "—"
       ),
-    sortValue: (t) => t.venue?.name ?? t.venue_name,
-    searchValue: (t) => t.venue?.name ?? t.venue_name ?? "",
-  },
-  {
-    key: "city",
-    label: "City",
-    render: (t) => t.city ?? "—",
-    sortValue: (t) => t.city,
-    searchValue: (t) => t.city ?? "",
-  },
-  {
-    key: "state",
-    label: "State",
-    render: (t) => t.state ?? "—",
-    sortValue: (t) => t.state,
-    searchValue: (t) => t.state ?? "",
-  },
-  {
-    key: "event",
-    label: "Event",
-    render: (t) =>
-      t.event_id ? (
+      city: t.city ?? "—",
+      state: t.state ?? "—",
+      event: t.event_id ? (
         <Link
           href={`/events/${t.event_id}`}
           className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
@@ -93,34 +74,37 @@ const columns: Column<PlayRow>[] = [
       ) : (
         "—"
       ),
-    sortValue: (t) => t.events?.name ?? null,
-    searchValue: (t) => t.events?.name ?? "",
-  },
-  {
-    key: "set",
-    label: "Set",
-    render: (t) => t.set_type ?? "—",
-    sortValue: (t) => t.set_type,
-    searchValue: (t) => t.set_type ?? "",
-  },
-  {
-    key: "attendance",
-    label: "Attendance",
-    render: (t) => t.attendance ?? "—",
-    sortValue: (t) => t.attendance,
-    searchValue: (t) => (t.attendance != null ? String(t.attendance) : ""),
-  },
-  {
-    key: "deal",
-    label: "Deal",
-    render: (t) => (t.guarantee_amount ? formatMoney(t.guarantee_amount) : t.deal_terms ?? "—"),
-    sortValue: (t) => t.guarantee_amount,
-    searchValue: (t) =>
-      [t.guarantee_amount != null ? formatMoney(t.guarantee_amount) : null, t.deal_terms]
-        .filter(Boolean)
-        .join(" "),
-  },
-];
+      set: t.set_type ?? "—",
+      attendance: t.attendance ?? "—",
+      deal: dealDisplay,
+    },
+    sortValues: {
+      date: t.show_date,
+      artist: t.artists?.name ?? null,
+      venue: t.venue?.name ?? t.venue_name,
+      city: t.city,
+      state: t.state,
+      event: t.events?.name ?? null,
+      set: t.set_type,
+      attendance: t.attendance,
+      deal: t.guarantee_amount,
+    },
+    searchText: [
+      t.show_date,
+      t.artists?.name,
+      t.venue?.name ?? t.venue_name,
+      t.city,
+      t.state,
+      t.events?.name,
+      t.set_type,
+      t.attendance != null ? String(t.attendance) : null,
+      dealDisplay,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
+  };
+}
 
 export default async function PlaysPage({
   searchParams,
@@ -185,7 +169,7 @@ export default async function PlaysPage({
       </div>
 
       <DataTable
-        rows={plays}
+        rows={plays.map(toRow)}
         columns={columns}
         searchPlaceholder="Search plays..."
         emptyMessage="No plays yet."

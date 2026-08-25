@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
-import DataTable, { type Column } from "@/components/DataTable";
+import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
 
 type CompanyRow = {
   id: string;
@@ -12,47 +12,30 @@ type CompanyRow = {
   contacts: { id: string; full_name: string }[] | null;
 };
 
-const columns: Column<CompanyRow>[] = [
-  {
-    key: "name",
-    label: "Name",
-    render: (c) => (
-      <Link
-        href={`/companies/${c.id}`}
-        className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-      >
-        {c.name}
-      </Link>
-    ),
-    sortValue: (c) => c.name,
-    searchValue: (c) => c.name,
-  },
-  {
-    key: "type",
-    label: "Type",
-    render: (c) => <span className="capitalize">{c.type}</span>,
-    sortValue: (c) => c.type,
-    searchValue: (c) => c.type,
-  },
-  {
-    key: "city",
-    label: "City",
-    render: (c) => c.city ?? "—",
-    sortValue: (c) => c.city,
-    searchValue: (c) => c.city ?? "",
-  },
-  {
-    key: "state",
-    label: "State",
-    render: (c) => c.state ?? "—",
-    sortValue: (c) => c.state,
-    searchValue: (c) => c.state ?? "",
-  },
-  {
-    key: "contacts",
-    label: "Contacts",
-    render: (c) =>
-      c.contacts?.length ? (
+const columns: ColumnMeta[] = [
+  { key: "name", label: "Name", sortable: true },
+  { key: "type", label: "Type", sortable: true },
+  { key: "city", label: "City", sortable: true },
+  { key: "state", label: "State", sortable: true },
+  { key: "contacts", label: "Contacts" },
+];
+
+function toRow(c: CompanyRow): DataRow {
+  return {
+    id: c.id,
+    cells: {
+      name: (
+        <Link
+          href={`/companies/${c.id}`}
+          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+        >
+          {c.name}
+        </Link>
+      ),
+      type: <span className="capitalize">{c.type}</span>,
+      city: c.city ?? "—",
+      state: c.state ?? "—",
+      contacts: c.contacts?.length ? (
         <span className="space-x-1">
           {c.contacts.map((contact, i) => (
             <span key={contact.id}>
@@ -69,9 +52,19 @@ const columns: Column<CompanyRow>[] = [
       ) : (
         "—"
       ),
-    searchValue: (c) => c.contacts?.map((x) => x.full_name).join(" ") ?? "",
-  },
-];
+    },
+    sortValues: {
+      name: c.name,
+      type: c.type,
+      city: c.city,
+      state: c.state,
+    },
+    searchText: [c.name, c.type, c.city, c.state, c.contacts?.map((x) => x.full_name).join(" ")]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
+  };
+}
 
 export default async function CompaniesPage() {
   const supabase = await createClient();
@@ -92,7 +85,7 @@ export default async function CompaniesPage() {
       </p>
 
       <DataTable
-        rows={companies}
+        rows={companies.map(toRow)}
         columns={columns}
         searchPlaceholder="Search venues..."
         emptyMessage="No companies yet."

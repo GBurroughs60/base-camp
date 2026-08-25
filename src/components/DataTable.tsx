@@ -3,17 +3,34 @@
 import { useMemo, useState } from "react";
 import { SearchIcon } from "./inline/icons";
 
-export type Column<T> = {
+// Plain, serializable column metadata -- no functions. This is a Client
+// Component rendered from async Server Components (the list pages), and
+// React Server Components can only pass serializable props across that
+// boundary: a function closure isn't serializable, so an earlier version
+// of this table (Column<T> holding render/sortValue/searchValue functions,
+// built by the server page and passed down) would have thrown at request
+// time on every list page, even though it type-checked and built cleanly.
+// Server-rendered React nodes ARE serializable, so the page does the
+// per-row work up front and hands DataTable already-built cells plus plain
+// sort/search primitives.
+export type ColumnMeta = {
   key: string;
   label: string;
-  render: (row: T) => React.ReactNode;
-  /** Value used for sorting when this column's header is clicked. Omit for
-   * a column that shouldn't be sortable (e.g. a "Linked to" summary). */
-  sortValue?: (row: T) => string | number | null;
-  /** Value(s) matched against the search box, lowercased. Omit to exclude
-   * this column from search entirely. */
-  searchValue?: (row: T) => string;
   align?: "left" | "right";
+  /** Whether this column's header is clickable to sort. Omit/false for a
+   * column that shouldn't be sortable (e.g. a "Linked to" summary). */
+  sortable?: boolean;
+};
+
+export type DataRow = {
+  id: string;
+  /** Pre-rendered content for each column, keyed by column key. */
+  cells: Record<string, React.ReactNode>;
+  /** Sort key per sortable column, keyed by column key. */
+  sortValues?: Record<string, string | number | null>;
+  /** Lowercased, concatenated text from every searchable column, used to
+   * match against the search box. */
+  searchText?: string;
 };
 
 function SortIndicator({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
@@ -35,7 +52,7 @@ function SortIndicator({ active, dir }: { active: boolean; dir: "asc" | "desc" }
 // at most) are small enough that filtering/sorting in the browser against
 // already-fetched data is instant and needs no server round-trip -- this
 // is a spreadsheet-style filter over what's on screen, not a database query.
-export default function DataTable<T extends { id: string }>({
+export default function DataTable({
   rows,
   columns,
   searchPlaceholder = "Search...",
@@ -43,8 +60,8 @@ export default function DataTable<T extends { id: string }>({
   defaultSortKey,
   defaultSortDir = "asc",
 }: {
-  rows: T[];
-  columns: Column<T>[];
+  rows: DataRow[];
+  columns: ColumnMeta[];
   searchPlaceholder?: string;
   emptyMessage?: string;
   defaultSortKey?: string;
@@ -57,15 +74,16 @@ export default function DataTable<T extends { id: string }>({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((row) =>
-      columns.some((c) => c.searchValue?.(row)?.toLowerCase().includes(q))
-    );
-  }, [rows, query, columns]);
+    return rows.filter((row) => row.searchText?.includes(q));
+  }, [rows, query]);
 
   const sorted = useMemo(() => {
-    const col = columns.find((c) => c.key === sortKey);
-    if (!col?.sortValue) return filtered;
-    const withKeys = filtered.map((row) => ({ row, v: col.sortValue!(row) }));
+    const col = columns.find((c) => c.key === sortKey && c.sortable);
+    if (!col) return filtered;
+    const withKeys = filtered.map((row) => ({
+      row,
+      v: row.sortValues?.[col.key] ?? null,
+    }));
     withKeys.sort((a, b) => {
       if (a.v === null || a.v === undefined) return 1;
       if (b.v === null || b.v === undefined) return -1;
@@ -110,7 +128,7 @@ export default function DataTable<T extends { id: string }>({
                     "px-4 py-2 font-medium " + (c.align === "right" ? "text-right" : "")
                   }
                 >
-                  {c.sortValue ? (
+                  {c.sortable ? (
                     <button
                       type="button"
                       onClick={() => toggleSort(c.key)}
@@ -137,7 +155,7 @@ export default function DataTable<T extends { id: string }>({
                     key={c.key}
                     className={"px-4 py-2 " + (c.align === "right" ? "text-right" : "")}
                   >
-                    {c.render(row)}
+                    {row.cells[c.key]}
                   </td>
                 ))}
               </tr>
