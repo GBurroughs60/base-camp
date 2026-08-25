@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
+import InlineEditField from "@/components/inline/InlineEditField";
+import InlineRelationField from "@/components/inline/InlineRelationField";
 
 export default async function ContactDetailPage({
   params,
@@ -69,9 +71,23 @@ export default async function ContactDetailPage({
       </Link>
 
       <div className="mt-3 mb-6">
-        <h1 className="font-display text-3xl font-medium mb-1">{contact.full_name}</h1>
+        <h1 className="font-display text-3xl font-medium mb-1">
+          <InlineEditField
+            table="contacts"
+            id={contact.id}
+            field="full_name"
+            value={contact.full_name}
+            placeholder="Add name"
+          />
+        </h1>
         <p className="text-black/60 dark:text-white/60">
-          {contact.title ?? "No title on file"}
+          <InlineEditField
+            table="contacts"
+            id={contact.id}
+            field="title"
+            value={contact.title}
+            placeholder="Add title"
+          />
         </p>
       </div>
 
@@ -81,40 +97,47 @@ export default async function ContactDetailPage({
             Details
           </h2>
           <div className="text-sm space-y-1">
-            {contact.email && (
-              <div className="text-black/70 dark:text-white/70">{contact.email}</div>
-            )}
-            {contact.phone && (
-              <div className="text-black/70 dark:text-white/70">{contact.phone}</div>
-            )}
-            {!contact.email && !contact.phone && (
-              <p className="text-black/60 dark:text-white/60">
-                No email or phone on file.
-              </p>
-            )}
+            <div className="text-black/70 dark:text-white/70">
+              <InlineEditField
+                table="contacts"
+                id={contact.id}
+                field="email"
+                value={contact.email}
+                placeholder="Add email"
+              />
+            </div>
+            <div className="text-black/70 dark:text-white/70">
+              <InlineEditField
+                table="contacts"
+                id={contact.id}
+                field="phone"
+                value={contact.phone}
+                placeholder="Add phone"
+              />
+            </div>
           </div>
 
           <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
             <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">
               Venue
             </div>
-            {company ? (
-              <div className="text-sm space-y-1">
-                <Link
-                  href={`/companies/${company.id}`}
-                  className="font-medium text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                >
-                  {company.name}
-                </Link>
+            <div className="text-sm space-y-1">
+              <div className="font-medium">
+                <InlineRelationField
+                  table="contacts"
+                  id={contact.id}
+                  field="company_id"
+                  relatedTable="companies"
+                  value={company ? { id: company.id, label: company.name } : null}
+                  placeholder="Not tied to a single venue"
+                />
+              </div>
+              {company && (
                 <div className="text-black/60 dark:text-white/60">
                   {[company.city, company.state].filter(Boolean).join(", ") || "—"}
                 </div>
-              </div>
-            ) : (
-              <p className="text-sm text-black/60 dark:text-white/60">
-                Not tied to a single venue — see events and plays below.
-              </p>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -147,14 +170,21 @@ export default async function ContactDetailPage({
         </div>
       </div>
 
-      {contact.notes && (
-        <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900">
-          <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
-            Notes
-          </h2>
-          <p className="text-sm whitespace-pre-wrap">{contact.notes}</p>
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900">
+        <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
+          Notes
+        </h2>
+        <div className="text-sm whitespace-pre-wrap">
+          <InlineEditField
+            table="contacts"
+            id={contact.id}
+            field="notes"
+            value={contact.notes}
+            type="textarea"
+            placeholder="Add notes"
+          />
         </div>
-      )}
+      </div>
 
       <h2 className="text-lg font-medium mb-3">
         Plays {plays.length ? `(${plays.length})` : ""}

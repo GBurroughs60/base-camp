@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import NewRecordButton from "@/components/inline/NewRecordButton";
 
 type CompanyRow = {
   id: string;
@@ -20,7 +21,10 @@ export default async function CompaniesPage() {
 
   return (
     <div>
-      <h1 className="font-display text-3xl font-medium mb-1">Venues</h1>
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="font-display text-3xl font-medium mb-1">Venues</h1>
+        <NewRecordButton />
+      </div>
       <p className="text-black/60 dark:text-white/60 mb-6">
         {companies?.length ?? 0} records
       </p>

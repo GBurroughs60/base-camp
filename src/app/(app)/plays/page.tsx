@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import NewRecordButton from "@/components/inline/NewRecordButton";
 
 function formatMoney(n: number | null) {
   if (n === null || n === undefined) return "—";
@@ -33,7 +34,10 @@ export default async function PlaysPage({
 
   return (
     <div>
-      <h1 className="font-display text-3xl font-medium mb-1">Plays</h1>
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="font-display text-3xl font-medium mb-1">Plays</h1>
+        <NewRecordButton />
+      </div>
       <p className="text-black/60 dark:text-white/60 mb-4">
         {plays?.length ?? 0} shows{year ? ` in ${year}` : ""}
       </p>

@@ -2,6 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
+import InlineEditField from "@/components/inline/InlineEditField";
+import InlineSelectField from "@/components/inline/InlineSelectField";
+import { websiteHref } from "@/lib/url";
+
+const VENUE_TYPE_OPTIONS = [
+  { value: "venue", label: "Venue" },
+  { value: "promoter", label: "Promoter" },
+  { value: "agency", label: "Agency" },
+  { value: "vendor", label: "Vendor" },
+  { value: "other", label: "Other" },
+];
 
 export default async function VenueDetailPage({
   params,
@@ -64,12 +75,39 @@ export default async function VenueDetailPage({
       </Link>
 
       <div className="mt-3 mb-6">
-        <h1 className="font-display text-3xl font-medium mb-1">{venue.name}</h1>
-        <p className="text-black/60 dark:text-white/60">
-          {[venue.city, venue.state, venue.country !== "USA" ? venue.country : null]
-            .filter(Boolean)
-            .join(", ") || "No location on file"}
-          {venue.type ? ` · ${venue.type}` : ""}
+        <h1 className="font-display text-3xl font-medium mb-1">
+          <InlineEditField
+            table="companies"
+            id={venue.id}
+            field="name"
+            value={venue.name}
+            placeholder="Add name"
+          />
+        </h1>
+        <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
+          <InlineEditField
+            table="companies"
+            id={venue.id}
+            field="city"
+            value={venue.city}
+            placeholder="Add city"
+          />
+          <span>,</span>
+          <InlineEditField
+            table="companies"
+            id={venue.id}
+            field="state"
+            value={venue.state}
+            placeholder="state"
+          />
+          <span>·</span>
+          <InlineSelectField
+            table="companies"
+            id={venue.id}
+            field="type"
+            value={venue.type}
+            options={VENUE_TYPE_OPTIONS}
+          />
         </p>
       </div>
 
@@ -105,12 +143,27 @@ export default async function VenueDetailPage({
               No contacts on file for this venue.
             </p>
           )}
-          {(venue.phone || venue.website) && (
-            <div className="text-sm text-black/50 dark:text-white/50 mt-3 pt-3 border-t border-black/10 dark:border-white/10 space-y-0.5">
-              {venue.phone && <div>{venue.phone}</div>}
-              {venue.website && <div>{venue.website}</div>}
+          <div className="text-sm text-black/50 dark:text-white/50 mt-3 pt-3 border-t border-black/10 dark:border-white/10 space-y-0.5">
+            <div>
+              <InlineEditField
+                table="companies"
+                id={venue.id}
+                field="phone"
+                value={venue.phone}
+                placeholder="Add phone"
+              />
             </div>
-          )}
+            <div>
+              <InlineEditField
+                table="companies"
+                id={venue.id}
+                field="website"
+                value={venue.website}
+                placeholder="Add website"
+                href={websiteHref(venue.website)}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
@@ -142,14 +195,21 @@ export default async function VenueDetailPage({
         </div>
       </div>
 
-      {venue.notes && (
-        <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900">
-          <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
-            Notes
-          </h2>
-          <p className="text-sm whitespace-pre-wrap">{venue.notes}</p>
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900">
+        <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
+          Notes
+        </h2>
+        <div className="text-sm whitespace-pre-wrap">
+          <InlineEditField
+            table="companies"
+            id={venue.id}
+            field="notes"
+            value={venue.notes}
+            type="textarea"
+            placeholder="Add notes"
+          />
         </div>
-      )}
+      </div>
 
       <h2 className="text-lg font-medium mb-3">
         Plays {plays.length ? `(${plays.length})` : ""}

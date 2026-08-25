@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import NewRecordButton from "@/components/inline/NewRecordButton";
 
 
 function formatDate(d: string | null) {
@@ -65,7 +66,10 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <h1 className="font-display text-3xl font-medium mb-1">Dashboard</h1>
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="font-display text-3xl font-medium mb-1">Dashboard</h1>
+        <NewRecordButton />
+      </div>
       <p className="italic text-black/60 dark:text-white/60 mb-8">
         Welcome back. Here&apos;s what&apos;s in Base Camp right now.
       </p>

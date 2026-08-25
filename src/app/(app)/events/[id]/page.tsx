@@ -2,6 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
+import InlineEditField from "@/components/inline/InlineEditField";
+import InlineSelectField from "@/components/inline/InlineSelectField";
+import InlineRelationField from "@/components/inline/InlineRelationField";
+import { websiteHref } from "@/lib/url";
+
+const VISIBILITY_OPTIONS = [
+  { value: "true", label: "Public" },
+  { value: "false", label: "Private" },
+];
 
 export default async function EventDetailPage({
   params,
@@ -14,7 +23,7 @@ export default async function EventDetailPage({
   const { data: event } = await supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, notes, companies(name, city, state, phone, website), contacts(full_name, email, phone)"
+      "id, name, is_public, city, state, country, website, notes, venue_id, primary_contact_id, companies(id, name, city, state, phone, website), contacts(id, full_name, email, phone)"
     )
     .eq("id", id)
     .maybeSingle();
@@ -22,6 +31,7 @@ export default async function EventDetailPage({
   if (!event) notFound();
 
   const venue = event.companies as unknown as {
+    id: string;
     name: string;
     city: string | null;
     state: string | null;
@@ -29,6 +39,7 @@ export default async function EventDetailPage({
     website: string | null;
   } | null;
   const contact = event.contacts as unknown as {
+    id: string;
     full_name: string;
     email: string | null;
     phone: string | null;
@@ -68,11 +79,46 @@ export default async function EventDetailPage({
 
       <div className="flex items-start justify-between mt-3 mb-6">
         <div>
-          <h1 className="font-display text-3xl font-medium mb-1">{event.name}</h1>
-          <p className="text-black/60 dark:text-white/60">
-            {[event.city, event.state, event.country !== "USA" ? event.country : null]
-              .filter(Boolean)
-              .join(", ") || "No location on file"}
+          <h1 className="font-display text-3xl font-medium mb-1">
+            <InlineEditField
+              table="events"
+              id={event.id}
+              field="name"
+              value={event.name}
+              placeholder="Add name"
+            />
+          </h1>
+          <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
+            <InlineEditField
+              table="events"
+              id={event.id}
+              field="city"
+              value={event.city}
+              placeholder="Add city"
+            />
+            <span>,</span>
+            <InlineEditField
+              table="events"
+              id={event.id}
+              field="state"
+              value={event.state}
+              placeholder="state"
+            />
+            {event.country && event.country !== "USA" && (
+              <span className="text-black/40 dark:text-white/40">
+                ({event.country})
+              </span>
+            )}
+          </p>
+          <p className="text-sm mt-0.5">
+            <InlineEditField
+              table="events"
+              id={event.id}
+              field="website"
+              value={event.website}
+              placeholder="Add website"
+              href={websiteHref(event.website)}
+            />
           </p>
         </div>
         <span
@@ -82,7 +128,13 @@ export default async function EventDetailPage({
               : "border-black/15 dark:border-white/15 bg-black/[.03] dark:bg-white/[.06]"
           }`}
         >
-          {event.is_public ? "Public" : "Private"}
+          <InlineSelectField
+            table="events"
+            id={event.id}
+            field="is_public"
+            value={event.is_public}
+            options={VISIBILITY_OPTIONS}
+          />
         </span>
       </div>
 
@@ -91,64 +143,85 @@ export default async function EventDetailPage({
           <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
             Venue
           </h2>
-          {venue ? (
-            <div className="text-sm space-y-1">
-              <div className="font-medium">{venue.name}</div>
-              <div className="text-black/60 dark:text-white/60">
-                {[venue.city, venue.state].filter(Boolean).join(", ") || "—"}
-              </div>
-              {venue.phone && (
-                <div className="text-black/60 dark:text-white/60">
-                  {venue.phone}
-                </div>
-              )}
-              {venue.website && (
-                <div className="text-black/60 dark:text-white/60">
-                  {venue.website}
-                </div>
-              )}
+          <div className="text-sm space-y-1">
+            <div className="font-medium">
+              <InlineRelationField
+                table="events"
+                id={event.id}
+                field="venue_id"
+                relatedTable="companies"
+                value={venue ? { id: venue.id, label: venue.name } : null}
+                placeholder="No linked venue record"
+              />
             </div>
-          ) : (
-            <p className="text-sm text-black/60 dark:text-white/60">
-              No linked venue record.
-            </p>
-          )}
+            {venue && (
+              <>
+                <div className="text-black/60 dark:text-white/60">
+                  {[venue.city, venue.state].filter(Boolean).join(", ") || "—"}
+                </div>
+                {venue.phone && (
+                  <div className="text-black/60 dark:text-white/60">
+                    {venue.phone}
+                  </div>
+                )}
+                {venue.website && (
+                  <div className="text-black/60 dark:text-white/60">
+                    {venue.website}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
           <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
             Primary Contact
           </h2>
-          {contact ? (
-            <div className="text-sm space-y-1">
-              <div className="font-medium">{contact.full_name}</div>
-              {contact.email && (
-                <div className="text-black/60 dark:text-white/60">
-                  {contact.email}
-                </div>
-              )}
-              {contact.phone && (
-                <div className="text-black/60 dark:text-white/60">
-                  {contact.phone}
-                </div>
-              )}
+          <div className="text-sm space-y-1">
+            <div className="font-medium">
+              <InlineRelationField
+                table="events"
+                id={event.id}
+                field="primary_contact_id"
+                relatedTable="contacts"
+                value={contact ? { id: contact.id, label: contact.full_name } : null}
+                placeholder="No contact on file"
+              />
             </div>
-          ) : (
-            <p className="text-sm text-black/60 dark:text-white/60">
-              No contact on file.
-            </p>
-          )}
+            {contact && (
+              <>
+                {contact.email && (
+                  <div className="text-black/60 dark:text-white/60">
+                    {contact.email}
+                  </div>
+                )}
+                {contact.phone && (
+                  <div className="text-black/60 dark:text-white/60">
+                    {contact.phone}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {event.notes && (
-        <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900">
-          <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
-            Notes
-          </h2>
-          <p className="text-sm whitespace-pre-wrap">{event.notes}</p>
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900">
+        <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
+          Notes
+        </h2>
+        <div className="text-sm whitespace-pre-wrap">
+          <InlineEditField
+            table="events"
+            id={event.id}
+            field="notes"
+            value={event.notes}
+            type="textarea"
+            placeholder="Add notes"
+          />
         </div>
-      )}
+      </div>
 
       <h2 className="text-lg font-medium mb-3">
         Plays {plays.length ? `(${plays.length})` : ""}

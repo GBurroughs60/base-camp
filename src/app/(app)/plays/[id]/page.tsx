@@ -2,10 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ContractUpload from "./ContractUpload";
+import InlineEditField from "@/components/inline/InlineEditField";
+import InlineRelationField from "@/components/inline/InlineRelationField";
 
 function formatMoney(n: number | null) {
   if (n === null || n === undefined) return "—";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function moneyFormatter(v: string | number | null) {
+  return formatMoney(typeof v === "number" ? v : v === null ? null : Number(v));
 }
 
 function formatDate(d: string | null) {
@@ -79,16 +85,35 @@ export default async function PlayDetailPage({
           <h1 className="font-display text-3xl font-medium mb-1">
             {artist?.name ?? "Play"}
           </h1>
-          <p className="text-black/60 dark:text-white/60">
-            {formatDate(play.show_date)}
-            {play.set_type ? ` · ${play.set_type}` : ""}
+          <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
+            <InlineEditField
+              table="plays"
+              id={play.id}
+              field="show_date"
+              value={play.show_date}
+              type="date"
+              format={(v) => formatDate(v as string | null)}
+              placeholder="Add date"
+            />
+            <span>·</span>
+            <InlineEditField
+              table="plays"
+              id={play.id}
+              field="set_type"
+              value={play.set_type}
+              placeholder="Add set type"
+            />
           </p>
         </div>
-        {play.contract_status && (
-          <span className="text-xs px-2.5 py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[.03] dark:bg-white/[.06] whitespace-nowrap">
-            {play.contract_status}
-          </span>
-        )}
+        <span className="text-xs px-2.5 py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[.03] dark:bg-white/[.06] whitespace-nowrap">
+          <InlineEditField
+            table="plays"
+            id={play.id}
+            field="contract_status"
+            value={play.contract_status}
+            placeholder="Add status"
+          />
+        </span>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -96,41 +121,63 @@ export default async function PlayDetailPage({
           <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
             Event
           </h2>
-          {event ? (
-            <Link
-              href={`/events/${event.id}`}
-              className="text-sm font-medium text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-            >
-              {event.name}
-            </Link>
-          ) : (
-            <p className="text-sm text-black/60 dark:text-white/60">
-              No event — this is a plain venue date.
-            </p>
-          )}
+          <InlineRelationField
+            table="plays"
+            id={play.id}
+            field="event_id"
+            relatedTable="events"
+            value={event ? { id: event.id, label: event.name } : null}
+            placeholder="No event — this is a plain venue date"
+            className="text-sm font-medium"
+          />
         </div>
 
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
           <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
             Venue
           </h2>
-          {venue ? (
-            <div className="text-sm space-y-1">
-              <Link
-                href={`/companies/${venue.id}`}
-                className="font-medium text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-              >
-                {venue.name}
-              </Link>
+          <div className="text-sm space-y-1">
+            <InlineRelationField
+              table="plays"
+              id={play.id}
+              field="venue_id"
+              relatedTable="companies"
+              value={venue ? { id: venue.id, label: venue.name } : null}
+              placeholder="No linked venue record"
+              className="font-medium"
+            />
+            {venue ? (
               <div className="text-black/60 dark:text-white/60">
                 {[venue.city, venue.state].filter(Boolean).join(", ") || "—"}
               </div>
-            </div>
-          ) : (
-            <p className="text-sm text-black/60 dark:text-white/60">
-              {play.venue_name || [play.city, play.state].filter(Boolean).join(", ") || "No venue on file."}
-            </p>
-          )}
+            ) : (
+              <div className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
+                <InlineEditField
+                  table="plays"
+                  id={play.id}
+                  field="venue_name"
+                  value={play.venue_name}
+                  placeholder="Add venue name"
+                />
+                <span>·</span>
+                <InlineEditField
+                  table="plays"
+                  id={play.id}
+                  field="city"
+                  value={play.city}
+                  placeholder="city"
+                />
+                <span>,</span>
+                <InlineEditField
+                  table="plays"
+                  id={play.id}
+                  field="state"
+                  value={play.state}
+                  placeholder="state"
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -141,17 +188,29 @@ export default async function PlayDetailPage({
           </h2>
           <dl className="text-sm grid grid-cols-2 gap-y-2">
             <dt className="text-black/50 dark:text-white/50">Guarantee</dt>
-            <dd>{formatMoney(play.guarantee_amount)}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="guarantee_amount" value={play.guarantee_amount} type="number" format={moneyFormatter} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Deal terms</dt>
-            <dd>{play.deal_terms ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="deal_terms" value={play.deal_terms} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Billing</dt>
-            <dd>{play.bill_position ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="bill_position" value={play.bill_position} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Other artists on bill</dt>
-            <dd>{play.other_artists_on_bill ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="other_artists_on_bill" value={play.other_artists_on_bill} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Capacity</dt>
-            <dd>{play.capacity ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="capacity" value={play.capacity} type="number" placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Age limit</dt>
-            <dd>{play.age_limit ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="age_limit" value={play.age_limit} placeholder="Add" />
+            </dd>
           </dl>
         </div>
 
@@ -161,17 +220,29 @@ export default async function PlayDetailPage({
           </h2>
           <dl className="text-sm grid grid-cols-2 gap-y-2">
             <dt className="text-black/50 dark:text-white/50">Attendance</dt>
-            <dd>{play.attendance ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="attendance" value={play.attendance} type="number" placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Tickets sold</dt>
-            <dd>{play.tickets_sold ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="tickets_sold" value={play.tickets_sold} type="number" placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Ticket price</dt>
-            <dd>{formatMoney(play.ticket_price)}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="ticket_price" value={play.ticket_price} type="number" format={moneyFormatter} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Gross revenue</dt>
-            <dd>{formatMoney(play.gross_revenue)}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="gross_revenue" value={play.gross_revenue} type="number" format={moneyFormatter} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Gross merch sales</dt>
-            <dd>{formatMoney(play.gross_merch_sales)}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="gross_merch_sales" value={play.gross_merch_sales} type="number" format={moneyFormatter} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Band %</dt>
-            <dd>{play.band_percentage !== null ? `${play.band_percentage}%` : "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="band_percentage" value={play.band_percentage} type="number" format={(v) => (v === null || v === "" ? "—" : `${v}%`)} placeholder="Add" />
+            </dd>
           </dl>
         </div>
       </div>
@@ -183,19 +254,33 @@ export default async function PlayDetailPage({
           </h2>
           <dl className="text-sm grid grid-cols-2 gap-y-2">
             <dt className="text-black/50 dark:text-white/50">Contract status</dt>
-            <dd>{play.contract_status ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="contract_status" value={play.contract_status} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Contract due</dt>
-            <dd>{formatDate(play.contract_due_date)}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="contract_due_date" value={play.contract_due_date} type="date" format={(v) => formatDate(v as string | null)} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Deposit</dt>
-            <dd>{formatMoney(play.deposit_amount)}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="deposit_amount" value={play.deposit_amount} type="number" format={moneyFormatter} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Deposit due</dt>
-            <dd>{formatDate(play.deposit_due_date)}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="deposit_due_date" value={play.deposit_due_date} type="date" format={(v) => formatDate(v as string | null)} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Deposit status</dt>
-            <dd>{play.deposit_status ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="deposit_status" value={play.deposit_status} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Final payment</dt>
-            <dd>{play.final_payment_received ?? "—"}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="final_payment_received" value={play.final_payment_received} placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Amount due to agency</dt>
-            <dd>{formatMoney(play.amount_due_to_agency)}</dd>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="amount_due_to_agency" value={play.amount_due_to_agency} type="number" format={moneyFormatter} placeholder="Add" />
+            </dd>
           </dl>
         </div>
 
@@ -212,22 +297,32 @@ export default async function PlayDetailPage({
         </div>
       </div>
 
-      {contact && (
-        <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-4 bg-white dark:bg-neutral-900">
-          <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
-            Primary Contact
-          </h2>
-          <div className="text-sm space-y-1">
-            <div className="font-medium">{contact.full_name}</div>
-            {contact.email && (
-              <div className="text-black/60 dark:text-white/60">{contact.email}</div>
-            )}
-            {contact.phone && (
-              <div className="text-black/60 dark:text-white/60">{contact.phone}</div>
-            )}
-          </div>
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-4 bg-white dark:bg-neutral-900">
+        <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
+          Primary Contact
+        </h2>
+        <div className="text-sm space-y-1">
+          <InlineRelationField
+            table="plays"
+            id={play.id}
+            field="primary_contact_id"
+            relatedTable="contacts"
+            value={contact ? { id: contact.id, label: contact.full_name } : null}
+            placeholder="No contact on file"
+            className="font-medium"
+          />
+          {contact && (
+            <>
+              {contact.email && (
+                <div className="text-black/60 dark:text-white/60">{contact.email}</div>
+              )}
+              {contact.phone && (
+                <div className="text-black/60 dark:text-white/60">{contact.phone}</div>
+              )}
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {detailEntries.length > 0 && (
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-4 bg-white dark:bg-neutral-900">
@@ -247,14 +342,14 @@ export default async function PlayDetailPage({
         </div>
       )}
 
-      {play.notes && (
-        <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
-          <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
-            Notes
-          </h2>
-          <p className="text-sm whitespace-pre-wrap">{play.notes}</p>
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
+        <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
+          Notes
+        </h2>
+        <div className="text-sm whitespace-pre-wrap">
+          <InlineEditField table="plays" id={play.id} field="notes" value={play.notes} type="textarea" placeholder="Add notes" />
         </div>
-      )}
+      </div>
     </div>
   );
 }

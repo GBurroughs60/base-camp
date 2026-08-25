@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import NewRecordButton from "@/components/inline/NewRecordButton";
 
 type EventRow = {
   id: string;
@@ -37,7 +38,10 @@ export default async function EventsPage({
 
   return (
     <div>
-      <h1 className="font-display text-3xl font-medium mb-1">Events</h1>
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="font-display text-3xl font-medium mb-1">Events</h1>
+        <NewRecordButton />
+      </div>
       <p className="text-black/60 dark:text-white/60 mb-4">
         {events?.length ?? 0} events
       </p>
