@@ -4,6 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
+import AdditionalAssociations, {
+  type AssociationItem,
+} from "@/components/inline/AdditionalAssociations";
 
 export default async function ContactDetailPage({
   params,
@@ -37,6 +40,32 @@ export default async function ContactDetailPage({
     .select("id, name, is_public")
     .eq("primary_contact_id", id)
     .order("name");
+
+  const { data: additionalVenuesData } = await supabase
+    .from("contact_venues")
+    .select("id, companies(id, name)")
+    .eq("contact_id", id)
+    .order("created_at");
+
+  const additionalVenues: AssociationItem[] = (additionalVenuesData ?? [])
+    .map((row) => {
+      const c = row.companies as unknown as { id: string; name: string } | null;
+      return c ? { rowId: row.id, targetId: c.id, label: c.name } : null;
+    })
+    .filter((v): v is AssociationItem => v !== null);
+
+  const { data: additionalEventsData } = await supabase
+    .from("contact_events")
+    .select("id, events(id, name)")
+    .eq("contact_id", id)
+    .order("created_at");
+
+  const additionalEvents: AssociationItem[] = (additionalEventsData ?? [])
+    .map((row) => {
+      const e = row.events as unknown as { id: string; name: string } | null;
+      return e ? { rowId: row.id, targetId: e.id, label: e.name } : null;
+    })
+    .filter((v): v is AssociationItem => v !== null);
 
   const { data: playsData } = await supabase
     .from("plays")
@@ -130,6 +159,7 @@ export default async function ContactDetailPage({
                   relatedTable="companies"
                   value={company ? { id: company.id, label: company.name } : null}
                   placeholder="Not tied to a single venue"
+                  confirmSwitch
                 />
               </div>
               {company && (
@@ -138,6 +168,7 @@ export default async function ContactDetailPage({
                 </div>
               )}
             </div>
+            <AdditionalAssociations kind="venue" contactId={contact.id} items={additionalVenues} />
           </div>
         </div>
 
@@ -167,14 +198,15 @@ export default async function ContactDetailPage({
               Not the primary contact on any named events — see plays below.
             </p>
           )}
+          <AdditionalAssociations kind="event" contactId={contact.id} items={additionalEvents} />
         </div>
       </div>
 
-      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900">
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900 flex flex-col min-h-[220px]">
         <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
           Notes
         </h2>
-        <div className="text-sm whitespace-pre-wrap">
+        <div className="text-sm flex-1">
           <InlineEditField
             table="contacts"
             id={contact.id}
@@ -190,7 +222,7 @@ export default async function ContactDetailPage({
         Plays {plays.length ? `(${plays.length})` : ""}
       </h2>
       {plays.length ? (
-        <PlaysTable rows={plays} contextColumnLabel="Venue" />
+        <PlaysTable rows={plays} contextColumnLabel="Venue" showContract={false} />
       ) : (
         <p className="text-sm text-black/60 dark:text-white/60">
           No plays linked to this contact yet.

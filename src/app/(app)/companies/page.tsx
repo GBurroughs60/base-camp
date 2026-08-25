@@ -76,10 +76,7 @@ export default async function CompaniesPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-4">
-        <h1 className="font-display text-3xl font-medium mb-1">Venues</h1>
-        <NewRecordButton />
-      </div>
+      <h1 className="font-display text-3xl font-medium mb-1">Venues</h1>
       <p className="text-black/60 dark:text-white/60 mb-6">
         {companies.length} records
       </p>
@@ -90,6 +87,7 @@ export default async function CompaniesPage() {
         searchPlaceholder="Search venues..."
         emptyMessage="No companies yet."
         defaultSortKey="name"
+        toolbarRight={<NewRecordButton />}
       />
     </div>
   );

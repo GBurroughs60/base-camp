@@ -25,9 +25,13 @@ function formatMoney(n: number | null) {
 export default function PlaysTable({
   rows,
   contextColumnLabel,
+  showContract = true,
 }: {
   rows: PlaysTableRow[];
   contextColumnLabel: string;
+  /** Hide the Contract column -- used where contract status isn't relevant
+   * to the context this table is embedded in (e.g. the Contact record). */
+  showContract?: boolean;
 }) {
   return (
     <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
@@ -38,7 +42,7 @@ export default function PlaysTable({
             <th className="px-4 py-2 font-medium">Artist</th>
             <th className="px-4 py-2 font-medium">{contextColumnLabel}</th>
             <th className="px-4 py-2 font-medium">Guarantee</th>
-            <th className="px-4 py-2 font-medium">Contract</th>
+            {showContract && <th className="px-4 py-2 font-medium">Contract</th>}
           </tr>
         </thead>
         <tbody>
@@ -74,7 +78,9 @@ export default function PlaysTable({
                 <td className="px-4 py-2 truncate max-w-[220px]" title={guaranteeDisplay}>
                   {guaranteeDisplay}
                 </td>
-                <td className="px-4 py-2">{p.contract_status ?? "—"}</td>
+                {showContract && (
+                  <td className="px-4 py-2">{p.contract_status ?? "—"}</td>
+                )}
               </tr>
             );
           })}

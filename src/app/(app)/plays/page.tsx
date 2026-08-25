@@ -132,41 +132,40 @@ export default async function PlaysPage({
 
   const years = ["2022", "2023", "2024", "2025", "2026", "2027"];
 
-  return (
-    <div>
-      <div className="flex items-start justify-between gap-4">
-        <h1 className="font-display text-3xl font-medium mb-1">Plays</h1>
-        <NewRecordButton />
-      </div>
-      <p className="text-black/60 dark:text-white/60 mb-4">
-        {plays.length} shows{year ? ` in ${year}` : ""}
-      </p>
-
-      <div className="flex gap-2 mb-6 text-sm">
-        <Link
-          href="/plays"
-          className={`px-3 py-1 rounded-full border transition-colors ${
-            !year
+  const filterPills = (
+    <>
+      <Link
+        href="/plays"
+        className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+          !year
+            ? "bg-ridge-orange text-white border-transparent"
+            : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
+        }`}
+      >
+        All
+      </Link>
+      {years.map((y) => (
+        <a
+          key={y}
+          href={`/plays?year=${y}`}
+          className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+            year === y
               ? "bg-ridge-orange text-white border-transparent"
               : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
           }`}
         >
-          All
-        </Link>
-        {years.map((y) => (
-          <a
-            key={y}
-            href={`/plays?year=${y}`}
-            className={`px-3 py-1 rounded-full border transition-colors ${
-              year === y
-                ? "bg-ridge-orange text-white border-transparent"
-                : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
-            }`}
-          >
-            {y}
-          </a>
-        ))}
-      </div>
+          {y}
+        </a>
+      ))}
+    </>
+  );
+
+  return (
+    <div>
+      <h1 className="font-display text-3xl font-medium mb-1">Plays</h1>
+      <p className="text-black/60 dark:text-white/60 mb-4">
+        {plays.length} shows{year ? ` in ${year}` : ""}
+      </p>
 
       <DataTable
         rows={plays.map(toRow)}
@@ -174,6 +173,8 @@ export default async function PlaysPage({
         searchPlaceholder="Search plays..."
         emptyMessage="No plays yet."
         defaultSortKey="date"
+        toolbarLeft={filterPills}
+        toolbarRight={<NewRecordButton />}
       />
     </div>
   );

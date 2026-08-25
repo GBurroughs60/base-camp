@@ -59,6 +59,8 @@ export default function DataTable({
   emptyMessage = "Nothing here yet.",
   defaultSortKey,
   defaultSortDir = "asc",
+  toolbarLeft,
+  toolbarRight,
 }: {
   rows: DataRow[];
   columns: ColumnMeta[];
@@ -66,6 +68,13 @@ export default function DataTable({
   emptyMessage?: string;
   defaultSortKey?: string;
   defaultSortDir?: "asc" | "desc";
+  /** Filter pills or similar controls, rendered on the same row as the
+   * search box (left side). Pre-rendered from the Server Component page --
+   * see the note above about why this can't be a function/render-prop. */
+  toolbarLeft?: React.ReactNode;
+  /** e.g. the "+ New" button, rendered on the same row as the search box
+   * (right side). */
+  toolbarRight?: React.ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<string | undefined>(defaultSortKey);
@@ -105,8 +114,9 @@ export default function DataTable({
 
   return (
     <div>
-      <div className="flex justify-center mb-4">
-        <div className="relative w-full max-w-md">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        {toolbarLeft && <div className="flex items-center gap-2">{toolbarLeft}</div>}
+        <div className="relative flex-1 min-w-[200px] max-w-md mx-auto">
           <SearchIcon className="w-3.5 h-3.5 text-black/40 dark:text-white/40 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             value={query}
@@ -115,6 +125,7 @@ export default function DataTable({
             className="w-full rounded-full border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 pl-9 pr-4 py-2 text-sm outline-none focus:border-ridge-orange transition-colors"
           />
         </div>
+        {toolbarRight && <div className="flex items-center gap-2 ml-auto">{toolbarRight}</div>}
       </div>
 
       <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">

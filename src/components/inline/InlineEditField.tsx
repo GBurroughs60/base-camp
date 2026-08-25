@@ -137,6 +137,66 @@ export default function InlineEditField({
   }
 
   const displayValue = applyFormat(format, current);
+  const isEmpty = displayValue == null || displayValue === "";
+
+  // Notes-style fields get their own layout: a block-level box that fills
+  // whatever height its parent card gives it (h-full), rather than the
+  // inline "text + trailing pencil" treatment below, which never grows past
+  // its own content and leaves a multi-line card looking mostly empty.
+  if (type === "textarea") {
+    if (editing) {
+      return (
+        <div className={"flex flex-col gap-1 h-full " + (className ?? "")}>
+          <textarea
+            ref={inputRef as never}
+            value={draft}
+            disabled={pending}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancel();
+              }
+            }}
+            className={
+              "w-full h-full min-h-[140px] flex-1 resize-none rounded border border-ridge-orange/50 bg-white dark:bg-neutral-900 px-3 py-2 text-sm outline-none focus:border-ridge-orange disabled:opacity-50 " +
+              (inputClassName ?? "")
+            }
+          />
+          {error && <span className="text-xs text-red-500">{error}</span>}
+        </div>
+      );
+    }
+
+    return (
+      <div className={"group/field relative h-full min-h-[140px] " + (className ?? "")}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={beginEdit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") beginEdit();
+          }}
+          className={
+            "h-full w-full cursor-text rounded px-3 py-2 whitespace-pre-wrap transition-colors " +
+            (flash ? "text-ridge-orange-dark dark:text-ridge-orange" : "") +
+            (isEmpty ? " text-black/40 dark:text-white/40" : "")
+          }
+        >
+          {isEmpty ? placeholder : displayValue}
+        </div>
+        <button
+          type="button"
+          onClick={beginEdit}
+          aria-label="Edit"
+          className="absolute top-2 right-2 shrink-0 opacity-0 group-hover/field:opacity-50 hover:!opacity-100 transition-opacity"
+        >
+          <PencilIcon className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  }
 
   if (editing) {
     const commonProps = {
@@ -151,7 +211,7 @@ export default function InlineEditField({
         if (e.key === "Escape") {
           e.preventDefault();
           cancel();
-        } else if (e.key === "Enter" && type !== "textarea") {
+        } else if (e.key === "Enter") {
           e.preventDefault();
           commit();
         }
@@ -163,17 +223,11 @@ export default function InlineEditField({
 
     return (
       <span className={"inline-flex flex-col gap-1 " + (className ?? "")}>
-        {type === "textarea" ? (
-          <textarea {...commonProps} rows={3} />
-        ) : (
-          <input {...commonProps} type={type === "number" ? "number" : type} />
-        )}
+        <input {...commonProps} type={type === "number" ? "number" : type} />
         {error && <span className="text-xs text-red-500">{error}</span>}
       </span>
     );
   }
-
-  const isEmpty = displayValue == null || displayValue === "";
 
   return (
     <span

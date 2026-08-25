@@ -85,10 +85,7 @@ export default async function ContactsPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-4">
-        <h1 className="font-display text-3xl font-medium mb-1">Contacts</h1>
-        <NewRecordButton />
-      </div>
+      <h1 className="font-display text-3xl font-medium mb-1">Contacts</h1>
       <p className="text-black/60 dark:text-white/60 mb-6">
         {contacts.length} people
       </p>
@@ -99,6 +96,7 @@ export default async function ContactsPage() {
         searchPlaceholder="Search contacts..."
         emptyMessage="No contacts yet."
         defaultSortKey="name"
+        toolbarRight={<NewRecordButton />}
       />
     </div>
   );

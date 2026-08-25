@@ -207,11 +207,11 @@ export default async function EventDetailPage({
         </div>
       </div>
 
-      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900">
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900 flex flex-col min-h-[220px]">
         <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
           Notes
         </h2>
-        <div className="text-sm whitespace-pre-wrap">
+        <div className="text-sm flex-1">
           <InlineEditField
             table="events"
             id={event.id}

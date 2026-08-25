@@ -30,7 +30,7 @@ export default function NewRecordButton() {
     <div ref={wrapRef} className="relative inline-block">
       <button
         onClick={() => setMenuOpen((o) => !o)}
-        className="rounded-md bg-ridge-orange text-white text-sm font-medium px-4 py-2 hover:bg-ridge-orange-dark transition-colors"
+        className="rounded-full border border-black/15 dark:border-white/15 bg-black/[.03] dark:bg-white/[.06] text-black/70 dark:text-white/70 text-sm font-medium px-4 py-1.5 hover:border-ridge-orange/50 hover:text-ridge-orange-dark dark:hover:text-ridge-orange hover:bg-ridge-orange/5 transition-colors"
       >
         + New
       </button>

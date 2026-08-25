@@ -268,6 +268,53 @@ export async function globalSearch(query: string): Promise<GlobalSearchGroup[]> 
   return groups;
 }
 
+// Additive contact <-> venue/event associations (contact_venues /
+// contact_events join tables). Separate from a contact's primary
+// company_id/the events they're primary_contact_id on -- a contact can be
+// tied to any number of additional venues/events without disturbing their
+// one "primary" link on either side.
+export type AssociationKind = "venue" | "event";
+
+const ASSOCIATION_TABLE: Record<AssociationKind, string> = {
+  venue: "contact_venues",
+  event: "contact_events",
+};
+
+const ASSOCIATION_TARGET_COL: Record<AssociationKind, string> = {
+  venue: "company_id",
+  event: "event_id",
+};
+
+export async function addContactAssociation(
+  kind: AssociationKind,
+  contactId: string,
+  targetId: string
+): Promise<ActionResult<{ id: string }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from(ASSOCIATION_TABLE[kind])
+    .insert({ contact_id: contactId, [ASSOCIATION_TARGET_COL[kind]]: targetId })
+    .select("id")
+    .single();
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: { id: data.id as string } };
+}
+
+export async function removeContactAssociation(
+  kind: AssociationKind,
+  rowId: string
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from(ASSOCIATION_TABLE[kind])
+    .delete()
+    .eq("id", rowId);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: undefined };
+}
+
 export type SearchTable = "companies" | "events" | "contacts";
 
 export async function searchRecords(

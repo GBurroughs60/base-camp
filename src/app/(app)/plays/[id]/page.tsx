@@ -62,40 +62,29 @@ export default async function PlayDetailPage({
         {backLabel}
       </Link>
 
-      <div className="flex items-start justify-between mt-3 mb-6">
-        <div>
-          <h1 className="font-display text-3xl font-medium mb-1">
-            {artist?.name ?? "Play"}
-          </h1>
-          <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
-            <InlineEditField
-              table="plays"
-              id={play.id}
-              field="show_date"
-              value={play.show_date}
-              type="date"
-              format="date"
-              placeholder="Add date"
-            />
-            <span>·</span>
-            <InlineEditField
-              table="plays"
-              id={play.id}
-              field="set_type"
-              value={play.set_type}
-              placeholder="Add set type"
-            />
-          </p>
-        </div>
-        <span className="text-xs px-2.5 py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[.03] dark:bg-white/[.06] whitespace-nowrap">
+      <div className="mt-3 mb-6">
+        <h1 className="font-display text-3xl font-medium mb-1">
+          {artist?.name ?? "Play"}
+        </h1>
+        <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
           <InlineEditField
             table="plays"
             id={play.id}
-            field="contract_status"
-            value={play.contract_status}
-            placeholder="Add status"
+            field="show_date"
+            value={play.show_date}
+            type="date"
+            format="date"
+            placeholder="Add date"
           />
-        </span>
+          <span>·</span>
+          <InlineEditField
+            table="plays"
+            id={play.id}
+            field="set_type"
+            value={play.set_type}
+            placeholder="Add set type"
+          />
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -315,7 +304,10 @@ export default async function PlayDetailPage({
             {detailEntries.map(([k, v]) => (
               <div key={k} className="contents">
                 <dt className="text-black/50 dark:text-white/50 capitalize">
-                  {k.replace(/_/g, " ")}
+                  {/* Historical import field names from the raw spreadsheet use
+                      "B2S" (the old B2S Group name) -- shown as "Management"
+                      going forward without touching the stored data. */}
+                  {k.replace(/_/g, " ").replace(/B2S/g, "Management")}
                 </dt>
                 <dd>{String(v)}</dd>
               </div>
@@ -324,11 +316,11 @@ export default async function PlayDetailPage({
         </div>
       )}
 
-      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900 flex flex-col min-h-[220px]">
         <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-2">
           Notes
         </h2>
-        <div className="text-sm whitespace-pre-wrap">
+        <div className="text-sm flex-1">
           <InlineEditField table="plays" id={play.id} field="notes" value={play.notes} type="textarea" placeholder="Add notes" />
         </div>
       </div>

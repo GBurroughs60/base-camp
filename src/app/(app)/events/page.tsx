@@ -105,35 +105,34 @@ export default async function EventsPage({
   const { data } = await query;
   const events = (data ?? []) as unknown as EventRow[];
 
+  const filterPills = (
+    <>
+      {[
+        { key: "public", label: "Public" },
+        { key: "private", label: "Private" },
+        { key: "all", label: "All" },
+      ].map((f) => (
+        <a
+          key={f.key}
+          href={`/events?visibility=${f.key}`}
+          className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+            activeFilter === f.key
+              ? "bg-ridge-orange text-white border-transparent"
+              : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
+          }`}
+        >
+          {f.label}
+        </a>
+      ))}
+    </>
+  );
+
   return (
     <div>
-      <div className="flex items-start justify-between gap-4">
-        <h1 className="font-display text-3xl font-medium mb-1">Events</h1>
-        <NewRecordButton />
-      </div>
+      <h1 className="font-display text-3xl font-medium mb-1">Events</h1>
       <p className="text-black/60 dark:text-white/60 mb-4">
         {events.length} events
       </p>
-
-      <div className="flex gap-2 mb-6 text-sm">
-        {[
-          { key: "public", label: "Public" },
-          { key: "private", label: "Private" },
-          { key: "all", label: "All" },
-        ].map((f) => (
-          <a
-            key={f.key}
-            href={`/events?visibility=${f.key}`}
-            className={`px-3 py-1 rounded-full border transition-colors ${
-              activeFilter === f.key
-                ? "bg-ridge-orange text-white border-transparent"
-                : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
-            }`}
-          >
-            {f.label}
-          </a>
-        ))}
-      </div>
 
       <DataTable
         rows={events.map(toRow)}
@@ -141,6 +140,8 @@ export default async function EventsPage({
         searchPlaceholder="Search events..."
         emptyMessage="No events yet."
         defaultSortKey="name"
+        toolbarLeft={filterPills}
+        toolbarRight={<NewRecordButton />}
       />
     </div>
   );
