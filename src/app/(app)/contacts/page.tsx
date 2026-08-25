@@ -3,28 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function ContactsPage() {
   const supabase = await createClient();
-  const [{ data: contacts }, { data: eventLinks }, { data: playLinks }] =
-    await Promise.all([
-      supabase
-        .from("contacts")
-        .select("id, full_name, email, phone, title, companies(id, name)")
-        .order("full_name"),
-      supabase.from("events").select("primary_contact_id").not("primary_contact_id", "is", null),
-      supabase.from("plays").select("primary_contact_id").not("primary_contact_id", "is", null),
-    ]);
-
-  // A contact can be tied to venues/events/plays beyond the single company_id
-  // link, so the list surfaces how many of each rather than just one name.
-  const eventCounts = new Map<string, number>();
-  for (const e of eventLinks ?? []) {
-    if (!e.primary_contact_id) continue;
-    eventCounts.set(e.primary_contact_id, (eventCounts.get(e.primary_contact_id) ?? 0) + 1);
-  }
-  const playCounts = new Map<string, number>();
-  for (const p of playLinks ?? []) {
-    if (!p.primary_contact_id) continue;
-    playCounts.set(p.primary_contact_id, (playCounts.get(p.primary_contact_id) ?? 0) + 1);
-  }
+  const { data: contacts } = await supabase
+    .from("contacts")
+    .select("id, full_name, email, phone, title, companies(id, name, city, state)")
+    .order("full_name");
 
   return (
     <div>
@@ -39,16 +21,21 @@ export default async function ContactsPage() {
             <tr>
               <th className="px-4 py-2 font-medium">Name</th>
               <th className="px-4 py-2 font-medium">Company</th>
+              <th className="px-4 py-2 font-medium">City</th>
+              <th className="px-4 py-2 font-medium">State</th>
               <th className="px-4 py-2 font-medium">Email</th>
               <th className="px-4 py-2 font-medium">Phone</th>
               <th className="px-4 py-2 font-medium">Title</th>
-              <th className="px-4 py-2 font-medium">Linked to</th>
             </tr>
           </thead>
           <tbody>
             {contacts?.map((c) => {
-              const eventCount = eventCounts.get(c.id) ?? 0;
-              const playCount = playCounts.get(c.id) ?? 0;
+              const company = c.companies as unknown as {
+                id: string;
+                name: string;
+                city: string | null;
+                state: string | null;
+              } | null;
               return (
                 <tr
                   key={c.id}
@@ -63,36 +50,22 @@ export default async function ContactsPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-2">
-                    {(() => {
-                      const company = c.companies as unknown as {
-                        id: string;
-                        name: string;
-                      } | null;
-                      return company ? (
-                        <Link
-                          href={`/companies/${company.id}`}
-                          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                        >
-                          {company.name}
-                        </Link>
-                      ) : (
-                        "—"
-                      );
-                    })()}
+                    {company ? (
+                      <Link
+                        href={`/companies/${company.id}`}
+                        className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                      >
+                        {company.name}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
                   </td>
+                  <td className="px-4 py-2">{company?.city ?? "—"}</td>
+                  <td className="px-4 py-2">{company?.state ?? "—"}</td>
                   <td className="px-4 py-2">{c.email ?? "—"}</td>
                   <td className="px-4 py-2">{c.phone ?? "—"}</td>
                   <td className="px-4 py-2">{c.title ?? "—"}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-black/60 dark:text-white/60">
-                    {eventCount || playCount
-                      ? [
-                          eventCount ? `${eventCount} event${eventCount > 1 ? "s" : ""}` : null,
-                          playCount ? `${playCount} play${playCount > 1 ? "s" : ""}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(", ")
-                      : "—"}
-                  </td>
                 </tr>
               );
             })}

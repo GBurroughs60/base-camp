@@ -10,7 +10,6 @@ type EventRow = {
   country: string | null;
   companies: { id: string; name: string } | null;
   contacts: { id: string; full_name: string } | null;
-  plays: { id: string }[] | null;
 };
 
 export default async function EventsPage({
@@ -26,7 +25,7 @@ export default async function EventsPage({
   let query = supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, companies(id, name), contacts(id, full_name), plays(id)"
+      "id, name, is_public, city, state, country, companies(id, name), contacts(id, full_name)"
     )
     .order("name");
 
@@ -69,10 +68,10 @@ export default async function EventsPage({
             <tr>
               <th className="px-4 py-2 font-medium">Name</th>
               <th className="px-4 py-2 font-medium">Venue</th>
-              <th className="px-4 py-2 font-medium">Location</th>
+              <th className="px-4 py-2 font-medium">City</th>
+              <th className="px-4 py-2 font-medium">State</th>
               <th className="px-4 py-2 font-medium">Contact</th>
               <th className="px-4 py-2 font-medium">Visibility</th>
-              <th className="px-4 py-2 font-medium">Plays</th>
             </tr>
           </thead>
           <tbody>
@@ -101,10 +100,9 @@ export default async function EventsPage({
                     "—"
                   )}
                 </td>
+                <td className="px-4 py-2">{e.city ?? "—"}</td>
                 <td className="px-4 py-2">
-                  {[e.city, e.state, e.country !== "USA" ? e.country : null]
-                    .filter(Boolean)
-                    .join(", ") || "—"}
+                  {e.state ?? (e.country && e.country !== "USA" ? e.country : "—")}
                 </td>
                 <td className="px-4 py-2">
                   {e.contacts ? (
@@ -121,7 +119,6 @@ export default async function EventsPage({
                 <td className="px-4 py-2">
                   {e.is_public ? "Public" : "Private"}
                 </td>
-                <td className="px-4 py-2">{e.plays?.length ?? 0}</td>
               </tr>
             ))}
           </tbody>

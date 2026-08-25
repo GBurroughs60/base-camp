@@ -17,7 +17,7 @@ export default async function PlaysPage({
   let query = supabase
     .from("plays")
     .select(
-      "id, show_date, venue_name, venue_id, city, state, set_type, attendance, tickets_sold, gross_revenue, contract_status, event_id, artists(name), events(name), venue:companies!plays_venue_id_fkey(id, name)"
+      "id, show_date, venue_name, venue_id, city, state, set_type, attendance, tickets_sold, guarantee_amount, deal_terms, event_id, artists(name), events(name), venue:companies!plays_venue_id_fkey(id, name)"
     )
     .order("show_date", { ascending: true });
 
@@ -71,12 +71,12 @@ export default async function PlaysPage({
               <th className="px-4 py-2 font-medium">Date</th>
               <th className="px-4 py-2 font-medium">Artist</th>
               <th className="px-4 py-2 font-medium">Venue</th>
-              <th className="px-4 py-2 font-medium">Location</th>
+              <th className="px-4 py-2 font-medium">City</th>
+              <th className="px-4 py-2 font-medium">State</th>
               <th className="px-4 py-2 font-medium">Event</th>
               <th className="px-4 py-2 font-medium">Set</th>
               <th className="px-4 py-2 font-medium">Attendance</th>
-              <th className="px-4 py-2 font-medium">Gross Revenue</th>
-              <th className="px-4 py-2 font-medium">Contract</th>
+              <th className="px-4 py-2 font-medium">Deal</th>
             </tr>
           </thead>
           <tbody>
@@ -112,9 +112,8 @@ export default async function PlaysPage({
                     return t.venue_name ?? "—";
                   })()}
                 </td>
-                <td className="px-4 py-2">
-                  {[t.city, t.state].filter(Boolean).join(", ") || "—"}
-                </td>
+                <td className="px-4 py-2">{t.city ?? "—"}</td>
+                <td className="px-4 py-2">{t.state ?? "—"}</td>
                 <td className="px-4 py-2">
                   {t.event_id ? (
                     <Link
@@ -130,8 +129,11 @@ export default async function PlaysPage({
                 </td>
                 <td className="px-4 py-2">{t.set_type ?? "—"}</td>
                 <td className="px-4 py-2">{t.attendance ?? "—"}</td>
-                <td className="px-4 py-2">{formatMoney(t.gross_revenue)}</td>
-                <td className="px-4 py-2">{t.contract_status ?? "—"}</td>
+                <td className="px-4 py-2">
+                  {t.guarantee_amount
+                    ? formatMoney(t.guarantee_amount)
+                    : t.deal_terms ?? "—"}
+                </td>
               </tr>
             ))}
           </tbody>
