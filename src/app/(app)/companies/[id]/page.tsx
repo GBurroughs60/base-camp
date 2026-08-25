@@ -144,11 +144,11 @@ export default async function VenueDetailPage({
                 </li>
               ))}
             </ul>
-          ) : (
+          ) : linkedContacts.length === 0 ? (
             <p className="text-sm text-black/60 dark:text-white/60">
               No contacts on file for this venue.
             </p>
-          )}
+          ) : null}
           <div className="text-sm text-black/50 dark:text-white/50 mt-3 pt-3 border-t border-black/10 dark:border-white/10 space-y-0.5">
             <div>
               <InlineEditField

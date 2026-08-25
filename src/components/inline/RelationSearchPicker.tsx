@@ -44,6 +44,8 @@ export default function RelationSearchPicker({
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPhone, setNewPhone] = useState("");
   const [newType, setNewType] = useState("venue");
   const [newCity, setNewCity] = useState("");
   const [newState, setNewState] = useState("");
@@ -71,6 +73,8 @@ export default function RelationSearchPicker({
 
   useEffect(() => {
     setNewName(query);
+    setNewEmail("");
+    setNewPhone("");
   }, [showCreate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreate() {
@@ -82,7 +86,7 @@ export default function RelationSearchPicker({
     setCreateError(null);
     const data: Record<string, unknown> =
       table === "contacts"
-        ? { full_name: newName }
+        ? { full_name: newName, email: newEmail || null, phone: newPhone || null }
         : table === "companies"
           ? { name: newName, type: newType, city: newCity || null, state: newState || null }
           : { name: newName };
@@ -162,6 +166,24 @@ export default function RelationSearchPicker({
             placeholder={table === "contacts" ? "Full name" : "Name"}
             className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1 text-sm outline-none focus:border-ridge-orange"
           />
+          {table === "contacts" && (
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="Email (optional)"
+                className="w-1/2 rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1 text-sm outline-none focus:border-ridge-orange"
+              />
+              <input
+                type="tel"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                placeholder="Phone (optional)"
+                className="w-1/2 rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1 text-sm outline-none focus:border-ridge-orange"
+              />
+            </div>
+          )}
           {table === "companies" && (
             <>
               <select

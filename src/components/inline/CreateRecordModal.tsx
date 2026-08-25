@@ -98,6 +98,8 @@ export default function CreateRecordModal({
 }) {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [type, setType] = useState("venue");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
@@ -124,7 +126,7 @@ export default function CreateRecordModal({
 
     const data: Record<string, unknown> =
       table === "contacts"
-        ? { full_name: name }
+        ? { full_name: name, email: email || null, phone: phone || null }
         : table === "companies"
           ? { name, type, city: city || null, state: state || null }
           : table === "events"
@@ -201,6 +203,34 @@ export default function CreateRecordModal({
                   className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange"
                 />
               </div>
+              {table === "contacts" && (
+                <div className="flex gap-2">
+                  <div className="w-1/2">
+                    <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Optional"
+                      className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange placeholder:text-black/30 dark:placeholder:text-white/30"
+                    />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="Optional"
+                      className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange placeholder:text-black/30 dark:placeholder:text-white/30"
+                    />
+                  </div>
+                </div>
+              )}
               {table === "companies" && (
                 <div>
                   <label className="block text-xs text-black/50 dark:text-white/50 mb-1">

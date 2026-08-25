@@ -193,11 +193,11 @@ export default async function ContactDetailPage({
                 </li>
               ))}
             </ul>
-          ) : (
+          ) : additionalEvents.length === 0 ? (
             <p className="text-sm text-black/60 dark:text-white/60">
               Not the primary contact on any named events — see plays below.
             </p>
-          )}
+          ) : null}
           <AdditionalAssociations kind="event" contactId={contact.id} items={additionalEvents} />
         </div>
       </div>
