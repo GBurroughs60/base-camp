@@ -184,7 +184,7 @@ export default async function EventDetailPage({
 
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
           <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
-            Primary Contact
+            Contact
           </h2>
           <div className="text-sm space-y-1">
             <div className="font-medium">
@@ -213,7 +213,18 @@ export default async function EventDetailPage({
               </>
             )}
           </div>
-          <AdditionalContacts kind="event" targetId={event.id} items={linkedContacts} />
+
+          <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
+            <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">
+              Additional Contacts
+            </div>
+            <AdditionalContacts
+              kind="event"
+              targetId={event.id}
+              items={linkedContacts}
+              bordered={false}
+            />
+          </div>
         </div>
       </div>
 

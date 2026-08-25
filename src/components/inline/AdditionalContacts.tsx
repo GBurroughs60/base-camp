@@ -27,10 +27,15 @@ export default function AdditionalContacts({
   kind,
   targetId,
   items,
+  bordered = true,
 }: {
   kind: AssociationKind;
   targetId: string;
   items: LinkedContactItem[];
+  /** Set false when a parent section already supplies its own top divider
+   * and subheading (e.g. an "Additional Contacts" label) -- avoids stacking
+   * two dividers back to back. */
+  bordered?: boolean;
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -75,7 +80,7 @@ export default function AdditionalContacts({
   }
 
   return (
-    <div className="mt-3 pt-3 border-t border-black/10 dark:border-white/10">
+    <div className={bordered ? "mt-3 pt-3 border-t border-black/10 dark:border-white/10" : ""}>
       {items.length > 0 && (
         <ul className="text-sm space-y-1.5 mb-2">
           {items.map((item) => (
