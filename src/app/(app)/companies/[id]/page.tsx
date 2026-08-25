@@ -120,36 +120,9 @@ export default async function VenueDetailPage({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
           <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
-            Contacts
+            Details
           </h2>
-          {contacts?.length ? (
-            <ul className="text-sm space-y-3">
-              {contacts.map((c) => (
-                <li key={c.id}>
-                  <div className="font-medium">
-                    {c.full_name}
-                    {c.title && (
-                      <span className="font-normal text-black/50 dark:text-white/50">
-                        {" "}
-                        · {c.title}
-                      </span>
-                    )}
-                  </div>
-                  {c.email && (
-                    <div className="text-black/60 dark:text-white/60">{c.email}</div>
-                  )}
-                  {c.phone && (
-                    <div className="text-black/60 dark:text-white/60">{c.phone}</div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : linkedContacts.length === 0 ? (
-            <p className="text-sm text-black/60 dark:text-white/60">
-              No contacts on file for this venue.
-            </p>
-          ) : null}
-          <div className="text-sm text-black/50 dark:text-white/50 mt-3 pt-3 border-t border-black/10 dark:border-white/10 space-y-0.5">
+          <div className="text-sm text-black/50 dark:text-white/50 space-y-0.5">
             <div>
               <InlineEditField
                 table="companies"
@@ -170,7 +143,40 @@ export default async function VenueDetailPage({
               />
             </div>
           </div>
-          <AdditionalContacts kind="venue" targetId={venue.id} items={linkedContacts} />
+
+          <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
+            <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">
+              Contacts
+            </div>
+            {contacts?.length ? (
+              <ul className="text-sm space-y-3">
+                {contacts.map((c) => (
+                  <li key={c.id}>
+                    <div className="font-medium">
+                      {c.full_name}
+                      {c.title && (
+                        <span className="font-normal text-black/50 dark:text-white/50">
+                          {" "}
+                          · {c.title}
+                        </span>
+                      )}
+                    </div>
+                    {c.email && (
+                      <div className="text-black/60 dark:text-white/60">{c.email}</div>
+                    )}
+                    {c.phone && (
+                      <div className="text-black/60 dark:text-white/60">{c.phone}</div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : linkedContacts.length === 0 ? (
+              <p className="text-sm text-black/60 dark:text-white/60">
+                No contacts on file for this venue.
+              </p>
+            ) : null}
+            <AdditionalContacts kind="venue" targetId={venue.id} items={linkedContacts} />
+          </div>
         </div>
 
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
