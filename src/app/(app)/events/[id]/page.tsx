@@ -203,6 +203,7 @@ export default async function EventDetailPage({
                 relatedTable="contacts"
                 value={contact ? { id: contact.id, label: contact.full_name } : null}
                 placeholder="No contact on file"
+                confirmSwitch
               />
             </div>
             {contact && (

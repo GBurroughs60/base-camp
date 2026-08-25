@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   addContactAssociation,
+  makePrimaryContact,
   removeContactAssociation,
   type AssociationKind,
 } from "@/app/actions/records";
 import RelationSearchPicker from "./RelationSearchPicker";
+import { StarIcon } from "./icons";
 
 export type LinkedContactItem = {
   /** id of the join-table row (contact_venues.id / contact_events.id) */
@@ -60,6 +62,18 @@ export default function AdditionalContacts({
     });
   }
 
+  function handleMakePrimary(item: LinkedContactItem) {
+    setError(null);
+    startTransition(async () => {
+      const res = await makePrimaryContact(kind, item.contactId, targetId, item.rowId);
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  }
+
   return (
     <div className="mt-3 pt-3 border-t border-black/10 dark:border-white/10">
       {items.length > 0 && (
@@ -67,7 +81,7 @@ export default function AdditionalContacts({
           {items.map((item) => (
             <li
               key={item.rowId}
-              className="group/contact flex items-center justify-between"
+              className="group/contact flex items-center justify-between gap-2"
             >
               <Link
                 href={`/contacts/${item.contactId}`}
@@ -75,15 +89,27 @@ export default function AdditionalContacts({
               >
                 {item.label}
               </Link>
-              <button
-                type="button"
-                onClick={() => handleRemove(item.rowId)}
-                disabled={pending}
-                aria-label={`Remove ${item.label}`}
-                className="opacity-0 group-hover/contact:opacity-100 text-xs text-black/40 dark:text-white/40 hover:text-red-500 transition-opacity disabled:opacity-50"
-              >
-                Remove
-              </button>
+              <span className="flex items-center gap-2 opacity-0 group-hover/contact:opacity-100 transition-opacity shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleMakePrimary(item)}
+                  disabled={pending}
+                  aria-label={`Make ${item.label} primary`}
+                  title="Make primary"
+                  className="text-black/30 dark:text-white/30 hover:text-ridge-orange-dark dark:hover:text-ridge-orange disabled:opacity-50"
+                >
+                  <StarIcon className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(item.rowId)}
+                  disabled={pending}
+                  aria-label={`Remove ${item.label}`}
+                  className="text-xs text-black/40 dark:text-white/40 hover:text-red-500 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </span>
             </li>
           ))}
         </ul>

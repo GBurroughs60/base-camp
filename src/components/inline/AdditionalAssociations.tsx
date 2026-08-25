@@ -5,22 +5,32 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   addContactAssociation,
+  makePrimaryContact,
   removeContactAssociation,
   type AssociationKind,
 } from "@/app/actions/records";
 import RelationSearchPicker from "./RelationSearchPicker";
+import { StarIcon } from "./icons";
 
-const RELATED_TABLE: Record<AssociationKind, "companies" | "events"> = {
+// This component is only ever used for the two association kinds that are
+// actually pickable via RelationSearchPicker (a contact's additional
+// venues/events) -- "play" is a valid AssociationKind for the shared
+// server actions, but plays aren't searched/created this way, so there's
+// no "additional plays" list on the Contact page. See AdditionalContacts
+// for the play-page-side equivalent (searching contacts, not plays).
+type PickableKind = Exclude<AssociationKind, "play">;
+
+const RELATED_TABLE: Record<PickableKind, "companies" | "events"> = {
   venue: "companies",
   event: "events",
 };
 
-const HREF_BASE: Record<AssociationKind, string> = {
+const HREF_BASE: Record<PickableKind, string> = {
   venue: "/companies",
   event: "/events",
 };
 
-const LABEL: Record<AssociationKind, string> = {
+const LABEL: Record<PickableKind, string> = {
   venue: "venue",
   event: "event",
 };
@@ -40,7 +50,7 @@ export default function AdditionalAssociations({
   contactId,
   items,
 }: {
-  kind: AssociationKind;
+  kind: PickableKind;
   contactId: string;
   items: AssociationItem[];
 }) {
@@ -74,6 +84,18 @@ export default function AdditionalAssociations({
     });
   }
 
+  function handleMakePrimary(item: AssociationItem) {
+    setError(null);
+    startTransition(async () => {
+      const res = await makePrimaryContact(kind, contactId, item.targetId, item.rowId);
+      if (res.ok) {
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  }
+
   return (
     <div className="mt-2">
       {items.length > 0 && (
@@ -81,7 +103,7 @@ export default function AdditionalAssociations({
           {items.map((item) => (
             <li
               key={item.rowId}
-              className="group/assoc flex items-center justify-between text-sm"
+              className="group/assoc flex items-center justify-between gap-2 text-sm"
             >
               <Link
                 href={`${HREF_BASE[kind]}/${item.targetId}`}
@@ -89,15 +111,27 @@ export default function AdditionalAssociations({
               >
                 {item.label}
               </Link>
-              <button
-                type="button"
-                onClick={() => handleRemove(item.rowId)}
-                disabled={pending}
-                aria-label={`Remove ${item.label}`}
-                className="opacity-0 group-hover/assoc:opacity-100 text-xs text-black/40 dark:text-white/40 hover:text-red-500 transition-opacity disabled:opacity-50"
-              >
-                Remove
-              </button>
+              <span className="flex items-center gap-2 opacity-0 group-hover/assoc:opacity-100 transition-opacity shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleMakePrimary(item)}
+                  disabled={pending}
+                  aria-label={`Make ${item.label} primary`}
+                  title="Make primary"
+                  className="text-black/30 dark:text-white/30 hover:text-ridge-orange-dark dark:hover:text-ridge-orange disabled:opacity-50"
+                >
+                  <StarIcon className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(item.rowId)}
+                  disabled={pending}
+                  aria-label={`Remove ${item.label}`}
+                  className="text-xs text-black/40 dark:text-white/40 hover:text-red-500 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </span>
             </li>
           ))}
         </ul>

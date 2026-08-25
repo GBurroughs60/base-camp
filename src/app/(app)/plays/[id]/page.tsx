@@ -4,6 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import ContractUpload from "./ContractUpload";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
+import AdditionalContacts, {
+  type LinkedContactItem,
+} from "@/components/inline/AdditionalContacts";
 
 export default async function PlayDetailPage({
   params,
@@ -49,6 +52,19 @@ export default async function PlayDetailPage({
   const detailEntries = Object.entries(details).filter(
     ([, v]) => v !== null && v !== undefined && v !== ""
   );
+
+  const { data: linkedContactsData } = await supabase
+    .from("contact_plays")
+    .select("id, contacts(id, full_name)")
+    .eq("play_id", id)
+    .order("created_at");
+
+  const linkedContacts: LinkedContactItem[] = (linkedContactsData ?? [])
+    .map((row) => {
+      const c = row.contacts as unknown as { id: string; full_name: string } | null;
+      return c ? { rowId: row.id, contactId: c.id, label: c.full_name } : null;
+    })
+    .filter((v): v is LinkedContactItem => v !== null);
 
   const backHref = event ? `/events/${event.id}` : "/plays";
   const backLabel = event ? `← ${event.name}` : "← All plays";
@@ -281,6 +297,7 @@ export default async function PlayDetailPage({
             value={contact ? { id: contact.id, label: contact.full_name } : null}
             placeholder="No contact on file"
             className="font-medium"
+            confirmSwitch
           />
           {contact && (
             <>
@@ -292,6 +309,7 @@ export default async function PlayDetailPage({
               )}
             </>
           )}
+          <AdditionalContacts kind="play" targetId={play.id} items={linkedContacts} />
         </div>
       </div>
 

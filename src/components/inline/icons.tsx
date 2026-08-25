@@ -54,3 +54,29 @@ export function SearchIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/** Filled when `active` (the current primary), outlined otherwise --
+ * used as the "make primary" control on additional-association lists. */
+export function StarIcon({
+  className,
+  active,
+}: {
+  className?: string;
+  active?: boolean;
+}) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill={active ? "currentColor" : "none"}
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        d="M8 1.75l1.85 3.75 4.15.6-3 2.93.71 4.13L8 11.25l-3.71 1.9.71-4.13-3-2.93 4.15-.6L8 1.75Z"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

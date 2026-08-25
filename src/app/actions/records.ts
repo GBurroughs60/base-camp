@@ -268,21 +268,23 @@ export async function globalSearch(query: string): Promise<GlobalSearchGroup[]> 
   return groups;
 }
 
-// Additive contact <-> venue/event associations (contact_venues /
-// contact_events join tables). Separate from a contact's primary
-// company_id/the events they're primary_contact_id on -- a contact can be
-// tied to any number of additional venues/events without disturbing their
-// one "primary" link on either side.
-export type AssociationKind = "venue" | "event";
+// Additive contact <-> venue/event/play associations (contact_venues /
+// contact_events / contact_plays join tables). Separate from a contact's
+// primary company_id, or the venue/event/play they're primary_contact_id
+// (or company_id, for venues) on -- a contact can be tied to any number of
+// additional records without disturbing whichever one is "primary".
+export type AssociationKind = "venue" | "event" | "play";
 
 const ASSOCIATION_TABLE: Record<AssociationKind, string> = {
   venue: "contact_venues",
   event: "contact_events",
+  play: "contact_plays",
 };
 
 const ASSOCIATION_TARGET_COL: Record<AssociationKind, string> = {
   venue: "company_id",
   event: "event_id",
+  play: "play_id",
 };
 
 export async function addContactAssociation(
@@ -312,6 +314,68 @@ export async function removeContactAssociation(
     .eq("id", rowId);
 
   if (error) return { ok: false, error: error.message };
+  return { ok: true, data: undefined };
+}
+
+// Promotes an "additional" contact association into the corresponding
+// "primary" field -- the star-icon control on both sides of the additive
+// lists (Contact page's additional venues/events, and the Venue/Event/Play
+// page's additional contacts). Whatever previously held the primary slot
+// isn't dropped: it's demoted into the same join table as a new additional
+// row, so this is always a lossless, reversible swap and never needs a
+// confirm step the way replacing a primary via search does.
+export async function makePrimaryContact(
+  kind: AssociationKind,
+  contactId: string,
+  targetId: string,
+  joinRowId: string
+): Promise<ActionResult> {
+  const supabase = await createClient();
+
+  if (kind === "venue") {
+    const { data: contact } = await supabase
+      .from("contacts")
+      .select("company_id")
+      .eq("id", contactId)
+      .maybeSingle();
+    const oldCompanyId = (contact?.company_id as string | null) ?? null;
+
+    const { error } = await supabase
+      .from("contacts")
+      .update({ company_id: targetId })
+      .eq("id", contactId);
+    if (error) return { ok: false, error: error.message };
+
+    await supabase.from("contact_venues").delete().eq("id", joinRowId);
+    if (oldCompanyId && oldCompanyId !== targetId) {
+      await supabase
+        .from("contact_venues")
+        .insert({ contact_id: contactId, company_id: oldCompanyId });
+    }
+    return { ok: true, data: undefined };
+  }
+
+  const table = kind === "event" ? "events" : "plays";
+  const joinTable = kind === "event" ? "contact_events" : "contact_plays";
+  const targetCol = kind === "event" ? "event_id" : "play_id";
+
+  const { data: target } = await supabase
+    .from(table)
+    .select("primary_contact_id")
+    .eq("id", targetId)
+    .maybeSingle();
+  const oldContactId = (target?.primary_contact_id as string | null) ?? null;
+
+  const { error } = await supabase
+    .from(table)
+    .update({ primary_contact_id: contactId })
+    .eq("id", targetId);
+  if (error) return { ok: false, error: error.message };
+
+  await supabase.from(joinTable).delete().eq("id", joinRowId);
+  if (oldContactId && oldContactId !== contactId) {
+    await supabase.from(joinTable).insert({ contact_id: oldContactId, [targetCol]: targetId });
+  }
   return { ok: true, data: undefined };
 }
 
