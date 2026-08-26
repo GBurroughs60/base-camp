@@ -67,16 +67,16 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-4">
-        <h1 className="font-display text-3xl font-medium mb-1">Dashboard</h1>
-        <NewRecordButton />
-      </div>
+      <h1 className="font-display text-3xl font-medium mb-1">Dashboard</h1>
       <p className="italic text-black/60 dark:text-white/60 mb-6">
         Welcome back. Here&apos;s what&apos;s in Base Camp right now.
       </p>
 
-      <div className="mb-8">
-        <GlobalSearchBar />
+      <div className="flex flex-wrap items-center gap-3 mb-8">
+        <div className="flex-1 min-w-[200px]">
+          <GlobalSearchBar />
+        </div>
+        <NewRecordButton />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-10">

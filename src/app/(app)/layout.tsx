@@ -8,11 +8,13 @@ export default async function AppLayout({
 }) {
   const supabase = await createClient();
   const [
+    { count: artistCount },
     { count: contactCount },
     { count: companyCount },
     { count: eventCount },
     { count: playCount },
   ] = await Promise.all([
+    supabase.from("artists").select("*", { count: "exact", head: true }),
     supabase.from("contacts").select("*", { count: "exact", head: true }),
     supabase.from("companies").select("*", { count: "exact", head: true }),
     supabase.from("events").select("*", { count: "exact", head: true }),
@@ -20,6 +22,7 @@ export default async function AppLayout({
   ]);
 
   const counts = {
+    "/artists": artistCount ?? 0,
     "/contacts": contactCount ?? 0,
     "/companies": companyCount ?? 0,
     "/events": eventCount ?? 0,
