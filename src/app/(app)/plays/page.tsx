@@ -36,16 +36,16 @@ type PlayRow = {
 };
 
 const columns: ColumnMeta[] = [
-  { key: "date", label: "Date", sortable: true },
-  { key: "artist", label: "Artist", sortable: true },
-  { key: "status", label: "Status", sortable: true },
-  { key: "venue", label: "Venue", sortable: true },
-  { key: "city", label: "City", sortable: true },
-  { key: "state", label: "State", sortable: true },
-  { key: "event", label: "Event", sortable: true },
-  { key: "set", label: "Set", sortable: true },
-  { key: "attendance", label: "Attendance", sortable: true },
-  { key: "deal", label: "Deal", sortable: true },
+  { key: "date", label: "Date", sortable: true, width: "9%" },
+  { key: "artist", label: "Artist", sortable: true, width: "10%" },
+  { key: "status", label: "Status", sortable: true, width: "13%" },
+  { key: "venue", label: "Venue", sortable: true, width: "14%" },
+  { key: "city", label: "City", sortable: true, width: "9%" },
+  { key: "state", label: "State", sortable: true, width: "6%" },
+  { key: "event", label: "Event", sortable: true, width: "12%" },
+  { key: "set", label: "Set", sortable: true, width: "8%" },
+  { key: "attendance", label: "Attendance", sortable: true, width: "9%" },
+  { key: "deal", label: "Deal", sortable: true, width: "10%" },
 ];
 
 function toRow(t: PlayRow): DataRow {

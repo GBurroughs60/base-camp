@@ -14,13 +14,13 @@ type ContactRow = {
 };
 
 const columns: ColumnMeta[] = [
-  { key: "name", label: "Name", sortable: true },
-  { key: "company", label: "Company", sortable: true },
-  { key: "city", label: "City", sortable: true },
-  { key: "state", label: "State", sortable: true },
-  { key: "email", label: "Email", sortable: true },
-  { key: "phone", label: "Phone", sortable: true },
-  { key: "title", label: "Title", sortable: true },
+  { key: "name", label: "Name", sortable: true, width: "16%" },
+  { key: "company", label: "Company", sortable: true, width: "16%" },
+  { key: "city", label: "City", sortable: true, width: "12%" },
+  { key: "state", label: "State", sortable: true, width: "8%" },
+  { key: "email", label: "Email", sortable: true, width: "22%" },
+  { key: "phone", label: "Phone", sortable: true, width: "14%" },
+  { key: "title", label: "Title", sortable: true, width: "12%" },
 ];
 
 function toRow(c: ContactRow): DataRow {

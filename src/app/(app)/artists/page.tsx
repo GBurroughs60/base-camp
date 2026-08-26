@@ -20,10 +20,10 @@ function relationshipLabel(manages: boolean, books: boolean) {
 }
 
 const columns: ColumnMeta[] = [
-  { key: "name", label: "Name", sortable: true },
-  { key: "status", label: "Status", sortable: true },
-  { key: "relationship", label: "Relationship" },
-  { key: "plays", label: "Plays", sortable: true, align: "right" },
+  { key: "name", label: "Name", sortable: true, width: "30%" },
+  { key: "status", label: "Status", sortable: true, width: "18%" },
+  { key: "relationship", label: "Relationship", width: "32%" },
+  { key: "plays", label: "Plays", sortable: true, align: "right", width: "20%" },
 ];
 
 function toRow(a: ArtistRow): DataRow {

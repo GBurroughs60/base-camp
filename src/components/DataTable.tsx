@@ -20,6 +20,12 @@ export type ColumnMeta = {
   /** Whether this column's header is clickable to sort. Omit/false for a
    * column that shouldn't be sortable (e.g. a "Linked to" summary). */
   sortable?: boolean;
+  /** Column width as a CSS value (e.g. "18%"). Combined with table-fixed
+   * layout so the table always fits its container width instead of
+   * requiring horizontal scroll -- overflowing cell content is truncated
+   * with an ellipsis rather than forcing the column wider. Widths across a
+   * page's columns should sum to ~100%. */
+  width?: string;
 };
 
 export type DataRow = {
@@ -138,23 +144,39 @@ export default function DataTable({
       {filtersBelow && <div className="mb-4">{filtersBelow}</div>}
 
       <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
-        <table className="w-full text-sm">
+        {/* table-fixed + explicit per-column widths (colgroup) so columns
+            share the container width instead of growing with content --
+            the same "no horizontal scroll" goal as the Kanban board, but
+            via native table layout rather than a grid, to keep semantic
+            markup, sortable headers, and search/sort logic untouched.
+            Overflowing cell text truncates with an ellipsis instead of
+            forcing the table wider; overflow-x-auto above is just the
+            fallback for a viewport too narrow to honor the widths. */}
+        <table className="w-full text-sm table-fixed">
+          {columns.some((c) => c.width) && (
+            <colgroup>
+              {columns.map((c) => (
+                <col key={c.key} style={c.width ? { width: c.width } : undefined} />
+              ))}
+            </colgroup>
+          )}
           <thead className="bg-black/[.03] dark:bg-white/[.06] text-left">
             <tr>
               {columns.map((c) => (
                 <th
                   key={c.key}
                   className={
-                    "px-4 py-2 font-medium " + (c.align === "right" ? "text-right" : "")
+                    "px-4 py-2 font-medium truncate " +
+                    (c.align === "right" ? "text-right" : "")
                   }
                 >
                   {c.sortable ? (
                     <button
                       type="button"
                       onClick={() => toggleSort(c.key)}
-                      className="inline-flex items-center gap-1 hover:text-black dark:hover:text-white transition-colors"
+                      className="inline-flex items-center gap-1 hover:text-black dark:hover:text-white transition-colors max-w-full"
                     >
-                      {c.label}
+                      <span className="truncate">{c.label}</span>
                       <SortIndicator active={sortKey === c.key} dir={sortDir} />
                     </button>
                   ) : (
@@ -173,7 +195,9 @@ export default function DataTable({
                 {columns.map((c) => (
                   <td
                     key={c.key}
-                    className={"px-4 py-2 " + (c.align === "right" ? "text-right" : "")}
+                    className={
+                      "px-4 py-2 truncate " + (c.align === "right" ? "text-right" : "")
+                    }
                   >
                     {row.cells[c.key]}
                   </td>

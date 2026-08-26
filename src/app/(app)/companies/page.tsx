@@ -13,11 +13,11 @@ type CompanyRow = {
 };
 
 const columns: ColumnMeta[] = [
-  { key: "name", label: "Name", sortable: true },
-  { key: "type", label: "Type", sortable: true },
-  { key: "city", label: "City", sortable: true },
-  { key: "state", label: "State", sortable: true },
-  { key: "contacts", label: "Contacts" },
+  { key: "name", label: "Name", sortable: true, width: "26%" },
+  { key: "type", label: "Type", sortable: true, width: "14%" },
+  { key: "city", label: "City", sortable: true, width: "16%" },
+  { key: "state", label: "State", sortable: true, width: "10%" },
+  { key: "contacts", label: "Contacts", width: "34%" },
 ];
 
 function toRow(c: CompanyRow): DataRow {

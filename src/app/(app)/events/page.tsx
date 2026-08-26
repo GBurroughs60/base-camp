@@ -15,12 +15,12 @@ type EventRow = {
 };
 
 const columns: ColumnMeta[] = [
-  { key: "name", label: "Name", sortable: true },
-  { key: "venue", label: "Venue", sortable: true },
-  { key: "city", label: "City", sortable: true },
-  { key: "state", label: "State", sortable: true },
-  { key: "contact", label: "Contact", sortable: true },
-  { key: "visibility", label: "Visibility", sortable: true },
+  { key: "name", label: "Name", sortable: true, width: "24%" },
+  { key: "venue", label: "Venue", sortable: true, width: "22%" },
+  { key: "city", label: "City", sortable: true, width: "14%" },
+  { key: "state", label: "State", sortable: true, width: "10%" },
+  { key: "contact", label: "Contact", sortable: true, width: "18%" },
+  { key: "visibility", label: "Visibility", sortable: true, width: "12%" },
 ];
 
 function toRow(e: EventRow): DataRow {
