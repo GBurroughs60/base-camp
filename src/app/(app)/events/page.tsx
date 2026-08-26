@@ -15,11 +15,11 @@ type EventRow = {
 };
 
 const columns: ColumnMeta[] = [
-  { key: "name", label: "Name", sortable: true, width: "24%" },
-  { key: "venue", label: "Venue", sortable: true, width: "22%" },
-  { key: "city", label: "City", sortable: true, width: "14%" },
-  { key: "state", label: "State", sortable: true, width: "10%" },
-  { key: "contact", label: "Contact", sortable: true, width: "18%" },
+  { key: "name", label: "Name", sortable: true, width: "20%" },
+  { key: "venue", label: "Venue", sortable: true, width: "18%" },
+  { key: "city", label: "City", sortable: true, width: "15%" },
+  { key: "state", label: "State", sortable: true, width: "9%" },
+  { key: "contact", label: "Contact", sortable: true, width: "26%" },
   { key: "visibility", label: "Visibility", sortable: true, width: "12%" },
 ];
 
