@@ -66,6 +66,7 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "event_id",
     "primary_contact_id",
     "artist_id",
+    "status",
   ]),
   artists: new Set([
     "name",

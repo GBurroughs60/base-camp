@@ -5,9 +5,15 @@ import ContractUpload from "./ContractUpload";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
+import InlineSelectField from "@/components/inline/InlineSelectField";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
+import {
+  type PlayStatus,
+  PLAY_STATUS_OPTIONS,
+  PLAY_STATUS_BADGE_CLASSES,
+} from "@/lib/playStatus";
 
 export default async function PlayDetailPage({
   params,
@@ -20,7 +26,7 @@ export default async function PlayDetailPage({
   const { data: play } = await supabase
     .from("plays")
     .select(
-      `id, show_date, set_type, attendance, tickets_sold, ticket_price, gross_revenue,
+      `id, show_date, set_type, status, attendance, tickets_sold, ticket_price, gross_revenue,
        gross_merch_sales, band_percentage, guarantee_amount, amount_due_to_agency,
        management_commission_pct, management_commission_amount,
        booking_agent_commission_pct, booking_agent_commission_amount,
@@ -79,29 +85,44 @@ export default async function PlayDetailPage({
         {backLabel}
       </Link>
 
-      <div className="mt-3 mb-6">
-        <h1 className="font-display text-3xl font-medium mb-1">
-          {artist?.name ?? "Play"}
-        </h1>
-        <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
-          <InlineEditField
+      <div className="flex items-start justify-between mt-3 mb-6">
+        <div>
+          <h1 className="font-display text-3xl font-medium mb-1">
+            {artist?.name ?? "Play"}
+          </h1>
+          <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
+            <InlineEditField
+              table="plays"
+              id={play.id}
+              field="show_date"
+              value={play.show_date}
+              type="date"
+              format="date"
+              placeholder="Add date"
+            />
+            <span>·</span>
+            <InlineEditField
+              table="plays"
+              id={play.id}
+              field="set_type"
+              value={play.set_type}
+              placeholder="Add set type"
+            />
+          </p>
+        </div>
+        <span
+          className={`text-xs px-2.5 py-1 rounded-full border whitespace-nowrap ${
+            PLAY_STATUS_BADGE_CLASSES[play.status as PlayStatus]
+          }`}
+        >
+          <InlineSelectField
             table="plays"
             id={play.id}
-            field="show_date"
-            value={play.show_date}
-            type="date"
-            format="date"
-            placeholder="Add date"
+            field="status"
+            value={play.status}
+            options={PLAY_STATUS_OPTIONS}
           />
-          <span>·</span>
-          <InlineEditField
-            table="plays"
-            id={play.id}
-            field="set_type"
-            value={play.set_type}
-            placeholder="Add set type"
-          />
-        </p>
+        </span>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
