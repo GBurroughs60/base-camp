@@ -9,6 +9,7 @@ import InlineSelectField from "@/components/inline/InlineSelectField";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
+import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
 import {
   type PlayStatus,
   PLAY_STATUS_OPTIONS,
@@ -75,15 +76,21 @@ export default async function PlayDetailPage({
 
   const backHref = event ? `/events/${event.id}` : "/plays";
   const backLabel = event ? `← ${event.name}` : "← All plays";
+  const playName = [artist?.name, venue?.name ?? play.venue_name, play.show_date]
+    .filter(Boolean)
+    .join(" — ") || "this play";
 
   return (
     <div>
-      <Link
-        href={backHref}
-        className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
-      >
-        {backLabel}
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href={backHref}
+          className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+        >
+          {backLabel}
+        </Link>
+        <DeleteRecordButton table="plays" id={play.id} name={playName} />
+      </div>
 
       <div className="flex items-start justify-between mt-3 mb-6">
         <div>

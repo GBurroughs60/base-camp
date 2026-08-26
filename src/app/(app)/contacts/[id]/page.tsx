@@ -7,6 +7,7 @@ import InlineRelationField from "@/components/inline/InlineRelationField";
 import AdditionalAssociations, {
   type AssociationItem,
 } from "@/components/inline/AdditionalAssociations";
+import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
 
 export default async function ContactDetailPage({
   params,
@@ -93,12 +94,15 @@ export default async function ContactDetailPage({
 
   return (
     <div>
-      <Link
-        href="/contacts"
-        className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
-      >
-        ← All contacts
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href="/contacts"
+          className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+        >
+          ← All contacts
+        </Link>
+        <DeleteRecordButton table="contacts" id={contact.id} name={contact.full_name} />
+      </div>
 
       <div className="mt-3 mb-6">
         <h1 className="font-display text-3xl font-medium mb-1">

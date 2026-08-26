@@ -7,6 +7,7 @@ import InlineLocationField from "@/components/inline/InlineLocationField";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
+import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
 import { websiteHref } from "@/lib/url";
 
 // Non-venue company types (promoter, agency, vendor, other) exist in the
@@ -89,12 +90,15 @@ export default async function VenueDetailPage({
 
   return (
     <div>
-      <Link
-        href="/companies"
-        className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
-      >
-        ← All venues
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href="/companies"
+          className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+        >
+          ← All venues
+        </Link>
+        <DeleteRecordButton table="companies" id={venue.id} name={venue.name} />
+      </div>
 
       <div className="mt-3 mb-6">
         <h1 className="font-display text-3xl font-medium mb-1">

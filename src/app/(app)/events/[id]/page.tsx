@@ -9,6 +9,7 @@ import InlineRelationField from "@/components/inline/InlineRelationField";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
+import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
 import { websiteHref } from "@/lib/url";
 
 const VISIBILITY_OPTIONS = [
@@ -88,12 +89,15 @@ export default async function EventDetailPage({
 
   return (
     <div>
-      <Link
-        href="/events"
-        className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
-      >
-        ← All events
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href="/events"
+          className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+        >
+          ← All events
+        </Link>
+        <DeleteRecordButton table="events" id={event.id} name={event.name} />
+      </div>
 
       <div className="flex items-start justify-between mt-3 mb-6">
         <div>

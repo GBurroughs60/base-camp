@@ -5,6 +5,7 @@ import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineSelectField from "@/components/inline/InlineSelectField";
 import ArtistTeam, { type ArtistTeamMember } from "@/components/inline/ArtistTeam";
+import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
 import type { ArtistTeamRole } from "@/app/actions/records";
 
 const STATUS_OPTIONS = [
@@ -90,14 +91,33 @@ export default async function ArtistDetailPage({
     };
   });
 
+  // Deleting an artist cascades to every one of their plays at the
+  // database level (see the artists.plays foreign key) -- unlike the other
+  // four detail pages, a single click here can take an entire tour history
+  // with it, so this is the one delete that requires typing the artist's
+  // name to confirm rather than just a click-through.
+  const cascadeWarning = plays.length
+    ? `This will also permanently delete all ${plays.length} play${
+        plays.length === 1 ? "" : "s"
+      } associated with ${artist.name}.`
+    : undefined;
+
   return (
     <div>
-      <Link
-        href="/artists"
-        className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
-      >
-        ← All artists
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href="/artists"
+          className="text-sm text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white"
+        >
+          ← All artists
+        </Link>
+        <DeleteRecordButton
+          table="artists"
+          id={artist.id}
+          name={artist.name}
+          cascadeWarning={cascadeWarning}
+        />
+      </div>
 
       <div className="flex items-start justify-between mt-3 mb-6">
         <h1 className="font-display text-3xl font-medium">

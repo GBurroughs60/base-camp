@@ -210,6 +210,32 @@ export async function createRecord(
   return { ok: true, data: { id: inserted.id as string } };
 }
 
+// Hard-deletes a top-level record. Join-table rows (contact_venues,
+// contact_events, contact_plays, contact_artists) cascade automatically,
+// as does an artist's plays -- callers that delete an artist should warn
+// about that blast radius up front (see DeleteRecordButton's
+// cascadeWarning prop) since there's no undo once this runs. A handful of
+// other foreign keys (a company still set as an event/play's venue, an
+// event still linked to a play) are NO ACTION rather than cascading, so
+// Postgres blocks those deletes outright -- surfaced here as a plain-
+// language message instead of a raw constraint-violation error.
+export async function deleteRecord(table: TableName, id: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const { error } = await supabase.from(table).delete().eq("id", id);
+
+  if (error) {
+    if (error.code === "23503") {
+      return {
+        ok: false,
+        error:
+          "This record is still linked to other records (e.g. an event or play) and can't be deleted until those links are removed or reassigned.",
+      };
+    }
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, data: undefined };
+}
+
 export type GlobalSearchGroup = {
   table: TableName;
   label: string;
