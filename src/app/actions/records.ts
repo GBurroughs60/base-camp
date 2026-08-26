@@ -76,6 +76,7 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "ridge_books",
     "management_commission_pct",
     "booking_agent_commission_pct",
+    "archived",
   ]),
 };
 
@@ -165,12 +166,15 @@ export async function createRecord(
       return { ok: false, error: "A venue or event is required" };
     }
     if (!data.artist_id) {
-      // Only one artist on the roster today -- default to them rather than
-      // surfacing an artist picker for a choice that isn't really a choice
-      // yet. Revisit once the roster grows.
+      // Only one active artist on the roster today -- default to them
+      // rather than surfacing an artist picker for a choice that isn't
+      // really a choice yet. Revisit once the roster grows. Archived
+      // artists are excluded so an old, hidden artist never gets silently
+      // picked up as the default for a brand-new play.
       const { data: artists } = await supabase
         .from("artists")
         .select("id")
+        .eq("archived", false)
         .order("name")
         .limit(1);
       if (artists?.[0]) data.artist_id = artists[0].id;

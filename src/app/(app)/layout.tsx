@@ -14,7 +14,10 @@ export default async function AppLayout({
     { count: eventCount },
     { count: playCount },
   ] = await Promise.all([
-    supabase.from("artists").select("*", { count: "exact", head: true }),
+    supabase
+      .from("artists")
+      .select("*", { count: "exact", head: true })
+      .eq("archived", false),
     supabase.from("contacts").select("*", { count: "exact", head: true }),
     supabase.from("companies").select("*", { count: "exact", head: true }),
     supabase.from("events").select("*", { count: "exact", head: true }),

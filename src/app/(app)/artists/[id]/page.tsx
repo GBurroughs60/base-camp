@@ -5,7 +5,7 @@ import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineSelectField from "@/components/inline/InlineSelectField";
 import ArtistTeam, { type ArtistTeamMember } from "@/components/inline/ArtistTeam";
-import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
+import ArchiveArtistButton from "@/components/inline/ArchiveArtistButton";
 import type { ArtistTeamRole } from "@/app/actions/records";
 
 const STATUS_OPTIONS = [
@@ -29,7 +29,7 @@ export default async function ArtistDetailPage({
   const { data: artist } = await supabase
     .from("artists")
     .select(
-      "id, name, status, notes, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct"
+      "id, name, status, notes, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct, archived"
     )
     .eq("id", id)
     .maybeSingle();
@@ -91,17 +91,6 @@ export default async function ArtistDetailPage({
     };
   });
 
-  // Deleting an artist cascades to every one of their plays at the
-  // database level (see the artists.plays foreign key) -- unlike the other
-  // four detail pages, a single click here can take an entire tour history
-  // with it, so this is the one delete that requires typing the artist's
-  // name to confirm rather than just a click-through.
-  const cascadeWarning = plays.length
-    ? `This will also permanently delete all ${plays.length} play${
-        plays.length === 1 ? "" : "s"
-      } associated with ${artist.name}.`
-    : undefined;
-
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -111,24 +100,30 @@ export default async function ArtistDetailPage({
         >
           ← All artists
         </Link>
-        <DeleteRecordButton
-          table="artists"
-          id={artist.id}
-          name={artist.name}
-          cascadeWarning={cascadeWarning}
+        <ArchiveArtistButton
+          artistId={artist.id}
+          archived={artist.archived}
+          playCount={plays.length}
         />
       </div>
 
       <div className="flex items-start justify-between mt-3 mb-6">
-        <h1 className="font-display text-3xl font-medium">
-          <InlineEditField
-            table="artists"
-            id={artist.id}
-            field="name"
-            value={artist.name}
-            placeholder="Add name"
-          />
-        </h1>
+        <div>
+          <h1 className="font-display text-3xl font-medium">
+            <InlineEditField
+              table="artists"
+              id={artist.id}
+              field="name"
+              value={artist.name}
+              placeholder="Add name"
+            />
+          </h1>
+          {artist.archived && (
+            <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
+              Archived
+            </span>
+          )}
+        </div>
         <span className="text-xs px-2.5 py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[.03] dark:bg-white/[.06] capitalize">
           <InlineSelectField
             table="artists"

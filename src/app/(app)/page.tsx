@@ -34,7 +34,7 @@ export default async function DashboardPage() {
     { data: upcoming },
     { data: recentPlays },
   ] = await Promise.all([
-    supabase.from("artists").select("id, name").order("name"),
+    supabase.from("artists").select("id, name").eq("archived", false).order("name"),
     supabase
       .from("plays")
       .select(
