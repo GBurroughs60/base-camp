@@ -88,9 +88,11 @@ const REQUIRED_ON_CREATE: Record<TableName, string[]> = {
   artists: ["name"],
 };
 
+export type DeleteBlocker = { label: string; href: string };
+
 type ActionResult<T = undefined> =
   | { ok: true; data: T }
-  | { ok: false; error: string };
+  | { ok: false; error: string; blockers?: DeleteBlocker[] };
 
 export async function updateField(
   table: TableName,
@@ -214,6 +216,91 @@ export async function createRecord(
   return { ok: true, data: { id: inserted.id as string } };
 }
 
+// Looks up the actual rows blocking a delete, so the confirm dialog can
+// link straight to what needs to be unlinked/deleted first instead of just
+// saying "something's still linked" -- named for the same NO ACTION
+// foreign keys that make the delete fail in the first place: a venue is
+// blocked by any event or play still pointing at it, an event by any play
+// still pointing at it, a contact by any event still naming them as the
+// primary contact. Plays have no such blockers (nothing but the
+// contact_plays join table references them, and that cascades on its
+// own), so they're not listed here. Capped at 5 named links per source
+// plus a "+N more" note -- enough to unblock the common case without the
+// dialog turning into a second list page.
+async function findDeleteBlockers(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  table: TableName,
+  id: string
+): Promise<DeleteBlocker[]> {
+  const LIMIT = 5;
+  const blockers: DeleteBlocker[] = [];
+
+  function playLabel(p: { id: string; show_date: string | null; artists: unknown }) {
+    const artist = p.artists as unknown as { name: string } | null;
+    return [artist?.name, p.show_date].filter(Boolean).join(" — ") || "Play";
+  }
+
+  if (table === "companies") {
+    const [eventsRes, eventsCount, playsRes, playsCount] = await Promise.all([
+      supabase.from("events").select("id, name").eq("venue_id", id).limit(LIMIT),
+      supabase
+        .from("events")
+        .select("id", { count: "exact", head: true })
+        .eq("venue_id", id),
+      supabase
+        .from("plays")
+        .select("id, show_date, artists(name)")
+        .eq("venue_id", id)
+        .limit(LIMIT),
+      supabase.from("plays").select("id", { count: "exact", head: true }).eq("venue_id", id),
+    ]);
+    for (const e of eventsRes.data ?? []) {
+      blockers.push({ label: `Event: ${e.name}`, href: `/events/${e.id}` });
+    }
+    const extraEvents = (eventsCount.count ?? 0) - (eventsRes.data?.length ?? 0);
+    if (extraEvents > 0) blockers.push({ label: `+${extraEvents} more event(s)`, href: "" });
+
+    for (const p of playsRes.data ?? []) {
+      blockers.push({ label: `Play: ${playLabel(p)}`, href: `/plays/${p.id}` });
+    }
+    const extraPlays = (playsCount.count ?? 0) - (playsRes.data?.length ?? 0);
+    if (extraPlays > 0) blockers.push({ label: `+${extraPlays} more play(s)`, href: "" });
+  }
+
+  if (table === "events") {
+    const [playsRes, playsCount] = await Promise.all([
+      supabase
+        .from("plays")
+        .select("id, show_date, artists(name)")
+        .eq("event_id", id)
+        .limit(LIMIT),
+      supabase.from("plays").select("id", { count: "exact", head: true }).eq("event_id", id),
+    ]);
+    for (const p of playsRes.data ?? []) {
+      blockers.push({ label: `Play: ${playLabel(p)}`, href: `/plays/${p.id}` });
+    }
+    const extraPlays = (playsCount.count ?? 0) - (playsRes.data?.length ?? 0);
+    if (extraPlays > 0) blockers.push({ label: `+${extraPlays} more play(s)`, href: "" });
+  }
+
+  if (table === "contacts") {
+    const [eventsRes, eventsCount] = await Promise.all([
+      supabase.from("events").select("id, name").eq("primary_contact_id", id).limit(LIMIT),
+      supabase
+        .from("events")
+        .select("id", { count: "exact", head: true })
+        .eq("primary_contact_id", id),
+    ]);
+    for (const e of eventsRes.data ?? []) {
+      blockers.push({ label: `Event: ${e.name}`, href: `/events/${e.id}` });
+    }
+    const extraEvents = (eventsCount.count ?? 0) - (eventsRes.data?.length ?? 0);
+    if (extraEvents > 0) blockers.push({ label: `+${extraEvents} more event(s)`, href: "" });
+  }
+
+  return blockers;
+}
+
 // Hard-deletes a top-level record. Join-table rows (contact_venues,
 // contact_events, contact_plays, contact_artists) cascade automatically,
 // as does an artist's plays -- callers that delete an artist should warn
@@ -222,17 +309,21 @@ export async function createRecord(
 // other foreign keys (a company still set as an event/play's venue, an
 // event still linked to a play) are NO ACTION rather than cascading, so
 // Postgres blocks those deletes outright -- surfaced here as a plain-
-// language message instead of a raw constraint-violation error.
+// language message with links to what's blocking it, via
+// findDeleteBlockers above, instead of a raw constraint-violation error.
 export async function deleteRecord(table: TableName, id: string): Promise<ActionResult> {
   const supabase = await createClient();
   const { error } = await supabase.from(table).delete().eq("id", id);
 
   if (error) {
     if (error.code === "23503") {
+      const blockers = await findDeleteBlockers(supabase, table, id);
       return {
         ok: false,
-        error:
-          "This record is still linked to other records (e.g. an event or play) and can't be deleted until those links are removed or reassigned.",
+        error: blockers.length
+          ? "This record is still linked to the following — remove or reassign these first:"
+          : "This record is still linked to other records and can't be deleted until those links are removed or reassigned.",
+        blockers,
       };
     }
     return { ok: false, error: error.message };

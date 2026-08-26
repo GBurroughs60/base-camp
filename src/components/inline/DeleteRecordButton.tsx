@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { deleteRecord, type TableName } from "@/app/actions/records";
+import Link from "next/link";
+import { deleteRecord, type DeleteBlocker, type TableName } from "@/app/actions/records";
 import { TrashIcon } from "./icons";
 
 const LIST_ROUTE: Record<TableName, string> = {
@@ -49,6 +50,7 @@ export default function DeleteRecordButton({
   const [confirmText, setConfirmText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockers, setBlockers] = useState<DeleteBlocker[]>([]);
 
   const label = LABEL[table];
   const needsTypedConfirm = !!cascadeWarning;
@@ -59,11 +61,13 @@ export default function DeleteRecordButton({
     setOpen(false);
     setConfirmText("");
     setError(null);
+    setBlockers([]);
   }
 
   async function handleDelete() {
     setSubmitting(true);
     setError(null);
+    setBlockers([]);
     const res = await deleteRecord(table, id);
     setSubmitting(false);
 
@@ -72,6 +76,7 @@ export default function DeleteRecordButton({
       router.refresh();
     } else {
       setError(res.error);
+      setBlockers(res.blockers ?? []);
     }
   }
 
@@ -120,7 +125,31 @@ export default function DeleteRecordButton({
               </div>
             )}
 
-            {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
+            {error && (
+              <div className="mb-3">
+                <p className="text-sm text-red-500">{error}</p>
+                {blockers.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {blockers.map((b) =>
+                      b.href ? (
+                        <li key={b.href}>
+                          <Link
+                            href={b.href}
+                            className="text-sm text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                          >
+                            {b.label}
+                          </Link>
+                        </li>
+                      ) : (
+                        <li key={b.label} className="text-sm text-black/50 dark:text-white/50">
+                          {b.label}
+                        </li>
+                      )
+                    )}
+                  </ul>
+                )}
+              </div>
+            )}
 
             <div className="flex gap-2 mt-1">
               <button
