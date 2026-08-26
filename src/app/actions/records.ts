@@ -440,7 +440,13 @@ export async function makePrimaryContact(
 // a Manager and a Booking Agent are different roles entirely, and each can
 // hold any number of contacts. So this is its own small set of actions
 // rather than reusing AssociationKind, which has no room for a role.
-export type ArtistTeamRole = "manager" | "agent" | "tour_manager" | "publicist" | "other";
+export type ArtistTeamRole =
+  | "artist"
+  | "manager"
+  | "agent"
+  | "tour_manager"
+  | "publicist"
+  | "other";
 
 export async function addArtistTeamMember(
   artistId: string,

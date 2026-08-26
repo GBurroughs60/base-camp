@@ -48,6 +48,7 @@ export default async function ArtistDetailPage({
   };
 
   const membersByRole: Record<ArtistTeamRole, ArtistTeamMember[]> = {
+    artist: [],
     manager: [],
     agent: [],
     tour_manager: [],
@@ -191,7 +192,12 @@ export default async function ArtistDetailPage({
           <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
             Team
           </h2>
-          <ArtistTeam artistId={artist.id} membersByRole={membersByRole} />
+          <ArtistTeam
+            artistId={artist.id}
+            membersByRole={membersByRole}
+            ridgeManages={artist.ridge_manages}
+            ridgeBooks={artist.ridge_books}
+          />
         </div>
       </div>
 

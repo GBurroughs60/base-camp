@@ -19,6 +19,7 @@ export type ArtistTeamMember = {
 };
 
 const ROLE_LABELS: Record<ArtistTeamRole, string> = {
+  artist: "Artist",
   manager: "Manager",
   agent: "Booking Agent",
   tour_manager: "Tour Manager",
@@ -26,7 +27,14 @@ const ROLE_LABELS: Record<ArtistTeamRole, string> = {
   other: "Other",
 };
 
-const ROLES: ArtistTeamRole[] = ["manager", "agent", "tour_manager", "publicist", "other"];
+const ROLES: ArtistTeamRole[] = [
+  "artist",
+  "manager",
+  "agent",
+  "tour_manager",
+  "publicist",
+  "other",
+];
 
 // Unlike AdditionalContacts (a flat "primary + additional" list), an
 // artist's team has no single primary contact -- Manager and Booking Agent
@@ -36,9 +44,18 @@ const ROLES: ArtistTeamRole[] = ["manager", "agent", "tour_manager", "publicist"
 export default function ArtistTeam({
   artistId,
   membersByRole,
+  ridgeManages,
+  ridgeBooks,
 }: {
   artistId: string;
   membersByRole: Record<ArtistTeamRole, ArtistTeamMember[]>;
+  /** When the Relationship card says the Ridge handles management/booking
+   * in-house, auto-populate the matching role here with a "The Ridge"
+   * line instead of leaving it looking empty and waiting for a contact
+   * that doesn't exist. Flips off (and the row disappears) the moment the
+   * relationship is switched to External over there. */
+  ridgeManages: boolean;
+  ridgeBooks: boolean;
 }) {
   const router = useRouter();
   const [addingRole, setAddingRole] = useState<ArtistTeamRole | null>(null);
@@ -74,11 +91,20 @@ export default function ArtistTeam({
     <div className="space-y-4">
       {ROLES.map((role) => {
         const members = membersByRole[role] ?? [];
+        const autoRidge =
+          (role === "manager" && ridgeManages) || (role === "agent" && ridgeBooks);
         return (
           <div key={role}>
             <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-1.5 uppercase tracking-wide">
               {ROLE_LABELS[role]}
             </div>
+
+            {autoRidge && (
+              <div className="text-sm mb-1.5">
+                <span className="font-medium">The Ridge</span>
+                <span className="text-black/40 dark:text-white/40"> · in-house</span>
+              </div>
+            )}
 
             {members.length > 0 && (
               <ul className="text-sm space-y-1.5 mb-1.5">
