@@ -51,17 +51,19 @@ function Card({ play }: { play: BoardPlay }) {
       style={style}
       {...listeners}
       {...attributes}
-      className={`rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 p-3 text-sm shadow-sm cursor-grab active:cursor-grabbing touch-none select-none ${
+      className={`rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing touch-none select-none ${
         isDragging ? "opacity-40 z-10 relative" : ""
       }`}
     >
-      <div className="font-medium mb-0.5">{play.artist_name ?? "Play"}</div>
-      <div className="text-black/60 dark:text-white/60 text-xs mb-1.5">
+      <div className="font-medium mb-0.5 truncate">{play.artist_name ?? "Play"}</div>
+      <div className="text-black/60 dark:text-white/60 text-xs mb-1.5 truncate">
         {play.venue_label ?? "No venue"}
       </div>
-      <div className="flex items-center justify-between text-xs text-black/50 dark:text-white/50">
-        <span>{play.show_date ?? "No date"}</span>
-        {play.guarantee_amount != null && <span>{formatMoney(play.guarantee_amount)}</span>}
+      <div className="flex items-center justify-between text-xs text-black/50 dark:text-white/50 gap-1">
+        <span className="truncate">{play.show_date ?? "No date"}</span>
+        {play.guarantee_amount != null && (
+          <span className="shrink-0">{formatMoney(play.guarantee_amount)}</span>
+        )}
       </div>
       <Link
         href={`/plays/${play.id}`}
@@ -79,15 +81,15 @@ function Column({ status, plays }: { status: PlayStatus; plays: BoardPlay[] }) {
   return (
     <div
       ref={setNodeRef}
-      className={`w-72 shrink-0 rounded-lg border p-3 flex flex-col gap-2 min-h-[240px] transition-colors ${
+      className={`min-w-0 rounded-lg border p-2.5 flex flex-col gap-2 min-h-[240px] transition-colors ${
         isOver
           ? "border-ridge-orange/50 bg-ridge-orange/5"
           : "border-black/10 dark:border-white/10 bg-black/[.02] dark:bg-white/[.03]"
       }`}
     >
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-sm font-medium">{PLAY_STATUS_LABELS[status]}</h3>
-        <span className="text-xs text-black/40 dark:text-white/40">{plays.length}</span>
+      <div className="flex items-center justify-between mb-1 gap-1">
+        <h3 className="text-xs font-medium leading-tight">{PLAY_STATUS_LABELS[status]}</h3>
+        <span className="text-xs text-black/40 dark:text-white/40 shrink-0">{plays.length}</span>
       </div>
       <div className="flex flex-col gap-2">
         {plays.map((p) => (
@@ -155,14 +157,27 @@ export default function PlaysBoard({ plays: initialPlays }: { plays: BoardPlay[]
     <div>
       {error && <p className="text-sm text-red-500 mb-2">{error}</p>}
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {LIVE_PIPELINE_STATUSES.map((status) => (
-            <Column
-              key={status}
-              status={status}
-              plays={plays.filter((p) => p.status === status)}
-            />
-          ))}
+        {/* A grid rather than a fixed-width flex row -- all pipeline stages
+            share the available width and shrink together, so the whole
+            board reads as one horizontal view instead of requiring a
+            scroll to see later stages. The minmax floor keeps columns from
+            getting so narrow that cards become unreadable; overflow-x-auto
+            is just the fallback for a viewport too narrow to honor it. */}
+        <div className="overflow-x-auto pb-2">
+          <div
+            className="grid gap-3"
+            style={{
+              gridTemplateColumns: `repeat(${LIVE_PIPELINE_STATUSES.length}, minmax(150px, 1fr))`,
+            }}
+          >
+            {LIVE_PIPELINE_STATUSES.map((status) => (
+              <Column
+                key={status}
+                status={status}
+                plays={plays.filter((p) => p.status === status)}
+              />
+            ))}
+          </div>
         </div>
       </DndContext>
     </div>

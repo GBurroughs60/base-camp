@@ -131,7 +131,7 @@ export default async function EventsPage({
     <div>
       <h1 className="font-display text-3xl font-medium mb-1">Events</h1>
       <p className="text-black/60 dark:text-white/60 mb-4">
-        {events.length} events
+        {events.length} records
       </p>
 
       <DataTable

@@ -87,7 +87,7 @@ export default async function ContactsPage() {
     <div>
       <h1 className="font-display text-3xl font-medium mb-1">Contacts</h1>
       <p className="text-black/60 dark:text-white/60 mb-6">
-        {contacts.length} people
+        {contacts.length} records
       </p>
 
       <DataTable

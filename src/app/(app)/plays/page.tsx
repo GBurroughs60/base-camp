@@ -254,33 +254,41 @@ export default async function PlaysPage({
     </div>
   );
 
+  const filtersBelow = (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2">{yearPills}</div>
+      <div className="flex flex-wrap gap-2">{statusPills}</div>
+    </div>
+  );
+
   return (
     <div>
       <h1 className="font-display text-3xl font-medium mb-1">Plays</h1>
       <p className="text-black/60 dark:text-white/60 mb-4">
-        {activeView === "list" ? listPlays.length : boardPlays.length} shows
-        {year ? ` in ${year}` : ""}
+        {activeView === "list" ? listPlays.length : boardPlays.length} records
       </p>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div className="flex flex-wrap gap-2">{yearPills}</div>
-        {viewToggle}
-      </div>
-
       {activeView === "list" ? (
-        <>
-          <div className="flex flex-wrap gap-2 mb-4">{statusPills}</div>
-          <DataTable
-            rows={listPlays.map(toRow)}
-            columns={columns}
-            searchPlaceholder="Search plays..."
-            emptyMessage="No plays yet."
-            defaultSortKey="date"
-            toolbarRight={<NewRecordButton />}
-          />
-        </>
+        <DataTable
+          rows={listPlays.map(toRow)}
+          columns={columns}
+          searchPlaceholder="Search plays..."
+          emptyMessage="No plays yet."
+          defaultSortKey="date"
+          toolbarLeft={viewToggle}
+          toolbarRight={<NewRecordButton />}
+          filtersBelow={filtersBelow}
+        />
       ) : (
-        <PlaysBoard plays={boardPlays} />
+        <>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            {viewToggle}
+            <div className="flex-1" />
+            <NewRecordButton />
+          </div>
+          <div className="flex flex-wrap gap-2 mb-4">{yearPills}</div>
+          <PlaysBoard plays={boardPlays} />
+        </>
       )}
     </div>
   );

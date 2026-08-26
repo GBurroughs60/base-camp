@@ -14,8 +14,8 @@ type ArtistRow = {
 
 function relationshipLabel(manages: boolean, books: boolean) {
   if (manages && books) return "Managed & Booked";
-  if (manages) return "Managed by Ridge";
-  if (books) return "Booked by Ridge";
+  if (manages) return "Managed by The Ridge";
+  if (books) return "Booked by The Ridge";
   return "External";
 }
 
@@ -64,7 +64,7 @@ export default async function ArtistsPage() {
     <div>
       <h1 className="font-display text-3xl font-medium mb-1">Artists</h1>
       <p className="text-black/60 dark:text-white/60 mb-6">
-        {artists.length} on the roster
+        {artists.length} records
       </p>
 
       <DataTable

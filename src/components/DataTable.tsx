@@ -61,6 +61,7 @@ export default function DataTable({
   defaultSortDir = "asc",
   toolbarLeft,
   toolbarRight,
+  filtersBelow,
 }: {
   rows: DataRow[];
   columns: ColumnMeta[];
@@ -75,6 +76,12 @@ export default function DataTable({
   /** e.g. the "+ New" button, rendered on the same row as the search box
    * (right side). */
   toolbarRight?: React.ReactNode;
+  /** Additional filter controls (e.g. year or status pills) rendered in
+   * their own row below the search/toolbar row and above the table. Kept
+   * separate from toolbarLeft so the search box always reads as the
+   * primary control, with secondary filters underneath it rather than
+   * stacked above. */
+  filtersBelow?: React.ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<string | undefined>(defaultSortKey);
@@ -127,6 +134,8 @@ export default function DataTable({
         </div>
         {toolbarRight && <div className="flex items-center gap-2 ml-auto">{toolbarRight}</div>}
       </div>
+
+      {filtersBelow && <div className="mb-4">{filtersBelow}</div>}
 
       <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
         <table className="w-full text-sm">
