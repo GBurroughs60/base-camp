@@ -177,7 +177,6 @@ export default async function VenueDetailPage({
               />
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              <span className="text-black/40 dark:text-white/40">Setting:</span>
               <InlineBooleanChip
                 table="companies"
                 id={venue.id}
