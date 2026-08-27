@@ -204,7 +204,12 @@ export default async function VenueDetailPage({
                 {contacts.map((c) => (
                   <li key={c.id}>
                     <div className="font-medium">
-                      {c.full_name}
+                      <Link
+                        href={`/contacts/${c.id}`}
+                        className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                      >
+                        {c.full_name}
+                      </Link>
                       {c.title && (
                         <span className="font-normal text-black/50 dark:text-white/50">
                           {" "}
