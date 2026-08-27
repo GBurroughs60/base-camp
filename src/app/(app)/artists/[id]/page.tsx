@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineSelectField from "@/components/inline/InlineSelectField";
+import InlineImageField from "@/components/inline/InlineImageField";
 import ArtistTeam, { type ArtistTeamMember } from "@/components/inline/ArtistTeam";
 import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 import type { ArtistTeamRole } from "@/app/actions/records";
@@ -30,7 +31,7 @@ export default async function ArtistDetailPage({
   const { data: artist } = await supabase
     .from("artists")
     .select(
-      "id, name, status, notes, website, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct, archived"
+      "id, name, status, notes, website, photo_url, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct, archived"
     )
     .eq("id", id)
     .maybeSingle();
@@ -116,31 +117,39 @@ export default async function ArtistDetailPage({
       </div>
 
       <div className="flex items-start justify-between mt-3 mb-6">
-        <div>
-          <h1 className="font-display text-3xl font-medium">
-            <InlineEditField
-              table="artists"
-              id={artist.id}
-              field="name"
-              value={artist.name}
-              placeholder="Add name"
-            />
-          </h1>
-          {artist.archived && (
-            <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
-              Archived
-            </span>
-          )}
-          <p className="text-black/60 dark:text-white/60 mt-1">
-            <InlineEditField
-              table="artists"
-              id={artist.id}
-              field="website"
-              value={artist.website}
-              placeholder="Add website"
-              href={websiteHref(artist.website)}
-            />
-          </p>
+        <div className="flex items-start gap-4">
+          <InlineImageField
+            table="artists"
+            id={artist.id}
+            field="photo_url"
+            value={artist.photo_url}
+          />
+          <div>
+            <h1 className="font-display text-3xl font-medium">
+              <InlineEditField
+                table="artists"
+                id={artist.id}
+                field="name"
+                value={artist.name}
+                placeholder="Add name"
+              />
+            </h1>
+            {artist.archived && (
+              <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
+                Archived
+              </span>
+            )}
+            <p className="text-black/60 dark:text-white/60 mt-1">
+              <InlineEditField
+                table="artists"
+                id={artist.id}
+                field="website"
+                value={artist.website}
+                placeholder="Add website"
+                href={websiteHref(artist.website)}
+              />
+            </p>
+          </div>
         </div>
         <span className="text-xs px-2.5 py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[.03] dark:bg-white/[.06] capitalize">
           <InlineSelectField

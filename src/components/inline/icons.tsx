@@ -76,6 +76,23 @@ export function TrashIcon({ className }: { className?: string }) {
   );
 }
 
+/** Simple photo/image placeholder glyph -- shown in InlineImageField when no
+ * photo URL is set yet. */
+export function ImageIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true">
+      <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="6" cy="6.75" r="1.1" stroke="currentColor" strokeWidth="1.1" />
+      <path
+        d="M3.5 11.5 6.5 8.5 8.5 10.5 10.5 8 12.5 10v1.2a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V11.5Z"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** Vertical "⋮" kebab -- trigger for RecordActionsMenu. */
 export function MoreIcon({ className }: { className?: string }) {
   return (
