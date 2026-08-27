@@ -7,6 +7,7 @@ import InlineSelectField from "@/components/inline/InlineSelectField";
 import ArtistTeam, { type ArtistTeamMember } from "@/components/inline/ArtistTeam";
 import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 import type { ArtistTeamRole } from "@/app/actions/records";
+import { websiteHref } from "@/lib/url";
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Active" },
@@ -29,7 +30,7 @@ export default async function ArtistDetailPage({
   const { data: artist } = await supabase
     .from("artists")
     .select(
-      "id, name, status, notes, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct, archived"
+      "id, name, status, notes, website, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct, archived"
     )
     .eq("id", id)
     .maybeSingle();
@@ -130,6 +131,16 @@ export default async function ArtistDetailPage({
               Archived
             </span>
           )}
+          <p className="text-black/60 dark:text-white/60 mt-1">
+            <InlineEditField
+              table="artists"
+              id={artist.id}
+              field="website"
+              value={artist.website}
+              placeholder="Add website"
+              href={websiteHref(artist.website)}
+            />
+          </p>
         </div>
         <span className="text-xs px-2.5 py-1 rounded-full border border-black/15 dark:border-white/15 bg-black/[.03] dark:bg-white/[.06] capitalize">
           <InlineSelectField

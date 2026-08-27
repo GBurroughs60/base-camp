@@ -176,13 +176,8 @@ export default async function VenueDetailPage({
                 placeholder="Add capacity"
               />
             </div>
-          </div>
-
-          <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
-            <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">
-              Setting
-            </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-black/40 dark:text-white/40">Setting:</span>
               <InlineBooleanChip
                 table="companies"
                 id={venue.id}

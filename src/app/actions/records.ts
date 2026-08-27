@@ -76,6 +76,7 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "name",
     "status",
     "notes",
+    "website",
     "ridge_manages",
     "ridge_books",
     "management_commission_pct",
