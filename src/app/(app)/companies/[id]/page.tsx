@@ -7,7 +7,7 @@ import InlineLocationField from "@/components/inline/InlineLocationField";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
-import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
+import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 import { websiteHref } from "@/lib/url";
 
 // Non-venue company types (promoter, agency, vendor, other) exist in the
@@ -33,7 +33,7 @@ export default async function VenueDetailPage({
 
   const { data: venue } = await supabase
     .from("companies")
-    .select("id, name, type, city, state, country, phone, website, notes")
+    .select("id, name, type, city, state, country, phone, website, notes, archived")
     .eq("id", id)
     .maybeSingle();
 
@@ -97,7 +97,17 @@ export default async function VenueDetailPage({
         >
           ← All venues
         </Link>
-        <DeleteRecordButton table="companies" id={venue.id} name={venue.name} />
+        <RecordActionsMenu
+          table="companies"
+          id={venue.id}
+          name={venue.name}
+          archived={venue.archived}
+          archiveNote={
+            (events?.length ?? 0) > 0 || plays.length > 0
+              ? `the ${events?.length ?? 0} event(s) and ${plays.length} play(s) booked here stay exactly as they are`
+              : undefined
+          }
+        />
       </div>
 
       <div className="mt-3 mb-6">
@@ -109,6 +119,11 @@ export default async function VenueDetailPage({
             value={venue.name}
             placeholder="Add name"
           />
+          {venue.archived && (
+            <span className="ml-2 align-middle text-xs px-2 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
+              Archived
+            </span>
+          )}
         </h1>
         <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
           <InlineLocationField

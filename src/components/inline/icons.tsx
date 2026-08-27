@@ -76,6 +76,17 @@ export function TrashIcon({ className }: { className?: string }) {
   );
 }
 
+/** Vertical "⋮" kebab -- trigger for RecordActionsMenu. */
+export function MoreIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" className={className} aria-hidden="true">
+      <circle cx="8" cy="3.5" r="1.3" />
+      <circle cx="8" cy="8" r="1.3" />
+      <circle cx="8" cy="12.5" r="1.3" />
+    </svg>
+  );
+}
+
 export function StarIcon({
   className,
   active,

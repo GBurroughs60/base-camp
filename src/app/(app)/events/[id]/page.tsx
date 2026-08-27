@@ -9,7 +9,7 @@ import InlineRelationField from "@/components/inline/InlineRelationField";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
-import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
+import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 import { websiteHref } from "@/lib/url";
 
 const VISIBILITY_OPTIONS = [
@@ -28,7 +28,7 @@ export default async function EventDetailPage({
   const { data: event } = await supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, website, notes, venue_id, primary_contact_id, companies(id, name, city, state, phone, website), contacts(id, full_name, email, phone)"
+      "id, name, is_public, city, state, country, website, notes, venue_id, primary_contact_id, archived, companies(id, name, city, state, phone, website), contacts(id, full_name, email, phone)"
     )
     .eq("id", id)
     .maybeSingle();
@@ -96,7 +96,13 @@ export default async function EventDetailPage({
         >
           ← All events
         </Link>
-        <DeleteRecordButton table="events" id={event.id} name={event.name} />
+        <RecordActionsMenu
+          table="events"
+          id={event.id}
+          name={event.name}
+          archived={event.archived}
+          archiveNote={plays.length > 0 ? `all ${plays.length} play(s) booked here stay exactly as they are` : undefined}
+        />
       </div>
 
       <div className="flex items-start justify-between mt-3 mb-6">
@@ -109,6 +115,11 @@ export default async function EventDetailPage({
               value={event.name}
               placeholder="Add name"
             />
+            {event.archived && (
+              <span className="ml-2 align-middle text-xs px-2 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
+                Archived
+              </span>
+            )}
           </h1>
           <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
             <InlineLocationField

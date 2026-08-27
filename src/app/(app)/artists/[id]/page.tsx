@@ -5,7 +5,7 @@ import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineSelectField from "@/components/inline/InlineSelectField";
 import ArtistTeam, { type ArtistTeamMember } from "@/components/inline/ArtistTeam";
-import ArchiveArtistButton from "@/components/inline/ArchiveArtistButton";
+import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 import type { ArtistTeamRole } from "@/app/actions/records";
 
 const STATUS_OPTIONS = [
@@ -100,10 +100,17 @@ export default async function ArtistDetailPage({
         >
           ← All artists
         </Link>
-        <ArchiveArtistButton
-          artistId={artist.id}
+        <RecordActionsMenu
+          table="artists"
+          id={artist.id}
+          name={artist.name}
           archived={artist.archived}
-          playCount={plays.length}
+          archiveNote={
+            plays.length > 0
+              ? `all ${plays.length} of their plays stay exactly as they are`
+              : undefined
+          }
+          hideDelete
         />
       </div>
 

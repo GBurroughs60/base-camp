@@ -10,6 +10,7 @@ type EventRow = {
   city: string | null;
   state: string | null;
   country: string | null;
+  archived: boolean;
   companies: { id: string; name: string } | null;
   contacts: { id: string; full_name: string } | null;
 };
@@ -29,12 +30,19 @@ function toRow(e: EventRow): DataRow {
     id: e.id,
     cells: {
       name: (
-        <Link
-          href={`/events/${e.id}`}
-          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-        >
-          {e.name}
-        </Link>
+        <span className="inline-flex items-center gap-2">
+          <Link
+            href={`/events/${e.id}`}
+            className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+          >
+            {e.name}
+          </Link>
+          {e.archived && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
+              Archived
+            </span>
+          )}
+        </span>
       ),
       venue: e.companies ? (
         <Link
@@ -85,27 +93,37 @@ function toRow(e: EventRow): DataRow {
 export default async function EventsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ visibility?: string }>;
+  searchParams: Promise<{ visibility?: string; status?: string }>;
 }) {
-  const { visibility } = await searchParams;
+  const { visibility, status } = await searchParams;
   const supabase = await createClient();
 
-  const activeFilter = visibility ?? "public";
+  const activeVisibility = visibility ?? "public";
+  const activeStatus = status ?? "active";
 
   let query = supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, companies(id, name), contacts(id, full_name)"
+      "id, name, is_public, city, state, country, archived, companies(id, name), contacts(id, full_name)"
     )
     .order("name");
 
-  if (activeFilter === "public") query = query.eq("is_public", true);
-  if (activeFilter === "private") query = query.eq("is_public", false);
+  if (activeVisibility === "public") query = query.eq("is_public", true);
+  if (activeVisibility === "private") query = query.eq("is_public", false);
+  if (activeStatus === "active") query = query.eq("archived", false);
+  if (activeStatus === "archived") query = query.eq("archived", true);
 
   const { data } = await query;
   const events = (data ?? []) as unknown as EventRow[];
 
-  const filterPills = (
+  // Visibility (public/private) and archive status are independent axes,
+  // so each pill link has to carry the *other* filter's current value
+  // forward rather than resetting it.
+  function href(nextVisibility: string, nextStatus: string) {
+    return `/events?visibility=${nextVisibility}&status=${nextStatus}`;
+  }
+
+  const visibilityPills = (
     <>
       {[
         { key: "public", label: "Public" },
@@ -114,9 +132,31 @@ export default async function EventsPage({
       ].map((f) => (
         <a
           key={f.key}
-          href={`/events?visibility=${f.key}`}
+          href={href(f.key, activeStatus)}
           className={`px-3 py-1 text-sm rounded-full border transition-colors ${
-            activeFilter === f.key
+            activeVisibility === f.key
+              ? "bg-ridge-orange text-white border-transparent"
+              : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
+          }`}
+        >
+          {f.label}
+        </a>
+      ))}
+    </>
+  );
+
+  const statusPills = (
+    <>
+      {[
+        { key: "active", label: "Active" },
+        { key: "archived", label: "Archived" },
+        { key: "all", label: "All" },
+      ].map((f) => (
+        <a
+          key={f.key}
+          href={href(activeVisibility, f.key)}
+          className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+            activeStatus === f.key
               ? "bg-ridge-orange text-white border-transparent"
               : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
           }`}
@@ -140,8 +180,9 @@ export default async function EventsPage({
         searchPlaceholder="Search events..."
         emptyMessage="No events yet."
         defaultSortKey="name"
-        toolbarLeft={filterPills}
+        toolbarLeft={visibilityPills}
         toolbarRight={<NewRecordButton />}
+        filtersBelow={<div className="flex items-center gap-2">{statusPills}</div>}
       />
     </div>
   );

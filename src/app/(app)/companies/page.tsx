@@ -9,6 +9,7 @@ type CompanyRow = {
   type: string;
   city: string | null;
   state: string | null;
+  archived: boolean;
   contacts: { id: string; full_name: string }[] | null;
 };
 
@@ -25,12 +26,19 @@ function toRow(c: CompanyRow): DataRow {
     id: c.id,
     cells: {
       name: (
-        <Link
-          href={`/companies/${c.id}`}
-          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-        >
-          {c.name}
-        </Link>
+        <span className="inline-flex items-center gap-2">
+          <Link
+            href={`/companies/${c.id}`}
+            className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+          >
+            {c.name}
+          </Link>
+          {c.archived && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
+              Archived
+            </span>
+          )}
+        </span>
       ),
       type: <span className="capitalize">{c.type}</span>,
       city: c.city ?? "—",
@@ -66,18 +74,52 @@ function toRow(c: CompanyRow): DataRow {
   };
 }
 
-export default async function CompaniesPage() {
+export default async function CompaniesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const { status } = await searchParams;
+  const activeFilter = status ?? "active";
+
   const supabase = await createClient();
-  const { data } = await supabase
+  let query = supabase
     .from("companies")
-    .select("id, name, type, city, state, contacts(id, full_name)")
+    .select("id, name, type, city, state, archived, contacts(id, full_name)")
     .order("name");
+
+  if (activeFilter === "active") query = query.eq("archived", false);
+  if (activeFilter === "archived") query = query.eq("archived", true);
+
+  const { data } = await query;
   const companies = (data ?? []) as unknown as CompanyRow[];
+
+  const filterPills = (
+    <>
+      {[
+        { key: "active", label: "Active" },
+        { key: "archived", label: "Archived" },
+        { key: "all", label: "All" },
+      ].map((f) => (
+        <a
+          key={f.key}
+          href={`/companies?status=${f.key}`}
+          className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+            activeFilter === f.key
+              ? "bg-ridge-orange text-white border-transparent"
+              : "border-black/15 dark:border-white/15 hover:border-ridge-orange/50"
+          }`}
+        >
+          {f.label}
+        </a>
+      ))}
+    </>
+  );
 
   return (
     <div>
       <h1 className="font-display text-3xl font-medium mb-1">Venues</h1>
-      <p className="text-black/60 dark:text-white/60 mb-6">
+      <p className="text-black/60 dark:text-white/60 mb-4">
         {companies.length} records
       </p>
 
@@ -87,6 +129,7 @@ export default async function CompaniesPage() {
         searchPlaceholder="Search venues..."
         emptyMessage="No companies yet."
         defaultSortKey="name"
+        toolbarLeft={filterPills}
         toolbarRight={<NewRecordButton />}
       />
     </div>

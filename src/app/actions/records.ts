@@ -20,6 +20,7 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "website",
     "notes",
     "capacity",
+    "archived",
   ]),
   events: new Set([
     "name",
@@ -31,6 +32,7 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "venue_id",
     "primary_contact_id",
     "notes",
+    "archived",
   ]),
   plays: new Set([
     "show_date",
@@ -609,6 +611,14 @@ export async function searchRecords(
     .select(`id, ${nameCol}${extraCols}`)
     .order(nameCol)
     .limit(20);
+
+  // Archived venues/events are meant to disappear from pickers the same
+  // way archived artists already do -- someone linking a new play or event
+  // shouldn't land on a record that was deliberately hidden. Existing
+  // links elsewhere on the site are untouched either way.
+  if (table === "companies" || table === "events") {
+    q = q.eq("archived", false);
+  }
 
   if (query.trim()) {
     q = q.ilike(nameCol, `%${query.trim()}%`);

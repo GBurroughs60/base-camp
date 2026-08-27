@@ -19,8 +19,14 @@ export default async function AppLayout({
       .select("*", { count: "exact", head: true })
       .eq("archived", false),
     supabase.from("contacts").select("*", { count: "exact", head: true }),
-    supabase.from("companies").select("*", { count: "exact", head: true }),
-    supabase.from("events").select("*", { count: "exact", head: true }),
+    supabase
+      .from("companies")
+      .select("*", { count: "exact", head: true })
+      .eq("archived", false),
+    supabase
+      .from("events")
+      .select("*", { count: "exact", head: true })
+      .eq("archived", false),
     supabase.from("plays").select("*", { count: "exact", head: true }),
   ]);
 

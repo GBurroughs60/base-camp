@@ -9,7 +9,7 @@ import InlineSelectField from "@/components/inline/InlineSelectField";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
-import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
+import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 import {
   type PlayStatus,
   PLAY_STATUS_OPTIONS,
@@ -89,7 +89,7 @@ export default async function PlayDetailPage({
         >
           {backLabel}
         </Link>
-        <DeleteRecordButton table="plays" id={play.id} name={playName} />
+        <RecordActionsMenu table="plays" id={play.id} name={playName} />
       </div>
 
       <div className="flex items-start justify-between mt-3 mb-6">

@@ -7,7 +7,7 @@ import InlineRelationField from "@/components/inline/InlineRelationField";
 import AdditionalAssociations, {
   type AssociationItem,
 } from "@/components/inline/AdditionalAssociations";
-import DeleteRecordButton from "@/components/inline/DeleteRecordButton";
+import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 
 export default async function ContactDetailPage({
   params,
@@ -101,7 +101,7 @@ export default async function ContactDetailPage({
         >
           ← All contacts
         </Link>
-        <DeleteRecordButton table="contacts" id={contact.id} name={contact.full_name} />
+        <RecordActionsMenu table="contacts" id={contact.id} name={contact.full_name} />
       </div>
 
       <div className="mt-3 mb-6">
