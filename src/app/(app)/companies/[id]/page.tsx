@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineLocationField from "@/components/inline/InlineLocationField";
+import InlineBooleanChip from "@/components/inline/InlineBooleanChip";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
@@ -33,7 +34,9 @@ export default async function VenueDetailPage({
 
   const { data: venue } = await supabase
     .from("companies")
-    .select("id, name, type, city, state, country, phone, website, notes, archived")
+    .select(
+      "id, name, type, city, state, country, phone, website, notes, capacity, is_indoor, is_outdoor, archived"
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -160,6 +163,39 @@ export default async function VenueDetailPage({
                 value={venue.website}
                 placeholder="Add website"
                 href={websiteHref(venue.website)}
+              />
+            </div>
+            <div>
+              <span className="text-black/40 dark:text-white/40">Capacity: </span>
+              <InlineEditField
+                table="companies"
+                id={venue.id}
+                field="capacity"
+                value={venue.capacity}
+                type="number"
+                placeholder="Add capacity"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
+            <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">
+              Setting
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <InlineBooleanChip
+                table="companies"
+                id={venue.id}
+                field="is_indoor"
+                value={venue.is_indoor}
+                label="Indoor"
+              />
+              <InlineBooleanChip
+                table="companies"
+                id={venue.id}
+                field="is_outdoor"
+                value={venue.is_outdoor}
+                label="Outdoor"
               />
             </div>
           </div>

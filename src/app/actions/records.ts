@@ -20,6 +20,8 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "website",
     "notes",
     "capacity",
+    "is_indoor",
+    "is_outdoor",
     "archived",
   ]),
   events: new Set([

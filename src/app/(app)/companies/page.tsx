@@ -9,16 +9,28 @@ type CompanyRow = {
   type: string;
   city: string | null;
   state: string | null;
+  capacity: number | null;
+  is_indoor: boolean;
+  is_outdoor: boolean;
   archived: boolean;
   contacts: { id: string; full_name: string }[] | null;
 };
 
+function settingLabel(c: Pick<CompanyRow, "is_indoor" | "is_outdoor">) {
+  if (c.is_indoor && c.is_outdoor) return "Indoor & Outdoor";
+  if (c.is_indoor) return "Indoor";
+  if (c.is_outdoor) return "Outdoor";
+  return null;
+}
+
 const columns: ColumnMeta[] = [
-  { key: "name", label: "Name", sortable: true, width: "24%" },
-  { key: "type", label: "Type", sortable: true, width: "10%" },
-  { key: "city", label: "City", sortable: true, width: "16%" },
-  { key: "state", label: "State", sortable: true, width: "8%" },
-  { key: "contacts", label: "Contacts", width: "42%" },
+  { key: "name", label: "Name", sortable: true, width: "21%" },
+  { key: "type", label: "Type", sortable: true, width: "9%" },
+  { key: "city", label: "City", sortable: true, width: "14%" },
+  { key: "state", label: "State", sortable: true, width: "7%" },
+  { key: "capacity", label: "Capacity", sortable: true, width: "9%" },
+  { key: "setting", label: "Setting", width: "12%" },
+  { key: "contacts", label: "Contacts", width: "28%" },
 ];
 
 function toRow(c: CompanyRow): DataRow {
@@ -43,6 +55,8 @@ function toRow(c: CompanyRow): DataRow {
       type: <span className="capitalize">{c.type}</span>,
       city: c.city ?? "—",
       state: c.state ?? "—",
+      capacity: c.capacity !== null ? c.capacity.toLocaleString("en-US") : "—",
+      setting: settingLabel(c) ?? "—",
       contacts: c.contacts?.length ? (
         <span className="space-x-1">
           {c.contacts.map((contact, i) => (
@@ -66,8 +80,16 @@ function toRow(c: CompanyRow): DataRow {
       type: c.type,
       city: c.city,
       state: c.state,
+      capacity: c.capacity,
     },
-    searchText: [c.name, c.type, c.city, c.state, c.contacts?.map((x) => x.full_name).join(" ")]
+    searchText: [
+      c.name,
+      c.type,
+      c.city,
+      c.state,
+      settingLabel(c),
+      c.contacts?.map((x) => x.full_name).join(" "),
+    ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase(),
@@ -85,7 +107,9 @@ export default async function CompaniesPage({
   const supabase = await createClient();
   let query = supabase
     .from("companies")
-    .select("id, name, type, city, state, archived, contacts(id, full_name)")
+    .select(
+      "id, name, type, city, state, capacity, is_indoor, is_outdoor, archived, contacts(id, full_name)"
+    )
     .order("name");
 
   if (activeFilter === "active") query = query.eq("archived", false);
