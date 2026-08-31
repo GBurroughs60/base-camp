@@ -98,7 +98,10 @@ export default async function EventsPage({
   const { visibility, status } = await searchParams;
   const supabase = await createClient();
 
-  const activeVisibility = visibility ?? "public";
+  // Default to "all" visibility so the unfiltered view matches the sidebar's
+  // event count (archived=false, regardless of public/private) -- same as
+  // every other section, which only has the one archived/active axis.
+  const activeVisibility = visibility ?? "all";
   const activeStatus = status ?? "active";
 
   let query = supabase
