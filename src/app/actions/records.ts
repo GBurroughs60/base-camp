@@ -122,7 +122,12 @@ export async function updateField(
   // drag-and-drop and the detail-page dropdown both call this. Firing the
   // notification here, rather than duplicating the check at each call
   // site, is what keeps it from being missed on either path.
-  if (table === "plays" && field === "status" && value === "contract_sent") {
+  //
+  // Fires on Pending Management Approval, not Contract Sent -- that's the
+  // moment the agent has already signed off and the offer is handed to
+  // management/the artist for their approval, which is exactly who this
+  // email needs to reach and why.
+  if (table === "plays" && field === "status" && value === "pending_approval") {
     await sendApprovalEmailIfNeeded(id).catch((err) => {
       console.error("Approval email step failed:", err);
     });
@@ -131,12 +136,13 @@ export async function updateField(
   return { ok: true, data: undefined };
 }
 
-// Sends the "offer approved" notification at most once per play -- guarded
-// by approval_email_sent_at rather than by the play's prior status, since
-// status can be changed freely (board drag, dropdown) and re-entering
-// Contract Sent later shouldn't re-notify. Failures here are logged, never
-// thrown -- the status change this runs after has already committed and
-// must not appear to fail just because the email didn't go out.
+// Sends the "please review and approve" notification at most once per play
+// -- guarded by approval_email_sent_at rather than by the play's prior
+// status, since status can be changed freely (board drag, dropdown) and
+// re-entering Pending Management Approval later shouldn't re-notify.
+// Failures here are logged, never thrown -- the status change this runs
+// after has already committed and must not appear to fail just because the
+// email didn't go out.
 async function sendApprovalEmailIfNeeded(playId: string): Promise<void> {
   const supabase = await createClient();
 

@@ -28,12 +28,11 @@ export type ApprovalEmailDetails = {
   playUrl: string;
 };
 
-// Fires once, the moment a play's status is set to "contract_sent" (see
-// sendApprovalEmailIfNeeded in app/actions/records.ts) -- notifies the
-// artist's management/artist contacts that the offer is approved and a
-// contract is on the way. Self-contained (deal details in the body, not
-// just a link) since recipients are outside Ridge and don't have Base Camp
-// logins.
+// Fires once, the moment a play's status is set to "pending_approval" (see
+// sendApprovalEmailIfNeeded in app/actions/records.ts) -- the offer has just
+// cleared agent approval and now needs management/the artist to approve it.
+// Self-contained (deal details in the body, not just a link) since
+// recipients are outside Ridge and don't have Base Camp logins.
 export async function sendApprovalEmail(details: ApprovalEmailDetails): Promise<void> {
   if (!resend) {
     console.warn(
@@ -59,8 +58,8 @@ export async function sendApprovalEmail(details: ApprovalEmailDetails): Promise<
 
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
-      <h2 style="margin-bottom: 4px;">Offer approved: ${escapeHtml(details.artistName)}</h2>
-      <p style="color: #555;">This offer has been approved and a contract is on its way. Details:</p>
+      <h2 style="margin-bottom: 4px;">Offer awaiting your approval: ${escapeHtml(details.artistName)}</h2>
+      <p style="color: #555;">This offer has cleared agent review and is ready for your approval. Details:</p>
       <table style="border-collapse: collapse; margin: 16px 0;">
         ${rows
           .map(
@@ -81,7 +80,7 @@ export async function sendApprovalEmail(details: ApprovalEmailDetails): Promise<
   const { error } = await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
     to: details.to,
-    subject: `Offer approved: ${details.artistName} at ${details.venueLabel}`,
+    subject: `Offer awaiting your approval: ${details.artistName} at ${details.venueLabel}`,
     html,
   });
 
