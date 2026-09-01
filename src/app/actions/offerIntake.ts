@@ -11,6 +11,11 @@ import { sendNewOfferEmail } from "@/lib/approvalEmail";
 // stays authenticated-only, and these two narrowly-scoped, insert-only RPCs
 // are the only crack the anon role gets.
 
+// Fallback recipient for the new-offer notification when the submitting
+// artist has no 'agent' contact on file -- ensures a public-form submission
+// is never silently invisible just because that link is missing.
+const FALLBACK_NOTIFY_EMAIL = "gburroughs@theridgemusicgroup.com";
+
 export type BookableArtist = { id: string; name: string };
 
 export async function listBookableArtists(): Promise<BookableArtist[]> {
@@ -137,9 +142,14 @@ export async function submitOfferInquiry(input: OfferIntakeInput): Promise<Submi
     };
   }
 
-  if (data.agent_email && data.play_id) {
+  if (data.play_id) {
+    // Fall back to Greg directly when the artist has no agent contact on
+    // file -- an offer submitted through the public form must never go
+    // completely unnoticed just because contact_artists is missing an
+    // 'agent' row for that artist.
+    const notifyEmail = data.agent_email ?? FALLBACK_NOTIFY_EMAIL;
     await sendNewOfferEmail({
-      to: data.agent_email,
+      to: notifyEmail,
       artistName: data.artist_name ?? "",
       buyerName: input.buyerName.trim(),
       venueLabel: toTextOrNull(input.venueName) ?? "Venue TBD",
