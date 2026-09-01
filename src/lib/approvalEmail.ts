@@ -26,7 +26,11 @@ export type ApprovalEmailDetails = {
   guaranteeAmount: number | null;
   dealTerms: string | null;
   capacity: number | null;
-  playUrl: string;
+  // Public, token-scoped link to the /approve/[token] page -- no Base Camp
+  // login involved, since recipients are outside Ridge. This is the only
+  // way the actual approve/decline decision makes it back into Base Camp;
+  // without it the email is purely informational.
+  approveUrl: string;
 };
 
 // Fires once, the moment a play's status is set to "pending_approval" (see
@@ -72,6 +76,9 @@ export async function sendApprovalEmail(details: ApprovalEmailDetails): Promise<
           )
           .join("")}
       </table>
+      <a href="${details.approveUrl}" style="display: inline-block; background: #f05a2b; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600;">
+        Approve or decline this offer
+      </a>
       <p style="color: #999; font-size: 12px; margin-top: 24px;">
         Sent automatically by Base Camp, The Ridge Music Group.
       </p>

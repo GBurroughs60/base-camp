@@ -204,6 +204,12 @@ async function sendApprovalEmailIfNeeded(playId: string): Promise<void> {
   const location =
     [venue?.city ?? play.city, venue?.state ?? play.state].filter(Boolean).join(", ") || null;
 
+  // Minted once per play, right before the email that carries it -- this
+  // is the credential the public /approve/[token] page trusts, so it's
+  // generated server-side (never derived from anything the client sends)
+  // and stored alongside approval_email_sent_at in the same write below.
+  const approvalToken = crypto.randomUUID();
+
   await sendApprovalEmail({
     to: recipients.map((r) => r.email),
     cc: ccRecipients.map((r) => r.email),
@@ -214,12 +220,15 @@ async function sendApprovalEmailIfNeeded(playId: string): Promise<void> {
     guaranteeAmount: play.guarantee_amount,
     dealTerms: play.deal_terms,
     capacity: play.capacity,
-    playUrl: `https://base-camp-lovat.vercel.app/plays/${playId}`,
+    approveUrl: `https://base-camp-lovat.vercel.app/approve/${approvalToken}`,
   });
 
   await supabase
     .from("plays")
-    .update({ approval_email_sent_at: new Date().toISOString() })
+    .update({
+      approval_email_sent_at: new Date().toISOString(),
+      approval_token: approvalToken,
+    })
     .eq("id", playId);
 }
 

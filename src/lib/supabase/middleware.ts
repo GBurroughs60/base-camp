@@ -30,8 +30,14 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
+  // /approve/[token] is the public "Approve or Decline this offer" page
+  // reached from the email -- recipients are outside Ridge and have no
+  // Base Camp account, so this route must stay reachable logged-out. It's
+  // not an auth route itself (a logged-in user hitting it isn't bounced
+  // anywhere), just exempt from the login redirect below.
+  const isPublicRoute = isAuthRoute || request.nextUrl.pathname.startsWith("/approve/");
 
-  if (!user && !isAuthRoute) {
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
