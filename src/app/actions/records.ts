@@ -162,13 +162,27 @@ async function sendApprovalEmailIfNeeded(playId: string): Promise<void> {
   const artist = play.artists as unknown as { id: string; name: string } | null;
   if (!artist) return;
 
-  const { data: teamRows } = await supabase
-    .from("contact_artists")
-    .select("contacts(full_name, email)")
-    .eq("artist_id", artist.id)
-    .in("role", ["manager", "artist"]);
+  const [{ data: teamRows }, { data: agentRows }] = await Promise.all([
+    supabase
+      .from("contact_artists")
+      .select("contacts(full_name, email)")
+      .eq("artist_id", artist.id)
+      .in("role", ["manager", "artist"]),
+    // Booking agent is cc'd, not a primary recipient -- they already know
+    // about the offer (they're the ones who submitted it for approval in
+    // the first place), but they should see the thread go out.
+    supabase
+      .from("contact_artists")
+      .select("contacts(full_name, email)")
+      .eq("artist_id", artist.id)
+      .eq("role", "agent"),
+  ]);
 
   const recipients = (teamRows ?? [])
+    .map((row) => row.contacts as unknown as { full_name: string; email: string | null } | null)
+    .filter((c): c is { full_name: string; email: string } => !!c?.email);
+
+  const ccRecipients = (agentRows ?? [])
     .map((row) => row.contacts as unknown as { full_name: string; email: string | null } | null)
     .filter((c): c is { full_name: string; email: string } => !!c?.email);
 
@@ -192,6 +206,7 @@ async function sendApprovalEmailIfNeeded(playId: string): Promise<void> {
 
   await sendApprovalEmail({
     to: recipients.map((r) => r.email),
+    cc: ccRecipients.map((r) => r.email),
     artistName: artist.name,
     venueLabel,
     location,

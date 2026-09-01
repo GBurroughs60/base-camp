@@ -18,6 +18,7 @@ function formatMoney(n: number | null): string | null {
 
 export type ApprovalEmailDetails = {
   to: string[];
+  cc?: string[];
   artistName: string;
   venueLabel: string;
   location: string | null;
@@ -80,6 +81,7 @@ export async function sendApprovalEmail(details: ApprovalEmailDetails): Promise<
   const { error } = await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
     to: details.to,
+    ...(details.cc && details.cc.length > 0 ? { cc: details.cc } : {}),
     subject: `Offer awaiting your approval: ${details.artistName} at ${details.venueLabel}`,
     html,
   });
