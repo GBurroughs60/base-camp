@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { sendApprovalEmail } from "@/lib/approvalEmail";
 
 export type TableName = "contacts" | "companies" | "events" | "plays" | "artists";
 
@@ -116,7 +117,89 @@ export async function updateField(
     .eq("id", id);
 
   if (error) return { ok: false, error: error.message };
+
+  // The one place every play status change flows through -- board
+  // drag-and-drop and the detail-page dropdown both call this. Firing the
+  // notification here, rather than duplicating the check at each call
+  // site, is what keeps it from being missed on either path.
+  if (table === "plays" && field === "status" && value === "contract_sent") {
+    await sendApprovalEmailIfNeeded(id).catch((err) => {
+      console.error("Approval email step failed:", err);
+    });
+  }
+
   return { ok: true, data: undefined };
+}
+
+// Sends the "offer approved" notification at most once per play -- guarded
+// by approval_email_sent_at rather than by the play's prior status, since
+// status can be changed freely (board drag, dropdown) and re-entering
+// Contract Sent later shouldn't re-notify. Failures here are logged, never
+// thrown -- the status change this runs after has already committed and
+// must not appear to fail just because the email didn't go out.
+async function sendApprovalEmailIfNeeded(playId: string): Promise<void> {
+  const supabase = await createClient();
+
+  const { data: play } = await supabase
+    .from("plays")
+    .select(
+      `id, show_date, guarantee_amount, deal_terms, capacity, venue_name, city, state,
+       approval_email_sent_at, artist_id,
+       artists(id, name),
+       venue:companies!plays_venue_id_fkey(id, name, city, state)`
+    )
+    .eq("id", playId)
+    .maybeSingle();
+
+  if (!play || play.approval_email_sent_at) return;
+
+  const artist = play.artists as unknown as { id: string; name: string } | null;
+  if (!artist) return;
+
+  const { data: teamRows } = await supabase
+    .from("contact_artists")
+    .select("contacts(full_name, email)")
+    .eq("artist_id", artist.id)
+    .in("role", ["manager", "artist"]);
+
+  const recipients = (teamRows ?? [])
+    .map((row) => row.contacts as unknown as { full_name: string; email: string | null } | null)
+    .filter((c): c is { full_name: string; email: string } => !!c?.email);
+
+  // Nobody to notify (no manager/artist contact on file, or none with an
+  // email) -- nothing to send, but still worth marking so this doesn't
+  // re-check on every future status touch.
+  if (recipients.length === 0) {
+    await supabase
+      .from("plays")
+      .update({ approval_email_sent_at: new Date().toISOString() })
+      .eq("id", playId);
+    return;
+  }
+
+  const venue = play.venue as unknown as
+    | { id: string; name: string; city: string | null; state: string | null }
+    | null;
+  const venueLabel = venue?.name ?? play.venue_name ?? "Venue TBD";
+  const location =
+    [venue?.city ?? play.city, venue?.state ?? play.state].filter(Boolean).join(", ") || null;
+
+  await sendApprovalEmail({
+    to: recipients.map((r) => r.email),
+    artistName: artist.name,
+    venueLabel,
+    location,
+    showDate: play.show_date,
+    guaranteeAmount: play.guarantee_amount,
+    dealTerms: play.deal_terms,
+    capacity: play.capacity,
+    playUrl: `https://base-camp-lovat.vercel.app/plays/${playId}`,
+  });
+
+  await supabase
+    .from("plays")
+    .update({ approval_email_sent_at: new Date().toISOString() })
+    .eq("id", playId);
 }
 
 // Multi-column sibling of updateField -- used where two DB columns are
