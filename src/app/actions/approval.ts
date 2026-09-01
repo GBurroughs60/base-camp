@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { sendApprovalResponseEmail } from "@/lib/approvalEmail";
 
 // Public, unauthenticated surface: the /approve/[token] page and these two
 // actions are how management/the artist respond to an offer without a Base
@@ -60,6 +61,22 @@ export async function getApprovalSummary(token: string): Promise<ApprovalSummary
   };
 }
 
+type RespondRow = {
+  result: string;
+  play_id: string | null;
+  artist_name: string | null;
+  venue_label: string | null;
+  location: string | null;
+  show_date: string | null;
+  guarantee_amount: number | null;
+  deal_terms: string | null;
+  capacity: number | null;
+  decision: string | null;
+  note: string | null;
+  agent_name: string | null;
+  agent_email: string | null;
+};
+
 async function respond(
   token: string,
   decision: "approved" | "declined",
@@ -71,11 +88,35 @@ async function respond(
   // whatever the real state turns out to be, which covers both cases
   // (invalid token -> null summary; already responded -> respondedAt set)
   // without needing a separate error path.
-  await supabase.rpc("respond_to_play_approval", {
-    p_token: token,
-    p_decision: decision,
-    p_note: note ?? null,
-  });
+  const { data } = await supabase
+    .rpc("respond_to_play_approval", {
+      p_token: token,
+      p_decision: decision,
+      p_note: note ?? null,
+    })
+    .maybeSingle<RespondRow>();
+
+  // Only a genuine, first-time response (result "ok") closes the loop back
+  // to the agent -- a double-submit or invalid/expired token has nothing
+  // new to tell them. No agent on file for this artist means no one to
+  // notify; the response itself still went through.
+  if (data?.result === "ok" && data.agent_email && data.play_id) {
+    await sendApprovalResponseEmail({
+      to: data.agent_email,
+      decision: decision,
+      note: data.note,
+      artistName: data.artist_name ?? "",
+      venueLabel: data.venue_label ?? "Venue TBD",
+      location: data.location,
+      showDate: data.show_date,
+      guaranteeAmount: data.guarantee_amount,
+      dealTerms: data.deal_terms,
+      capacity: data.capacity,
+      playUrl: `https://base-camp-lovat.vercel.app/plays/${data.play_id}`,
+    }).catch((err) => {
+      console.error("Approval-response notification failed:", err);
+    });
+  }
 }
 
 export async function approveOffer(token: string): Promise<void> {

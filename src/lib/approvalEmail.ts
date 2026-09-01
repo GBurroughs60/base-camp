@@ -99,3 +99,95 @@ export async function sendApprovalEmail(details: ApprovalEmailDetails): Promise<
     console.error("Approval email failed to send:", error);
   }
 }
+
+export type ApprovalResponseEmailDetails = {
+  to: string;
+  decision: "approved" | "declined";
+  note: string | null;
+  artistName: string;
+  venueLabel: string;
+  location: string | null;
+  showDate: string | null;
+  guaranteeAmount: number | null;
+  dealTerms: string | null;
+  capacity: number | null;
+  // Unlike the outbound approval request, this recipient (the booking
+  // agent) does have a Base Camp login, so this links straight to the
+  // play instead of a public token page.
+  playUrl: string;
+};
+
+// Fires once, right after management/the artist responds on the public
+// /approve/[token] page (see respond() in app/actions/approval.ts) --
+// closes the loop back to the agent, who otherwise has no way to know the
+// offer they submitted was ever decided without checking the board.
+export async function sendApprovalResponseEmail(
+  details: ApprovalResponseEmailDetails
+): Promise<void> {
+  if (!resend) {
+    console.warn(
+      `RESEND_API_KEY is not set -- skipping approval-response email (would have gone to: ${details.to})`
+    );
+    return;
+  }
+
+  const approved = details.decision === "approved";
+  const rows: [string, string][] = [
+    ["Venue", details.venueLabel],
+    ...(details.location ? ([["Location", details.location]] as [string, string][]) : []),
+    ...(details.showDate ? ([["Date", details.showDate]] as [string, string][]) : []),
+    ...(formatMoney(details.guaranteeAmount)
+      ? ([["Guarantee", formatMoney(details.guaranteeAmount) as string]] as [string, string][])
+      : []),
+    ...(details.dealTerms ? ([["Deal terms", details.dealTerms]] as [string, string][]) : []),
+    ...(details.capacity != null
+      ? ([["Capacity", String(details.capacity)]] as [string, string][])
+      : []),
+  ];
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
+      <h2 style="margin-bottom: 4px;">
+        ${approved ? "Approved" : "Declined"}: ${escapeHtml(details.artistName)} at ${escapeHtml(details.venueLabel)}
+      </h2>
+      <p style="color: #555;">
+        ${approved
+          ? "Management/the artist approved this offer -- it's now marked Contract Sent in Base Camp."
+          : "Management/the artist declined this offer -- it's now marked Declined in Base Camp."}
+      </p>
+      <table style="border-collapse: collapse; margin: 16px 0;">
+        ${rows
+          .map(
+            ([label, value]) => `
+          <tr>
+            <td style="padding: 4px 16px 4px 0; color: #777; vertical-align: top;">${escapeHtml(label)}</td>
+            <td style="padding: 4px 0; font-weight: 600;">${escapeHtml(value)}</td>
+          </tr>`
+          )
+          .join("")}
+      </table>
+      ${details.note
+        ? `<p style="background: #f7f7f7; border-radius: 6px; padding: 10px 14px; color: #333;">
+             <strong>Note from management:</strong> ${escapeHtml(details.note)}
+           </p>`
+        : ""}
+      <a href="${details.playUrl}" style="display: inline-block; background: #f05a2b; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600;">
+        View in Base Camp
+      </a>
+      <p style="color: #999; font-size: 12px; margin-top: 24px;">
+        Sent automatically by Base Camp, The Ridge Music Group.
+      </p>
+    </div>
+  `;
+
+  const { error } = await resend.emails.send({
+    from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
+    to: [details.to],
+    subject: `${approved ? "Approved" : "Declined"}: ${details.artistName} at ${details.venueLabel}`,
+    html,
+  });
+
+  if (error) {
+    console.error("Approval-response email failed to send:", error);
+  }
+}
