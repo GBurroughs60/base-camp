@@ -6,6 +6,7 @@ import InlineEditField from "@/components/inline/InlineEditField";
 import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
 import InlineSelectField from "@/components/inline/InlineSelectField";
+import { listAllArtistOptions } from "@/app/actions/records";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
@@ -27,7 +28,7 @@ export default async function PlayDetailPage({
   const { data: play } = await supabase
     .from("plays")
     .select(
-      `id, show_date, set_type, status, attendance, tickets_sold, ticket_price, gross_revenue,
+      `id, show_date, set_type, status, artist_id, attendance, tickets_sold, ticket_price, gross_revenue,
        gross_merch_sales, band_percentage, guarantee_amount, amount_due_to_agency,
        management_commission_pct, management_commission_amount,
        booking_agent_commission_pct, booking_agent_commission_amount,
@@ -45,6 +46,8 @@ export default async function PlayDetailPage({
     .maybeSingle();
 
   if (!play) notFound();
+
+  const artistOptions = await listAllArtistOptions();
 
   const artist = play.artists as unknown as { id: string; name: string } | null;
   const event = play.events as unknown as
@@ -95,7 +98,13 @@ export default async function PlayDetailPage({
       <div className="flex items-start justify-between mt-3 mb-6">
         <div>
           <h1 className="font-display text-3xl font-medium mb-1">
-            {artist?.name ?? "Play"}
+            <InlineSelectField
+              table="plays"
+              id={play.id}
+              field="artist_id"
+              value={play.artist_id}
+              options={artistOptions}
+            />
           </h1>
           <p className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
             <InlineEditField

@@ -174,18 +174,22 @@ export async function createRecord(
       return { ok: false, error: "A venue or event is required" };
     }
     if (!data.artist_id) {
-      // Only one active artist on the roster today -- default to them
-      // rather than surfacing an artist picker for a choice that isn't
-      // really a choice yet. Revisit once the roster grows. Archived
-      // artists are excluded so an old, hidden artist never gets silently
-      // picked up as the default for a brand-new play.
-      const { data: artists } = await supabase
+      // Only auto-fill when there's exactly one active artist to choose
+      // from -- unambiguous. Now that the roster has grown past one,
+      // silently picking "first alphabetically" would misattribute the
+      // play to the wrong artist without anyone noticing, so an ambiguous
+      // case is left unset and falls through to the NOT NULL constraint
+      // instead. The New Play modal always sends an explicit artist_id for
+      // exactly this reason; this is just a backstop for any other caller
+      // (e.g. a future public offer form). Archived artists are excluded
+      // so an old, hidden artist never gets silently picked up either way.
+      const { data: activeArtists } = await supabase
         .from("artists")
         .select("id")
         .eq("archived", false)
         .order("name")
-        .limit(1);
-      if (artists?.[0]) data.artist_id = artists[0].id;
+        .limit(2);
+      if (activeArtists?.length === 1) data.artist_id = activeArtists[0].id;
     }
 
     if (data.artist_id) {
@@ -637,4 +641,33 @@ export async function searchRecords(
         : null;
     return { id: r.id as string, label: r[nameCol] as string, sublabel: sub };
   });
+}
+
+// Small, curated list (not a growing search-as-you-type table like
+// companies/events/contacts), so a plain dropdown rather than the generic
+// SearchTable/RelationSearchPicker machinery. Used by the New Play modal
+// and, indirectly, wherever a play's artist needs to be picked or changed.
+export async function listActiveArtists(): Promise<
+  { id: string; name: string }[]
+> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("artists")
+    .select("id, name")
+    .eq("archived", false)
+    .order("name");
+  return data ?? [];
+}
+
+// Unfiltered (includes archived) and pre-shaped as InlineSelectField options
+// -- used on an existing play's detail page, where the play may already be
+// linked to an artist who's since been archived. Excluding them there would
+// make that play's artist field render as blank instead of showing (and
+// letting someone reassign) who it's actually linked to.
+export async function listAllArtistOptions(): Promise<
+  { value: string; label: string }[]
+> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("artists").select("id, name").order("name");
+  return (data ?? []).map((a) => ({ value: a.id, label: a.name }));
 }

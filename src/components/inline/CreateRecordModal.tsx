@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createRecord, type TableName } from "@/app/actions/records";
+import { createRecord, listActiveArtists, type TableName } from "@/app/actions/records";
 import RelationSearchPicker from "./RelationSearchPicker";
 import { ChevronIcon } from "./icons";
 
@@ -108,17 +108,39 @@ export default function CreateRecordModal({
   const [showDate, setShowDate] = useState("");
   const [venue, setVenue] = useState<{ id: string; label: string } | null>(null);
   const [event, setEvent] = useState<{ id: string; label: string } | null>(null);
+  const [artistOptions, setArtistOptions] = useState<{ id: string; name: string }[]>([]);
+  const [artistId, setArtistId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const nameLabel = table === "contacts" ? "Full name" : "Name";
   const playNeedsLink = table === "plays" && !venue && !event;
 
+  useEffect(() => {
+    if (table !== "plays") return;
+    let cancelled = false;
+    listActiveArtists().then((rows) => {
+      if (cancelled) return;
+      setArtistOptions(rows);
+      // Only worth pre-selecting when there's just one artist to choose
+      // from -- with more than one on the roster, defaulting to whichever
+      // sorts first would silently misattribute the play if left unchanged.
+      if (rows.length === 1) setArtistId(rows[0].id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [table]);
+
   async function handleSubmit() {
     setError(null);
 
     if (table !== "plays" && !name.trim()) {
       setError(`${nameLabel} is required`);
+      return;
+    }
+    if (table === "plays" && !artistId) {
+      setError("Select an artist");
       return;
     }
     if (playNeedsLink) {
@@ -139,6 +161,7 @@ export default function CreateRecordModal({
                   show_date: showDate || null,
                   venue_id: venue?.id ?? null,
                   event_id: event?.id ?? null,
+                  artist_id: artistId,
                 };
 
     setSubmitting(true);
@@ -167,6 +190,25 @@ export default function CreateRecordModal({
         <div className="space-y-3">
           {table === "plays" ? (
             <>
+              <div>
+                <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
+                  Artist
+                </label>
+                <select
+                  value={artistId}
+                  onChange={(e) => setArtistId(e.target.value)}
+                  className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange"
+                >
+                  <option value="" disabled>
+                    Select an artist
+                  </option>
+                  {artistOptions.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
                   Show date
