@@ -11,6 +11,7 @@ import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
 import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
+import InlineBooleanChip from "@/components/inline/InlineBooleanChip";
 import {
   type PlayStatus,
   PLAY_STATUS_OPTIONS,
@@ -34,7 +35,9 @@ export default async function PlayDetailPage({
        booking_agent_commission_pct, booking_agent_commission_amount,
        contract_status, contract_due_date, deposit_status, deposit_amount, deposit_due_date,
        final_payment_received, capacity, age_limit, deal_terms, bill_position,
-       other_artists_on_bill, notes, details, venue_name, city, state,
+       other_artists_on_bill, notes, details, venue_name, city, state, address, show_type,
+       production_contact_name, production_contact_info, production_provided,
+       food_provided, drinks_provided, hotel_provided, travel_provided,
        contract_file_path, contract_file_name, contract_uploaded_at,
        event_id, venue_id,
        artists(id, name),
@@ -193,6 +196,15 @@ export default async function PlayDetailPage({
                 />
               </div>
             )}
+            <div className="text-black/60 dark:text-white/60 flex flex-wrap items-center gap-x-1">
+              <InlineEditField
+                table="plays"
+                id={play.id}
+                field="address"
+                value={play.address}
+                placeholder="Add address"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -226,6 +238,10 @@ export default async function PlayDetailPage({
             <dt className="text-black/50 dark:text-white/50">Age limit</dt>
             <dd>
               <InlineEditField table="plays" id={play.id} field="age_limit" value={play.age_limit} placeholder="Add" />
+            </dd>
+            <dt className="text-black/50 dark:text-white/50">Show type</dt>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="show_type" value={play.show_type} placeholder="Add" />
             </dd>
           </dl>
         </div>
@@ -350,6 +366,29 @@ export default async function PlayDetailPage({
             items={linkedContacts}
             bordered={false}
           />
+        </div>
+      </div>
+
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-4 bg-white dark:bg-neutral-900">
+        <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
+          Production &amp; Hospitality
+        </h2>
+        <dl className="text-sm grid grid-cols-2 gap-y-2 mb-3">
+          <dt className="text-black/50 dark:text-white/50">Production contact</dt>
+          <dd>
+            <InlineEditField table="plays" id={play.id} field="production_contact_name" value={play.production_contact_name} placeholder="Add" />
+          </dd>
+          <dt className="text-black/50 dark:text-white/50">Cell or email</dt>
+          <dd>
+            <InlineEditField table="plays" id={play.id} field="production_contact_info" value={play.production_contact_info} placeholder="Add" />
+          </dd>
+        </dl>
+        <div className="flex flex-wrap gap-2">
+          <InlineBooleanChip table="plays" id={play.id} field="production_provided" value={play.production_provided} label="Production" />
+          <InlineBooleanChip table="plays" id={play.id} field="food_provided" value={play.food_provided} label="Food" />
+          <InlineBooleanChip table="plays" id={play.id} field="drinks_provided" value={play.drinks_provided} label="Drinks" />
+          <InlineBooleanChip table="plays" id={play.id} field="hotel_provided" value={play.hotel_provided} label="Hotel" />
+          <InlineBooleanChip table="plays" id={play.id} field="travel_provided" value={play.travel_provided} label="Travel" />
         </div>
       </div>
 
