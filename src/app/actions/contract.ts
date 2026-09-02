@@ -3,6 +3,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { generateContractDocx, CONTRACT_TBD, type ContractMergeData } from "@/lib/generateContract";
 
+// Used specifically for Section 2 (Schedule) fields Base Camp has no
+// structured data for -- distinct from CONTRACT_TBD, which still applies
+// everywhere else a value is genuinely missing.
+const SCHEDULE_PER_ADVANCE = "Per Advance";
+
 function fmtMoney(n: number | null): string {
   if (n === null || n === undefined) return CONTRACT_TBD;
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -114,14 +119,18 @@ export async function generateContractForPlay(playId: string): Promise<GenerateR
     radius_clause: "N/A",
     contract_due_date: fmtDate(play.contract_due_date),
     // No structured fields exist yet for day-of schedule details (load-in,
-    // soundcheck, doors, set time/length, curfew) -- left as an explicit
-    // fill-in-before-sending marker rather than guessed from notes/details.
-    load_in: CONTRACT_TBD,
-    soundcheck_time: CONTRACT_TBD,
-    doors_time: CONTRACT_TBD,
-    show_time: CONTRACT_TBD,
-    show_length: CONTRACT_TBD,
-    curfew: CONTRACT_TBD,
+    // soundcheck, doors, set time/length, curfew). Rather than the generic
+    // CONTRACT_TBD marker, these read "Per Advance" -- the standard live-
+    // music convention that these get nailed down on the pre-show advance
+    // call, which is exactly what Section 2's own closing line already
+    // tells the reader. Confirms the item is expected and handled, not
+    // missing data Base Camp forgot to fill in.
+    load_in: SCHEDULE_PER_ADVANCE,
+    soundcheck_time: SCHEDULE_PER_ADVANCE,
+    doors_time: SCHEDULE_PER_ADVANCE,
+    show_time: SCHEDULE_PER_ADVANCE,
+    show_length: SCHEDULE_PER_ADVANCE,
+    curfew: SCHEDULE_PER_ADVANCE,
     guarantee_amount: fmtMoney(play.guarantee_amount),
     deal_terms: orTbd(play.deal_terms),
     deposit_amount: fmtMoney(play.deposit_amount),
