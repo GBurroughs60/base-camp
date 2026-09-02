@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# one-off scratch work (build scripts, generated files for ad-hoc deliverables)
+/scratch/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
