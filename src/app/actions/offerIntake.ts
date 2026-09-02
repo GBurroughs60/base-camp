@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { sendNewOfferEmail } from "@/lib/approvalEmail";
+import { FALLBACK_NOTIFY_EMAIL } from "@/lib/constants";
 
 // Public, unauthenticated surface: the /book page and these two actions are
 // how outside venues/promoters/buyers submit a new offer without a Base
@@ -10,11 +11,6 @@ import { sendNewOfferEmail } from "@/lib/approvalEmail";
 // touching artists/plays/contacts/companies directly -- RLS on those tables
 // stays authenticated-only, and these two narrowly-scoped, insert-only RPCs
 // are the only crack the anon role gets.
-
-// Fallback recipient for the new-offer notification when the submitting
-// artist has no 'agent' contact on file -- ensures a public-form submission
-// is never silently invisible just because that link is missing.
-const FALLBACK_NOTIFY_EMAIL = "gburroughs@theridgemusicgroup.com";
 
 export type BookableArtist = { id: string; name: string };
 
@@ -147,6 +143,7 @@ export async function submitOfferInquiry(input: OfferIntakeInput): Promise<Submi
     // file -- an offer submitted through the public form must never go
     // completely unnoticed just because contact_artists is missing an
     // 'agent' row for that artist.
+    const usingFallback = !data.agent_email;
     const notifyEmail = data.agent_email ?? FALLBACK_NOTIFY_EMAIL;
     await sendNewOfferEmail({
       to: notifyEmail,
@@ -156,6 +153,9 @@ export async function submitOfferInquiry(input: OfferIntakeInput): Promise<Submi
       location: [input.city, input.state].filter((s) => s.trim()).join(", ") || null,
       showDate: toTextOrNull(input.showDate),
       playUrl: `https://base-camp-lovat.vercel.app/plays/${data.play_id}`,
+      fallbackNote: usingFallback
+        ? `No booking agent is on file for ${data.artist_name ?? "this artist"} -- add one on the artist's profile so future offer notifications reach them directly instead of you.`
+        : undefined,
     }).catch((err) => {
       console.error("New-offer notification failed:", err);
     });

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { sendApprovalEmail } from "@/lib/approvalEmail";
+import { FALLBACK_NOTIFY_EMAIL } from "@/lib/constants";
 
 export type TableName = "contacts" | "companies" | "events" | "plays" | "artists";
 
@@ -187,7 +188,7 @@ async function sendApprovalEmailIfNeeded(playId: string): Promise<void> {
       .eq("role", "agent"),
   ]);
 
-  const recipients = (teamRows ?? [])
+  const teamRecipients = (teamRows ?? [])
     .map((row) => row.contacts as unknown as { full_name: string; email: string | null } | null)
     .filter((c): c is { full_name: string; email: string } => !!c?.email);
 
@@ -195,16 +196,15 @@ async function sendApprovalEmailIfNeeded(playId: string): Promise<void> {
     .map((row) => row.contacts as unknown as { full_name: string; email: string | null } | null)
     .filter((c): c is { full_name: string; email: string } => !!c?.email);
 
-  // Nobody to notify (no manager/artist contact on file, or none with an
-  // email) -- nothing to send, but still worth marking so this doesn't
-  // re-check on every future status touch.
-  if (recipients.length === 0) {
-    await supabase
-      .from("plays")
-      .update({ approval_email_sent_at: new Date().toISOString() })
-      .eq("id", playId);
-    return;
-  }
+  // No manager/artist contact on file (or none with an email) -- fall back
+  // to Greg directly rather than silently marking this "sent" and notifying
+  // nobody. An approval request must never just sit there unnoticed because
+  // an artist profile is missing a contact; this mirrors the same fallback
+  // used on the new-offer notification in offerIntake.ts.
+  const usingFallback = teamRecipients.length === 0;
+  const recipients = usingFallback
+    ? [{ full_name: "Greg Burroughs", email: FALLBACK_NOTIFY_EMAIL }]
+    : teamRecipients;
 
   const venue = play.venue as unknown as
     | { id: string; name: string; city: string | null; state: string | null }
@@ -230,6 +230,9 @@ async function sendApprovalEmailIfNeeded(playId: string): Promise<void> {
     dealTerms: play.deal_terms,
     capacity: play.capacity,
     approveUrl: `https://base-camp-lovat.vercel.app/approve/${approvalToken}`,
+    fallbackNote: usingFallback
+      ? `No manager or artist contact is on file for ${artist.name} -- add one on the artist's profile so future approval requests route directly to the right person instead of you. You can still approve or decline below in the meantime.`
+      : undefined,
   });
 
   await supabase

@@ -16,6 +16,20 @@ function formatMoney(n: number | null): string | null {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+// Rendered at the top of a notification when it went to the fallback
+// recipient (currently always Greg) instead of the person it was actually
+// meant for -- no manager/agent contact on file, or none with an email.
+// Distinct from the rest of the email visually (amber callout) and in
+// substance: it explains *why this landed in your inbox* and what to fix,
+// rather than reading like a normal targeted notification.
+function fallbackBanner(note: string): string {
+  return `
+    <div style="background: #fff4e5; border: 1px solid #f5c98a; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; color: #7a4a00; font-size: 13px; line-height: 1.4;">
+      <strong>You're getting this as the fallback.</strong> ${escapeHtml(note)}
+    </div>
+  `;
+}
+
 export type ApprovalEmailDetails = {
   to: string[];
   cc?: string[];
@@ -31,6 +45,11 @@ export type ApprovalEmailDetails = {
   // way the actual approve/decline decision makes it back into Base Camp;
   // without it the email is purely informational.
   approveUrl: string;
+  // Set when there was no manager/artist contact on file and this went to
+  // the fallback recipient instead. Renders an explanatory banner so the
+  // fallback recipient understands why they're seeing it and what to fix --
+  // see sendApprovalEmailIfNeeded in app/actions/records.ts.
+  fallbackNote?: string;
 };
 
 // Fires once, the moment a play's status is set to "pending_approval" (see
@@ -63,6 +82,7 @@ export async function sendApprovalEmail(details: ApprovalEmailDetails): Promise<
 
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
+      ${details.fallbackNote ? fallbackBanner(details.fallbackNote) : ""}
       <h2 style="margin-bottom: 4px;">Offer awaiting your approval: ${escapeHtml(details.artistName)}</h2>
       <p style="color: #555;">This offer has cleared agent review and is ready for your approval. Details:</p>
       <table style="border-collapse: collapse; margin: 16px 0;">
@@ -203,6 +223,9 @@ export type NewOfferEmailDetails = {
   // agent) does have a Base Camp login, so this links straight to the
   // play instead of a public token page.
   playUrl: string;
+  // Set when there was no agent contact on file and this went to the
+  // fallback recipient instead. See fallbackNote on ApprovalEmailDetails.
+  fallbackNote?: string;
 };
 
 // Fires once, right after a buyer submits the public /book intake form (see
@@ -227,6 +250,7 @@ export async function sendNewOfferEmail(details: NewOfferEmailDetails): Promise<
 
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
+      ${details.fallbackNote ? fallbackBanner(details.fallbackNote) : ""}
       <h2 style="margin-bottom: 4px;">New offer: ${escapeHtml(details.artistName)} at ${escapeHtml(details.venueLabel)}</h2>
       <p style="color: #555;">A new offer came in through the Base Camp booking form and needs your review.</p>
       <table style="border-collapse: collapse; margin: 16px 0;">
