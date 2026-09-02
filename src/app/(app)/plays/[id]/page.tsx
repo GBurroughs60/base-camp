@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ContractUpload from "./ContractUpload";
+import GenerateContractButton from "@/components/inline/GenerateContractButton";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
@@ -348,6 +349,13 @@ export default async function PlayDetailPage({
             fileName={play.contract_file_name}
             uploadedAt={play.contract_uploaded_at}
           />
+          <div className="mt-3 pt-3 border-t border-black/10 dark:border-white/10">
+            <GenerateContractButton playId={play.id} />
+            <p className="text-xs text-black/40 dark:text-white/40 mt-2">
+              Preview only for now — fills the template from this play&apos;s data so you can check
+              it over. Not yet part of the approval flow or sent anywhere automatically.
+            </p>
+          </div>
         </div>
       </div>
 
