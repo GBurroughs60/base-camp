@@ -83,6 +83,9 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "hotel_provided",
     "travel_provided",
     "governing_law_state",
+    "show_time",
+    "show_length",
+    "radius_clause",
   ]),
   artists: new Set([
     "name",

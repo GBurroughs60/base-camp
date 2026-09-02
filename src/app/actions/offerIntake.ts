@@ -31,10 +31,14 @@ export type OfferIntakeInput = {
   state: string;
   showDate: string;
   showType: string;
+  showTime: string;
+  showLength: string;
   capacity: string;
   ageLimit: string;
   guaranteeAmount: string;
+  ticketPrice: string;
   dealTerms: string;
+  radiusClause: string;
   productionContactName: string;
   productionContactInfo: string;
   productionProvided: boolean;
@@ -115,6 +119,10 @@ export async function submitOfferInquiry(input: OfferIntakeInput): Promise<Submi
       p_age_limit: toTextOrNull(input.ageLimit),
       p_guarantee_amount: toNumberOrNull(input.guaranteeAmount),
       p_deal_terms: toTextOrNull(input.dealTerms),
+      p_show_time: toTextOrNull(input.showTime),
+      p_show_length: toTextOrNull(input.showLength),
+      p_ticket_price: toNumberOrNull(input.ticketPrice),
+      p_radius_clause: toTextOrNull(input.radiusClause),
       p_production_contact_name: toTextOrNull(input.productionContactName),
       p_production_contact_info: toTextOrNull(input.productionContactInfo),
       p_production_provided: input.productionProvided,

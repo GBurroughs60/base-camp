@@ -16,10 +16,14 @@ const initialState = {
   state: "",
   showDate: "",
   showType: "",
+  showTime: "",
+  showLength: "",
   capacity: "",
   ageLimit: "",
   guaranteeAmount: "",
+  ticketPrice: "",
   dealTerms: "",
+  radiusClause: "",
   productionContactName: "",
   productionContactInfo: "",
   productionProvided: false,
@@ -190,6 +194,26 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
             />
           </Field>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Time of performance">
+            <input
+              type="text"
+              placeholder="9:00 PM"
+              value={form.showTime}
+              onChange={(e) => set("showTime", e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Duration of performance">
+            <input
+              type="text"
+              placeholder="60 min, 2x45 min sets…"
+              value={form.showLength}
+              onChange={(e) => set("showLength", e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+        </div>
         <Field label="Venue name">
           <input
             type="text"
@@ -247,22 +271,43 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
       </SectionCard>
 
       <SectionCard title="The Offer">
-        <Field label="Offer amount / guarantee">
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.guaranteeAmount}
-            onChange={(e) => set("guaranteeAmount", e.target.value)}
-            className={inputClass}
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Offer amount / guarantee">
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.guaranteeAmount}
+              onChange={(e) => set("guaranteeAmount", e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Ticket price">
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.ticketPrice}
+              onChange={(e) => set("ticketPrice", e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+        </div>
         <Field label="Deal terms">
           <textarea
             rows={2}
-            placeholder="Door split, tax, merch rate, radius clause, etc."
+            placeholder="Door split, tax, merch rate, etc."
             value={form.dealTerms}
             onChange={(e) => set("dealTerms", e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Radius clause">
+          <input
+            type="text"
+            placeholder="e.g. 50 miles / 60 days, or leave blank if none"
+            value={form.radiusClause}
+            onChange={(e) => set("radiusClause", e.target.value)}
             className={inputClass}
           />
         </Field>
@@ -316,9 +361,21 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
         </div>
       </SectionCard>
 
-      <SectionCard title="Who's Asking">
+      <SectionCard title="Buyer">
+        <Field label="Buyer company / organization">
+          <input
+            type="text"
+            value={form.buyerCompany}
+            onChange={(e) => set("buyerCompany", e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+        <p className="text-xs text-black/40 dark:text-white/40 -mt-1">
+          The person below will be treated as the buyer&apos;s signer on the contract — please use
+          whoever is actually authorized to sign, not just whoever is submitting this form.
+        </p>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Your name *">
+          <Field label="Signer name *">
             <input
               type="text"
               required
@@ -327,7 +384,7 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
               className={inputClass}
             />
           </Field>
-          <Field label="Email *">
+          <Field label="Signer email *">
             <input
               type="email"
               required
@@ -337,24 +394,14 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
             />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Phone">
-            <input
-              type="text"
-              value={form.buyerPhone}
-              onChange={(e) => set("buyerPhone", e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Company / organization">
-            <input
-              type="text"
-              value={form.buyerCompany}
-              onChange={(e) => set("buyerCompany", e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-        </div>
+        <Field label="Signer cell phone">
+          <input
+            type="text"
+            value={form.buyerPhone}
+            onChange={(e) => set("buyerPhone", e.target.value)}
+            className={inputClass}
+          />
+        </Field>
         <Field label="Mailing address">
           <input
             type="text"
@@ -394,7 +441,7 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
       <SectionCard title="Anything Else">
         <textarea
           rows={3}
-          placeholder="Performance time, show length, or anything else we should know"
+          placeholder="Anything else we should know"
           value={form.notes}
           onChange={(e) => set("notes", e.target.value)}
           className={inputClass}

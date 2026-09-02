@@ -37,6 +37,7 @@ export default async function PlayDetailPage({
        contract_status, contract_due_date, deposit_status, deposit_amount, deposit_due_date,
        final_payment_received, capacity, age_limit, deal_terms, bill_position,
        other_artists_on_bill, notes, details, venue_name, city, state, address, show_type,
+       show_time, show_length, radius_clause,
        production_contact_name, production_contact_info, production_provided,
        food_provided, drinks_provided, hotel_provided, travel_provided,
        contract_file_path, contract_file_name, contract_uploaded_at,
@@ -227,6 +228,18 @@ export default async function PlayDetailPage({
             <dt className="text-black/50 dark:text-white/50">Deal terms</dt>
             <dd>
               <InlineEditField table="plays" id={play.id} field="deal_terms" value={play.deal_terms} placeholder="Add" />
+            </dd>
+            <dt className="text-black/50 dark:text-white/50">Radius clause</dt>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="radius_clause" value={play.radius_clause} placeholder="N/A" />
+            </dd>
+            <dt className="text-black/50 dark:text-white/50">Performance time</dt>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="show_time" value={play.show_time} placeholder="Per advance" />
+            </dd>
+            <dt className="text-black/50 dark:text-white/50">Performance duration</dt>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="show_length" value={play.show_length} placeholder="Per advance" />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Billing</dt>
             <dd>
