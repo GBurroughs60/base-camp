@@ -39,11 +39,13 @@ export default async function PlayDetailPage({
        production_contact_name, production_contact_info, production_provided,
        food_provided, drinks_provided, hotel_provided, travel_provided,
        contract_file_path, contract_file_name, contract_uploaded_at,
+       governing_law_state, approval_responded_at, approved_by_other_name,
        event_id, venue_id,
        artists(id, name),
        events(id, name, is_public),
        venue:companies!plays_venue_id_fkey(id, name, city, state, phone, website),
-       primary_contact:contacts(id, full_name, email, phone)`
+       primary_contact:contacts(id, full_name, email, phone),
+       approved_by:contacts!plays_approved_by_contact_id_fkey(id, full_name)`
     )
     .eq("id", id)
     .maybeSingle();
@@ -62,6 +64,8 @@ export default async function PlayDetailPage({
   const contact = play.primary_contact as unknown as
     | { id: string; full_name: string; email: string | null; phone: string | null }
     | null;
+  const approvedBy = play.approved_by as unknown as { id: string; full_name: string } | null;
+  const respondedByName = approvedBy?.full_name ?? play.approved_by_other_name;
   const details = (play.details as Record<string, unknown> | null) ?? {};
   const detailEntries = Object.entries(details).filter(
     ([, v]) => v !== null && v !== undefined && v !== ""
@@ -313,7 +317,25 @@ export default async function PlayDetailPage({
             <dd>
               <InlineEditField table="plays" id={play.id} field="amount_due_to_agency" value={play.amount_due_to_agency} type="number" format="money" placeholder="Add" />
             </dd>
+            <dt className="text-black/50 dark:text-white/50">Governing law</dt>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="governing_law_state" value={play.governing_law_state} placeholder="Add" />
+            </dd>
           </dl>
+          {respondedByName && (
+            <p className="text-xs text-black/40 dark:text-white/40 mt-3 pt-3 border-t border-black/10 dark:border-white/10">
+              Approved/declined by {respondedByName}
+              {play.approval_responded_at && (
+                <>
+                  {" "}
+                  on{" "}
+                  {new Date(play.approval_responded_at).toLocaleDateString("en-US", {
+                    dateStyle: "medium",
+                  })}
+                </>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">

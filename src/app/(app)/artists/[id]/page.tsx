@@ -20,6 +20,17 @@ const RIDGE_OPTIONS = [
   { value: "false", label: "External" },
 ];
 
+// Mirrors ArtistTeam's own role labels -- kept in sync there, not imported
+// from it, since that component doesn't export its label map.
+const TEAM_ROLE_LABELS: Record<ArtistTeamRole, string> = {
+  artist: "Artist",
+  manager: "Manager",
+  agent: "Booking Agent",
+  tour_manager: "Tour Manager",
+  publicist: "Publicist",
+  other: "Other",
+};
+
 export default async function ArtistDetailPage({
   params,
 }: {
@@ -31,7 +42,7 @@ export default async function ArtistDetailPage({
   const { data: artist } = await supabase
     .from("artists")
     .select(
-      "id, name, status, notes, website, photo_url, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct, archived"
+      "id, name, status, notes, website, photo_url, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct, archived, signatory_contact_id, legal_entity_name"
     )
     .eq("id", id)
     .maybeSingle();
@@ -68,6 +79,19 @@ export default async function ArtistDetailPage({
       companyName: c.company?.name ?? null,
     });
   }
+
+  // The contract signatory is picked from the artist's own team roster
+  // (added via the Team card below) rather than a full contacts search --
+  // in practice the signer is always someone already on the team, and
+  // reusing that list keeps this from needing its own search UI. Applies
+  // uniformly whether Ridge or an outside party manages the artist.
+  const signatoryOptions = (Object.entries(membersByRole) as [ArtistTeamRole, ArtistTeamMember[]][])
+    .flatMap(([role, members]) =>
+      members.map((m) => ({
+        value: m.contactId,
+        label: `${m.label} — ${TEAM_ROLE_LABELS[role]}`,
+      }))
+    );
 
   const { data: playsData } = await supabase
     .from("plays")
@@ -241,6 +265,48 @@ export default async function ArtistDetailPage({
             ridgeBooks={artist.ridge_books}
           />
         </div>
+      </div>
+
+      <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900">
+        <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
+          Contract Details
+        </h2>
+        <div className="text-sm space-y-3">
+          <div>
+            <div className="text-xs text-black/50 dark:text-white/50 mb-0.5">
+              Legal entity
+            </div>
+            <InlineEditField
+              table="artists"
+              id={artist.id}
+              field="legal_entity_name"
+              value={artist.legal_entity_name}
+              placeholder="Add legal entity name"
+            />
+          </div>
+          <div>
+            <div className="text-xs text-black/50 dark:text-white/50 mb-0.5">
+              Contract signatory
+            </div>
+            {signatoryOptions.length > 0 ? (
+              <InlineSelectField
+                table="artists"
+                id={artist.id}
+                field="signatory_contact_id"
+                value={artist.signatory_contact_id}
+                options={signatoryOptions}
+              />
+            ) : (
+              <p className="text-black/40 dark:text-white/40">
+                Add someone to the Team above first, then pick who signs contracts.
+              </p>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-black/40 dark:text-white/40 mt-3">
+          The one person who signs this artist&apos;s contracts — Ridge staff when Ridge manages,
+          otherwise whoever&apos;s authorized on the other side.
+        </p>
       </div>
 
       <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 mb-8 bg-white dark:bg-neutral-900 flex flex-col min-h-[220px]">

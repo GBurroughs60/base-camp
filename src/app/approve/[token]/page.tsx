@@ -10,10 +10,13 @@ import { getApprovalSummary, approveOffer, declineOffer } from "@/app/actions/ap
 // falsely trigger the action if the link itself did the approving.
 export default async function ApprovePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { token } = await params;
+  const { error } = await searchParams;
   const summary = await getApprovalSummary(token);
 
   return (
@@ -45,7 +48,7 @@ export default async function ApprovePage({
           ) : summary.respondedAt ? (
             <AlreadyResponded summary={summary} />
           ) : (
-            <RespondForm token={token} summary={summary} />
+            <RespondForm token={token} summary={summary} error={error} />
           )}
         </div>
       </div>
@@ -72,7 +75,8 @@ function AlreadyResponded({
     <>
       <h2 className="font-medium text-lg mb-1">{approved ? "Approved" : "Declined"}</h2>
       <p className="text-sm text-black/70 dark:text-white/70">
-        You already responded to this offer for {summary.artistName} at {summary.venueLabel}
+        {summary.respondedByName ? <>{summary.respondedByName} responded</> : "You already responded"}
+        {" "}to this offer for {summary.artistName} at {summary.venueLabel}
         {summary.respondedAt && (
           <> on {new Date(summary.respondedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</>
         )}
@@ -87,12 +91,52 @@ function formatMoney(n: number | null): string | null {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+// Shared "who's responding?" control, duplicated inside both the approve
+// and decline <form> elements below (each form only submits its own
+// fields, and there's no client JS here to sync one control across two
+// plain HTML forms). Scoped to summary.responderOptions -- the actual
+// people the approval email went to -- plus a free-text fallback for
+// anyone else (e.g. the email got forwarded). At least one is required;
+// the server action redirects back with ?error=missing_responder if both
+// are left blank.
+function ResponderFields({ options }: { options: { id: string; fullName: string }[] }) {
+  return (
+    <div className="mb-3">
+      <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
+        Who&apos;s responding?
+      </label>
+      {options.length > 0 && (
+        <select
+          name="responderContactId"
+          defaultValue=""
+          className="w-full mb-1.5 rounded-md border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ridge-orange/40 focus:border-ridge-orange transition-colors"
+        >
+          <option value="">Select your name…</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.fullName}
+            </option>
+          ))}
+        </select>
+      )}
+      <input
+        type="text"
+        name="responderOtherName"
+        placeholder={options.length > 0 ? "Not listed? Type your name instead" : "Type your name"}
+        className="w-full rounded-md border border-black/15 dark:border-white/15 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ridge-orange/40 focus:border-ridge-orange transition-colors"
+      />
+    </div>
+  );
+}
+
 function RespondForm({
   token,
   summary,
+  error,
 }: {
   token: string;
   summary: NonNullable<Awaited<ReturnType<typeof getApprovalSummary>>>;
+  error?: string;
 }) {
   const rows: [string, string][] = [
     ["Venue", summary.venueLabel],
@@ -122,7 +166,14 @@ function RespondForm({
         ))}
       </dl>
 
+      {error === "missing_responder" && (
+        <p className="text-sm text-red-500 mb-3">
+          Please let us know who&apos;s responding before you approve or decline.
+        </p>
+      )}
+
       <form action={approveOffer.bind(null, token)}>
+        <ResponderFields options={summary.responderOptions} />
         <button
           type="submit"
           className="w-full rounded-md bg-ridge-orange hover:bg-ridge-orange-dark text-white py-2 font-medium transition-colors"
@@ -136,6 +187,7 @@ function RespondForm({
           Need to decline instead?
         </summary>
         <form action={declineOffer.bind(null, token)} className="mt-3 flex flex-col gap-2">
+          <ResponderFields options={summary.responderOptions} />
           <textarea
             name="note"
             placeholder="Add a note for Ridge (optional)"

@@ -13,6 +13,8 @@ import { sendApprovalResponseEmail } from "@/lib/approvalEmail";
 // only crack the anon role gets, each scoped to a single row by an
 // unguessable token rather than an attacker-suppliable id.
 
+export type ResponderOption = { id: string; fullName: string };
+
 export type ApprovalSummary = {
   playId: string;
   artistName: string;
@@ -24,6 +26,15 @@ export type ApprovalSummary = {
   capacity: number | null;
   status: string;
   respondedAt: string | null;
+  // Who the approval email actually went to -- the public page limits its
+  // "who's responding?" dropdown to this list (plus a free-text fallback)
+  // rather than every contact ever linked to the artist. See
+  // get_play_approval_summary, which mirrors sendApprovalEmailIfNeeded's
+  // own recipient logic in app/actions/records.ts.
+  responderOptions: ResponderOption[];
+  // Set once someone has responded -- the matched contact's name, or the
+  // free-text name they typed if they weren't in responderOptions.
+  respondedByName: string | null;
 };
 
 type SummaryRow = {
@@ -37,6 +48,8 @@ type SummaryRow = {
   capacity: number | null;
   status: string;
   approval_responded_at: string | null;
+  responder_options: { id: string; full_name: string }[] | null;
+  responded_by_name: string | null;
 };
 
 export async function getApprovalSummary(token: string): Promise<ApprovalSummary | null> {
@@ -58,6 +71,11 @@ export async function getApprovalSummary(token: string): Promise<ApprovalSummary
     capacity: data.capacity,
     status: data.status,
     respondedAt: data.approval_responded_at,
+    responderOptions: (data.responder_options ?? []).map((r) => ({
+      id: r.id,
+      fullName: r.full_name,
+    })),
+    respondedByName: data.responded_by_name,
   };
 }
 
@@ -80,7 +98,9 @@ type RespondRow = {
 async function respond(
   token: string,
   decision: "approved" | "declined",
-  note?: string
+  note: string | undefined,
+  contactId: string | null,
+  otherName: string | null
 ): Promise<void> {
   const supabase = await createClient();
   // Errors here (bad token, already responded) are swallowed rather than
@@ -93,6 +113,8 @@ async function respond(
       p_token: token,
       p_decision: decision,
       p_note: note ?? null,
+      p_contact_id: contactId,
+      p_other_name: otherName,
     })
     .maybeSingle<RespondRow>();
 
@@ -119,13 +141,35 @@ async function respond(
   }
 }
 
-export async function approveOffer(token: string): Promise<void> {
-  await respond(token, "approved");
+// Reads the "who's responding?" fields present on both the approve and
+// decline forms -- a select scoped to responderOptions, plus a free-text
+// fallback for anyone not in that list (e.g. a forwarded email). At least
+// one is required before a response is recorded; see the missing-responder
+// redirect in approveOffer/declineOffer below.
+function parseResponder(formData: FormData): { contactId: string | null; otherName: string | null } {
+  const contactIdRaw = ((formData.get("responderContactId") as string | null) ?? "").trim();
+  const otherNameRaw = ((formData.get("responderOtherName") as string | null) ?? "").trim();
+  return {
+    contactId: contactIdRaw ? contactIdRaw : null,
+    otherName: otherNameRaw ? otherNameRaw : null,
+  };
+}
+
+export async function approveOffer(token: string, formData: FormData): Promise<void> {
+  const { contactId, otherName } = parseResponder(formData);
+  if (!contactId && !otherName) {
+    redirect(`/approve/${token}?error=missing_responder`);
+  }
+  await respond(token, "approved", undefined, contactId, otherName);
   redirect(`/approve/${token}`);
 }
 
 export async function declineOffer(token: string, formData: FormData): Promise<void> {
   const note = (formData.get("note") as string | null)?.trim() || undefined;
-  await respond(token, "declined", note);
+  const { contactId, otherName } = parseResponder(formData);
+  if (!contactId && !otherName) {
+    redirect(`/approve/${token}?error=missing_responder`);
+  }
+  await respond(token, "declined", note, contactId, otherName);
   redirect(`/approve/${token}`);
 }
