@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# scratch files used for cross-device commit mirroring -- never part of the app
+/scratchpad
+
 # debug
 npm-debug.log*
 yarn-debug.log*
