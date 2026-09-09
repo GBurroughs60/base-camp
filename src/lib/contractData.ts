@@ -121,7 +121,7 @@ export async function fetchContractContext(playId: string): Promise<ContractCont
        status, contract_file_path, contract_file_name, contract_uploaded_at, contract_sent_to_buyer_at,
        artists(id, name, legal_entity_name, signatory_contact_id),
        venue:companies!plays_venue_id_fkey(id, name, city, state),
-       primary_contact:contacts(id, full_name, email, phone, company_id)`
+       primary_contact:contacts!tour_stops_primary_contact_id_fkey(id, full_name, email, phone, company_id)`
     )
     .eq("id", playId)
     .maybeSingle();

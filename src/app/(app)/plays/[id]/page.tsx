@@ -45,7 +45,7 @@ export default async function PlayDetailPage({
        artists(id, name),
        events(id, name, is_public),
        venue:companies!plays_venue_id_fkey(id, name, city, state, phone, website),
-       primary_contact:contacts(id, full_name, email, phone),
+       primary_contact:contacts!tour_stops_primary_contact_id_fkey(id, full_name, email, phone),
        approved_by:contacts!plays_approved_by_contact_id_fkey(id, full_name)`
     )
     .eq("id", id)
