@@ -135,12 +135,21 @@ export type ApprovalResponseEmailDetails = {
   // agent) does have a Base Camp login, so this links straight to the
   // play instead of a public token page.
   playUrl: string;
+  // Set when the offer was approved and contract generation succeeded --
+  // attaches the freshly generated contract so the agent can review and
+  // send it to the buyer without a separate trip to the play page. Left
+  // undefined on a decline, or when generation failed (the email still
+  // goes out either way; the agent can pull the contract manually from
+  // the play page as a fallback -- see respond() in app/actions/approval.ts).
+  contractAttachment?: { filename: string; base64: string };
 };
 
 // Fires once, right after management/the artist responds on the public
 // /approve/[token] page (see respond() in app/actions/approval.ts) --
 // closes the loop back to the agent, who otherwise has no way to know the
-// offer they submitted was ever decided without checking the board.
+// offer they submitted was ever decided without checking the board. On an
+// approval, this is also the moment the agent gets the contract itself --
+// see contractAttachment above.
 export async function sendApprovalResponseEmail(
   details: ApprovalResponseEmailDetails
 ): Promise<void> {
@@ -172,7 +181,9 @@ export async function sendApprovalResponseEmail(
       </h2>
       <p style="color: #555;">
         ${approved
-          ? "Management/the artist approved this offer -- it's now marked Contract Sent in Base Camp."
+          ? details.contractAttachment
+            ? "Management/the artist approved this offer -- it's now marked Contract Sent in Base Camp. The contract is attached: please review it before sending it on to the buyer."
+            : "Management/the artist approved this offer -- it's now marked Contract Sent in Base Camp. We couldn't auto-generate the contract for this one; open the play in Base Camp and use \"Generate contract\" to pull it manually."
           : "Management/the artist declined this offer -- it's now marked Declined in Base Camp."}
       </p>
       <table style="border-collapse: collapse; margin: 16px 0;">
@@ -205,6 +216,18 @@ export async function sendApprovalResponseEmail(
     to: [details.to],
     subject: `${approved ? "Approved" : "Declined"}: ${details.artistName} at ${details.venueLabel}`,
     html,
+    ...(details.contractAttachment
+      ? {
+          attachments: [
+            {
+              filename: details.contractAttachment.filename,
+              content: details.contractAttachment.base64,
+              contentType:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            },
+          ],
+        }
+      : {}),
   });
 
   if (error) {

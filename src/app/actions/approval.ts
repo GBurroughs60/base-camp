@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { sendApprovalResponseEmail } from "@/lib/approvalEmail";
+import { generateContractForPlay } from "./contract";
 
 // Public, unauthenticated surface: the /approve/[token] page and these two
 // actions are how management/the artist respond to an offer without a Base
@@ -123,6 +124,28 @@ async function respond(
   // new to tell them. No agent on file for this artist means no one to
   // notify; the response itself still went through.
   if (data?.result === "ok" && data.agent_email && data.play_id) {
+    // Approval is the moment the deal is locked in, so this is also when
+    // the contract gets generated and handed to the agent -- see the
+    // manual-send-fallback decision: Base Camp fills and attaches the
+    // contract, but a human still reviews it and sends it on to the buyer
+    // (no e-signature integration yet). A generation failure here (missing
+    // template, unexpected data shape) must never block the approval-
+    // response email itself, so it's caught and logged, and the email goes
+    // out without an attachment -- sendApprovalResponseEmail's copy already
+    // covers that case by pointing the agent at the play page instead.
+    let contractAttachment: { filename: string; base64: string } | undefined;
+    if (decision === "approved") {
+      const contract = await generateContractForPlay(data.play_id).catch((err) => {
+        console.error("Contract generation failed during approval response:", err);
+        return null;
+      });
+      if (contract?.ok) {
+        contractAttachment = { filename: contract.fileName, base64: contract.base64 };
+      } else if (contract && !contract.ok) {
+        console.error("Contract generation failed during approval response:", contract.error);
+      }
+    }
+
     await sendApprovalResponseEmail({
       to: data.agent_email,
       decision: decision,
@@ -135,6 +158,7 @@ async function respond(
       dealTerms: data.deal_terms,
       capacity: data.capacity,
       playUrl: `https://base-camp-lovat.vercel.app/plays/${data.play_id}`,
+      contractAttachment,
     }).catch((err) => {
       console.error("Approval-response notification failed:", err);
     });

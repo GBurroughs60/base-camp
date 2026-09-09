@@ -365,8 +365,9 @@ export default async function PlayDetailPage({
           <div className="mt-3 pt-3 border-t border-black/10 dark:border-white/10">
             <GenerateContractButton playId={play.id} />
             <p className="text-xs text-black/40 dark:text-white/40 mt-2">
-              Preview only for now — fills the template from this play&apos;s data so you can check
-              it over. Not yet part of the approval flow or sent anywhere automatically.
+              Fills the template from this play&apos;s data. A copy is generated and emailed to
+              the booking agent automatically when management/the artist approves the offer — use
+              this button any time to preview it yourself or pull a fresh copy manually.
             </p>
           </div>
         </div>
