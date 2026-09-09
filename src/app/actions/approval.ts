@@ -2,10 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { sendApprovalResponseEmail } from "@/lib/approvalEmail";
-import { saveContractToPlay } from "@/lib/contractStorage";
-import { generateContractForPlay } from "./contract";
+import { FALLBACK_NOTIFY_EMAIL } from "@/lib/constants";
 
 // Public, unauthenticated surface: the /approve/[token] page and these two
 // actions are how management/the artist respond to an offer without a Base
@@ -123,52 +121,28 @@ async function respond(
 
   // Only a genuine, first-time response (result "ok") closes the loop back
   // to the agent -- a double-submit or invalid/expired token has nothing
-  // new to tell them. No agent on file for this artist means no one to
-  // notify; the response itself still went through.
-  if (data?.result === "ok" && data.agent_email && data.play_id) {
-    // Approval is the moment the deal is locked in, so this is also when
-    // the contract gets generated and saved onto the play's Contract File
-    // slot. The agent isn't handed a raw copy directly (by email or
-    // otherwise) -- they're pointed at the Contract Review screen, which
-    // reads live off the same fields a fix would touch. That matters
-    // because the only way to correct a mistake in a generated contract is
-    // to fix the underlying data and regenerate; a stray attachment
-    // invites hand-editing the Word file instead, which silently drifts
-    // from the database. See plays/[id]/contract and its "Send to buyer"
-    // action, which regenerates once more right before marking it sent so
-    // it always reflects whatever was last corrected here.
-    //
-    // A generation/save failure here must never block the approval-
-    // response email itself, so it's caught and logged; the review screen
-    // itself offers a "Generate contract" fallback when nothing's on file
-    // yet, so the link below is always the right thing to send regardless.
-    let contractReady = false;
-    if (decision === "approved") {
-      const contract = await generateContractForPlay(data.play_id).catch((err) => {
-        console.error("Contract generation failed during approval response:", err);
-        return null;
-      });
-      if (contract?.ok) {
-        try {
-          const admin = createAdminClient();
-          if (!admin) {
-            console.warn(
-              "SUPABASE_SERVICE_ROLE_KEY is not set -- skipping saving the generated contract to the play's Contract File."
-            );
-          } else {
-            await saveContractToPlay(admin, data.play_id, contract.fileName, contract.base64);
-            contractReady = true;
-          }
-        } catch (err) {
-          console.error("Saving the generated contract to the play failed:", err);
-        }
-      } else if (contract && !contract.ok) {
-        console.error("Contract generation failed during approval response:", contract.error);
-      }
-    }
+  // new to tell them.
+  if (data?.result === "ok" && data.play_id) {
+    // No agent on file for this artist (or none with an email) falls back
+    // to Greg directly, same as the other two automated notifications
+    // (sendApprovalEmailIfNeeded in records.ts, submitOfferInquiry in
+    // offerIntake.ts) -- an approval or decline must never just go
+    // unnoticed because an artist profile is missing its agent contact.
+    const usingFallback = !data.agent_email;
+    const recipientEmail = data.agent_email ?? FALLBACK_NOTIFY_EMAIL;
 
+    // On approval, point the agent straight at the Contract Review screen
+    // rather than generating anything here. Nothing about that screen
+    // needs a pre-existing file -- it builds its own live view of the
+    // contract data and offers Generate/Regenerate/Send actions itself,
+    // all running as the agent's own authenticated session. Generating
+    // (and saving) from this public, logged-out approval action would
+    // need a privileged service-role client just to get past
+    // play-contracts' staff-only storage policy, for a save that gets
+    // redone anyway the moment the agent actually reviews and sends --
+    // not worth the extra credential for what's now a pure convenience.
     await sendApprovalResponseEmail({
-      to: data.agent_email,
+      to: recipientEmail,
       decision: decision,
       note: data.note,
       artistName: data.artist_name ?? "",
@@ -179,8 +153,12 @@ async function respond(
       dealTerms: data.deal_terms,
       capacity: data.capacity,
       playUrl: `https://base-camp-lovat.vercel.app/plays/${data.play_id}`,
-      contractReviewUrl: contractReady
-        ? `https://base-camp-lovat.vercel.app/plays/${data.play_id}/contract`
+      contractReviewUrl:
+        decision === "approved"
+          ? `https://base-camp-lovat.vercel.app/plays/${data.play_id}/contract`
+          : undefined,
+      fallbackNote: usingFallback
+        ? `No booking agent is on file for ${data.artist_name ?? "this artist"} -- add one on the artist's profile so future responses route directly to them. You can still handle this one from the play page in the meantime.`
         : undefined,
     }).catch((err) => {
       console.error("Approval-response notification failed:", err);

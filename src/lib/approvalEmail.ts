@@ -135,17 +135,21 @@ export type ApprovalResponseEmailDetails = {
   // agent) does have a Base Camp login, so this links straight to the
   // play instead of a public token page.
   playUrl: string;
-  // Set when the offer was approved and contract generation + save
-  // succeeded -- points at the Contract Review screen instead of handing
-  // the agent a raw file. Deliberately not an attachment: the only way to
-  // fix a mistake in a generated contract is to correct the underlying
-  // field and regenerate, and an emailed copy invites hand-editing the
-  // Word file instead, which silently drifts from the database. Left
-  // undefined on a decline, or when generation/save failed -- the review
-  // screen itself offers a "Generate contract" fallback in that case, so
-  // playUrl (which still gets you to the play, and from there the
-  // Contract File card) is the right link to fall back to.
+  // Set on every approval (undefined on a decline, where there's no
+  // contract to review) -- points at the Contract Review screen instead
+  // of handing the agent a raw file. Deliberately not an attachment: the
+  // only way to fix a mistake in a generated contract is to correct the
+  // underlying field and regenerate, and an emailed copy invites
+  // hand-editing the Word file instead, which silently drifts from the
+  // database. The review screen builds its own data and offers its own
+  // Generate action, so this link is always the right one to send on an
+  // approval regardless of anything having been generated yet.
   contractReviewUrl?: string;
+  // Set when there was no agent contact on file (or none with an email)
+  // and this went to the fallback recipient instead. See fallbackNote on
+  // ApprovalEmailDetails -- same convention across all three automated
+  // notifications.
+  fallbackNote?: string;
 };
 
 // Fires once, right after management/the artist responds on the public
@@ -180,14 +184,13 @@ export async function sendApprovalResponseEmail(
 
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
+      ${details.fallbackNote ? fallbackBanner(details.fallbackNote) : ""}
       <h2 style="margin-bottom: 4px;">
         ${approved ? "Approved" : "Declined"}: ${escapeHtml(details.artistName)} at ${escapeHtml(details.venueLabel)}
       </h2>
       <p style="color: #555;">
         ${approved
-          ? details.contractReviewUrl
-            ? "Management/the artist approved this offer -- it's now marked Contract Sent in Base Camp. The contract has been generated; review it in Base Camp before it goes out to the buyer."
-            : "Management/the artist approved this offer -- it's now marked Contract Sent in Base Camp. We couldn't auto-generate the contract for this one; open the play in Base Camp and use \"Generate contract\" to pull it manually."
+          ? "Management/the artist approved this offer -- it's now marked Contract Sent in Base Camp. Review the contract there before it goes out to the buyer."
           : "Management/the artist declined this offer -- it's now marked Declined in Base Camp."}
       </p>
       <table style="border-collapse: collapse; margin: 16px 0;">
