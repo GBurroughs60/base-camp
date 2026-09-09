@@ -45,6 +45,19 @@ export const LIVE_PIPELINE_STATUSES: PlayStatus[] = [
   "settled",
 ];
 
+// Shown as a small caption under a board column's header -- only the two
+// stages people actually get confused about need one. "Pending Agent
+// Approval" reads like a sibling of "Pending Management Approval" and
+// implies something goes out the moment a card lands there; nothing does.
+// The only status change that emails anyone is landing on pending_approval
+// (see sendApprovalEmailIfNeeded in app/actions/records.ts) -- these hints
+// exist so that's obvious on the board itself, not just in a doc or in
+// someone's memory of how this works.
+export const PLAY_STATUS_BOARD_HINTS: Partial<Record<PlayStatus, string>> = {
+  pending_agent_approval: "Internal review only -- nothing is sent from here.",
+  pending_approval: "Moving a card here emails management/the artist to approve.",
+};
+
 export const PLAY_STATUS_BADGE_CLASSES: Record<PlayStatus, string> = {
   offer_submitted:
     "border-black/15 dark:border-white/15 bg-black/[.03] dark:bg-white/[.06]",

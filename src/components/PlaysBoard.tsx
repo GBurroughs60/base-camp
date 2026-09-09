@@ -17,6 +17,7 @@ import {
   type PlayStatus,
   LIVE_PIPELINE_STATUSES,
   PLAY_STATUS_LABELS,
+  PLAY_STATUS_BOARD_HINTS,
 } from "@/lib/playStatus";
 
 export type BoardPlay = {
@@ -91,6 +92,11 @@ function Column({ status, plays }: { status: PlayStatus; plays: BoardPlay[] }) {
         <h3 className="text-xs font-medium leading-tight">{PLAY_STATUS_LABELS[status]}</h3>
         <span className="text-xs text-black/40 dark:text-white/40 shrink-0">{plays.length}</span>
       </div>
+      {PLAY_STATUS_BOARD_HINTS[status] && (
+        <p className="text-[11px] leading-snug text-black/40 dark:text-white/40 -mt-0.5 mb-1">
+          {PLAY_STATUS_BOARD_HINTS[status]}
+        </p>
+      )}
       <div className="flex flex-col gap-2">
         {plays.map((p) => (
           <Card key={p.id} play={p} />
