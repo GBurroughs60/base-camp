@@ -1,11 +1,12 @@
 const CONTRACT_BUCKET = "play-contracts";
 
-// Structural rather than importing a concrete Supabase client type -- this
-// runs against two different clients depending on caller (the service-role
-// admin client from the public approval flow, and the normal authenticated
-// staff client from the Contract Review screen), and both expose this same
-// surface at runtime even though their generated types don't line up
-// exactly. Only the methods actually used here are declared.
+// Structural rather than importing a concrete Supabase client type -- kept
+// this way even though the only caller today (the Contract Review screen's
+// authenticated staff actions) uses the normal server client, because the
+// signature webhook route (see api/webhooks/signwell/route.ts) needs a
+// service-role client for its own, unrelated storage write and it's cheap
+// insurance against this signature drifting if a second caller ever needs
+// a different client again.
 type StorageCapableClient = {
   storage: {
     from: (bucket: string) => {
@@ -32,13 +33,11 @@ type StorageCapableClient = {
 // was there before (manual upload, or an earlier generation) is removed
 // once the new copy is safely uploaded, rather than letting copies pile up.
 //
-// Shared by both places that write here: the approval flow (public,
-// anon-role context -- needs the service-role admin client, since
-// play-contracts' storage policies are authenticated-only) and the
-// Contract Review screen's "Send to buyer" action (authenticated staff
-// context -- the normal client already has the access it needs). Neither
-// caller should duplicate this sequence; see app/actions/approval.ts and
-// app/actions/contractReview.ts.
+// Used by the Contract Review screen's regenerate/send actions (see
+// app/actions/contractReview.ts) -- the only place a *pre-signature*
+// generated .docx gets saved. The signature webhook route stores the
+// final *signed* PDF separately (see saveSignedContractToPlay below);
+// the two are deliberately not the same file or the same code path.
 export async function saveContractToPlay(
   client: StorageCapableClient,
   playId: string,
@@ -72,4 +71,28 @@ export async function saveContractToPlay(
     })
     .eq("id", playId);
   if (updateError) throw new Error(updateError.message);
+}
+
+// Stores the final, tamper-evident signed PDF once a signature request
+// completes. Deliberately under a `signed/` top-level prefix rather than
+// nested inside `${playId}/` -- saveContractToPlay above lists and prunes
+// everything directly under `${playId}/` on every regenerate, and a signed
+// PDF sitting in that same folder would either get swept up as "stale" or
+// silently confuse that pruning logic. Returns the storage path; the caller
+// (the signature webhook route) is responsible for recording it on
+// contract_signatures.signed_document_path -- this function only touches
+// storage, not the database, since it doesn't know the signature row's id.
+export async function saveSignedContractToPlay(
+  client: Pick<StorageCapableClient, "storage">,
+  playId: string,
+  base64: string
+): Promise<string> {
+  const path = `signed/${playId}/${Date.now()}-signed.pdf`;
+  const bytes = Buffer.from(base64, "base64");
+  const { error } = await client.storage.from(CONTRACT_BUCKET).upload(path, bytes, {
+    contentType: "application/pdf",
+    upsert: true,
+  });
+  if (error) throw new Error(error.message);
+  return path;
 }

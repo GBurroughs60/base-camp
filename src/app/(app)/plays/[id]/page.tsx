@@ -370,9 +370,10 @@ export default async function PlayDetailPage({
             </Link>
             <p className="text-xs text-black/40 dark:text-white/40 mt-2">
               Review every contract field against this play&apos;s data, fix anything wrong, and
-              send it to the buyer once it&apos;s ready. Generating or regenerating there saves the
-              result above as the Contract File (replacing whatever was there before) --
-              nothing is generated automatically until you do that.
+              send it out for e-signature once it&apos;s ready -- the artist rep and the buyer both
+              sign electronically from there. Generating or regenerating saves the result above as
+              the Contract File (replacing whatever was there before) -- nothing is generated or
+              sent automatically until you do that.
             </p>
           </div>
         </div>

@@ -7,6 +7,7 @@ import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineBooleanChip from "@/components/inline/InlineBooleanChip";
 import GenerateContractButton from "@/components/inline/GenerateContractButton";
 import ContractReviewActions from "@/components/inline/ContractReviewActions";
+import { getContractSignature } from "@/app/actions/contractReview";
 
 // Resolved-value styling: a genuinely missing field is a warning (red), an
 // intentional standing default is muted but calm (amber) -- these two read
@@ -83,6 +84,7 @@ export default async function ContractReviewPage({
   const { context } = result;
   const { play, artist, venue, purchaserContact, purchaserCompanyName, signatory } = context;
   const merged = buildContractMergeData(context);
+  const signature = await getContractSignature(id);
 
   const hasContract = !!play.contract_file_path;
 
@@ -110,7 +112,7 @@ export default async function ContractReviewPage({
         <ContractReviewActions
           playId={play.id}
           hasContract={hasContract}
-          sentAt={play.contract_sent_to_buyer_at}
+          signature={signature}
         />
         {hasContract && (
           <div className="mt-3 pt-3 border-t border-black/10 dark:border-white/10">
