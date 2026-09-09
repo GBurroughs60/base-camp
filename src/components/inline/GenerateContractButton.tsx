@@ -7,7 +7,13 @@ import { generateContractForPlay } from "@/app/actions/contract";
 // see and check the merge output against real play data before any of the
 // agent-review-and-send flow exists. Not wired to email or status changes
 // yet; this is purely "generate it and look at it."
-export default function GenerateContractButton({ playId }: { playId: string }) {
+export default function GenerateContractButton({
+  playId,
+  label = "Generate contract (preview)",
+}: {
+  playId: string;
+  label?: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +50,7 @@ export default function GenerateContractButton({ playId }: { playId: string }) {
         disabled={busy}
         className="text-xs border border-black/15 dark:border-white/15 rounded-md px-2.5 py-1 hover:border-ridge-orange/50 disabled:opacity-50"
       >
-        {busy ? "Generating…" : "Generate contract (preview)"}
+        {busy ? "Generating…" : label}
       </button>
       {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
     </div>

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ContractUpload from "./ContractUpload";
-import GenerateContractButton from "@/components/inline/GenerateContractButton";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
@@ -363,12 +362,17 @@ export default async function PlayDetailPage({
             uploadedAt={play.contract_uploaded_at}
           />
           <div className="mt-3 pt-3 border-t border-black/10 dark:border-white/10">
-            <GenerateContractButton playId={play.id} />
+            <Link
+              href={`/plays/${play.id}/contract`}
+              className="text-xs bg-ridge-orange hover:bg-ridge-orange-dark text-white rounded-md px-3 py-1.5 inline-block"
+            >
+              Open Contract Review
+            </Link>
             <p className="text-xs text-black/40 dark:text-white/40 mt-2">
-              Fills the template from this play&apos;s data. A copy is generated automatically when
-              management/the artist approves the offer — it&apos;s emailed to the booking agent and
-              saved above as the Contract File (replacing whatever was there before). Use this
-              button any time to preview it yourself or pull a fresh copy manually.
+              Review every contract field against this play&apos;s data, fix anything wrong, and
+              send it to the buyer once it&apos;s ready. A copy is generated automatically when
+              management/the artist approves the offer and saved above as the Contract File
+              (replacing whatever was there before).
             </p>
           </div>
         </div>

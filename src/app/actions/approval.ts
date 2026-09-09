@@ -4,72 +4,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendApprovalResponseEmail } from "@/lib/approvalEmail";
+import { saveContractToPlay } from "@/lib/contractStorage";
 import { generateContractForPlay } from "./contract";
-
-const CONTRACT_BUCKET = "play-contracts";
-
-// Saves the just-generated contract into the play's own Contract File slot
-// -- the same bucket/columns ContractUpload.tsx uses for a manually
-// uploaded contract -- so the copy that goes out at approval is visible
-// and re-downloadable inside Base Camp, not just sitting in an email.
-// Requires SUPABASE_SERVICE_ROLE_KEY: this runs from the public, anon-role
-// approval flow, and the play-contracts bucket's RLS policies only allow
-// authenticated (staff) reads/writes, same as every other table this flow
-// touches through a privileged path rather than opening RLS to anon.
-//
-// Keeps exactly one contract on file per play, matching the single-file
-// model ContractUpload already uses: whatever was there before (manually
-// uploaded or from an earlier approval cycle) is removed once the new one
-// is safely uploaded, rather than letting copies pile up.
-//
-// Best-effort and isolated on purpose -- see the try/catch at the call
-// site. A missing key or a storage hiccup should never block the
-// approval-response email, which already carries the contract as an
-// attachment regardless of whether this save succeeds.
-async function saveContractToPlay(
-  playId: string,
-  fileName: string,
-  base64: string
-): Promise<void> {
-  const admin = createAdminClient();
-  if (!admin) {
-    console.warn(
-      "SUPABASE_SERVICE_ROLE_KEY is not set -- skipping saving the generated contract to the play's Contract File (the approval email attachment still went out)."
-    );
-    return;
-  }
-
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const path = `${playId}/${Date.now()}-${safeName}`;
-  const bytes = Buffer.from(base64, "base64");
-
-  const { error: uploadError } = await admin.storage
-    .from(CONTRACT_BUCKET)
-    .upload(path, bytes, {
-      contentType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      upsert: true,
-    });
-  if (uploadError) throw uploadError;
-
-  const { data: existing } = await admin.storage.from(CONTRACT_BUCKET).list(playId);
-  const stale = (existing ?? [])
-    .map((f) => `${playId}/${f.name}`)
-    .filter((p) => p !== path);
-  if (stale.length > 0) {
-    await admin.storage.from(CONTRACT_BUCKET).remove(stale);
-  }
-
-  const { error: updateError } = await admin
-    .from("plays")
-    .update({
-      contract_file_path: path,
-      contract_file_name: fileName,
-      contract_uploaded_at: new Date().toISOString(),
-    })
-    .eq("id", playId);
-  if (updateError) throw updateError;
-}
 
 // Public, unauthenticated surface: the /approve/[token] page and these two
 // actions are how management/the artist respond to an offer without a Base
@@ -191,27 +127,41 @@ async function respond(
   // notify; the response itself still went through.
   if (data?.result === "ok" && data.agent_email && data.play_id) {
     // Approval is the moment the deal is locked in, so this is also when
-    // the contract gets generated and handed to the agent -- see the
-    // manual-send-fallback decision: Base Camp fills and attaches the
-    // contract, but a human still reviews it and sends it on to the buyer
-    // (no e-signature integration yet). A generation failure here (missing
-    // template, unexpected data shape) must never block the approval-
-    // response email itself, so it's caught and logged, and the email goes
-    // out without an attachment -- sendApprovalResponseEmail's copy already
-    // covers that case by pointing the agent at the play page instead.
-    let contractAttachment: { filename: string; base64: string } | undefined;
+    // the contract gets generated and saved onto the play's Contract File
+    // slot. The agent isn't handed a raw copy directly (by email or
+    // otherwise) -- they're pointed at the Contract Review screen, which
+    // reads live off the same fields a fix would touch. That matters
+    // because the only way to correct a mistake in a generated contract is
+    // to fix the underlying data and regenerate; a stray attachment
+    // invites hand-editing the Word file instead, which silently drifts
+    // from the database. See plays/[id]/contract and its "Send to buyer"
+    // action, which regenerates once more right before marking it sent so
+    // it always reflects whatever was last corrected here.
+    //
+    // A generation/save failure here must never block the approval-
+    // response email itself, so it's caught and logged; the review screen
+    // itself offers a "Generate contract" fallback when nothing's on file
+    // yet, so the link below is always the right thing to send regardless.
+    let contractReady = false;
     if (decision === "approved") {
       const contract = await generateContractForPlay(data.play_id).catch((err) => {
         console.error("Contract generation failed during approval response:", err);
         return null;
       });
       if (contract?.ok) {
-        contractAttachment = { filename: contract.fileName, base64: contract.base64 };
-        await saveContractToPlay(data.play_id, contract.fileName, contract.base64).catch(
-          (err) => {
-            console.error("Saving the generated contract to the play failed:", err);
+        try {
+          const admin = createAdminClient();
+          if (!admin) {
+            console.warn(
+              "SUPABASE_SERVICE_ROLE_KEY is not set -- skipping saving the generated contract to the play's Contract File."
+            );
+          } else {
+            await saveContractToPlay(admin, data.play_id, contract.fileName, contract.base64);
+            contractReady = true;
           }
-        );
+        } catch (err) {
+          console.error("Saving the generated contract to the play failed:", err);
+        }
       } else if (contract && !contract.ok) {
         console.error("Contract generation failed during approval response:", contract.error);
       }
@@ -229,7 +179,9 @@ async function respond(
       dealTerms: data.deal_terms,
       capacity: data.capacity,
       playUrl: `https://base-camp-lovat.vercel.app/plays/${data.play_id}`,
-      contractAttachment,
+      contractReviewUrl: contractReady
+        ? `https://base-camp-lovat.vercel.app/plays/${data.play_id}/contract`
+        : undefined,
     }).catch((err) => {
       console.error("Approval-response notification failed:", err);
     });
