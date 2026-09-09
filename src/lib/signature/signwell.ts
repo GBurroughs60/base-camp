@@ -66,13 +66,14 @@ export class SignWellProvider implements SignatureProvider {
       throw new Error("sendForSignature requires both an artist and a buyer signer.");
     }
 
-    // Artist rep signs first, then the buyer -- the artist side is
-    // confirming what management/the artist already approved earlier in
-    // Base Camp; the buyer countersigns once that's locked in. Flip the
-    // order of these two recipient entries if that assumption is wrong.
+    // Buyer signs first, then the artist rep/manager countersigns second
+    // (Greg's explicit call -- not the earlier assumption that the artist
+    // side went first). apply_signing_order below means SignWell won't
+    // even notify the second recipient until the first has signed, so this
+    // array order is the actual signing order, not just a display order.
     const recipients: CreateDocumentRecipient[] = [
-      { id: "artist", name: artist.name, email: artist.email },
       { id: "buyer", name: buyer.name, email: buyer.email },
+      { id: "artist", name: artist.name, email: artist.email },
     ];
 
     const res = await signwellFetch("/documents", {
