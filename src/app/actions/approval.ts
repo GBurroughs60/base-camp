@@ -2,8 +2,74 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { sendApprovalResponseEmail } from "@/lib/approvalEmail";
 import { generateContractForPlay } from "./contract";
+
+const CONTRACT_BUCKET = "play-contracts";
+
+// Saves the just-generated contract into the play's own Contract File slot
+// -- the same bucket/columns ContractUpload.tsx uses for a manually
+// uploaded contract -- so the copy that goes out at approval is visible
+// and re-downloadable inside Base Camp, not just sitting in an email.
+// Requires SUPABASE_SERVICE_ROLE_KEY: this runs from the public, anon-role
+// approval flow, and the play-contracts bucket's RLS policies only allow
+// authenticated (staff) reads/writes, same as every other table this flow
+// touches through a privileged path rather than opening RLS to anon.
+//
+// Keeps exactly one contract on file per play, matching the single-file
+// model ContractUpload already uses: whatever was there before (manually
+// uploaded or from an earlier approval cycle) is removed once the new one
+// is safely uploaded, rather than letting copies pile up.
+//
+// Best-effort and isolated on purpose -- see the try/catch at the call
+// site. A missing key or a storage hiccup should never block the
+// approval-response email, which already carries the contract as an
+// attachment regardless of whether this save succeeds.
+async function saveContractToPlay(
+  playId: string,
+  fileName: string,
+  base64: string
+): Promise<void> {
+  const admin = createAdminClient();
+  if (!admin) {
+    console.warn(
+      "SUPABASE_SERVICE_ROLE_KEY is not set -- skipping saving the generated contract to the play's Contract File (the approval email attachment still went out)."
+    );
+    return;
+  }
+
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `${playId}/${Date.now()}-${safeName}`;
+  const bytes = Buffer.from(base64, "base64");
+
+  const { error: uploadError } = await admin.storage
+    .from(CONTRACT_BUCKET)
+    .upload(path, bytes, {
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      upsert: true,
+    });
+  if (uploadError) throw uploadError;
+
+  const { data: existing } = await admin.storage.from(CONTRACT_BUCKET).list(playId);
+  const stale = (existing ?? [])
+    .map((f) => `${playId}/${f.name}`)
+    .filter((p) => p !== path);
+  if (stale.length > 0) {
+    await admin.storage.from(CONTRACT_BUCKET).remove(stale);
+  }
+
+  const { error: updateError } = await admin
+    .from("plays")
+    .update({
+      contract_file_path: path,
+      contract_file_name: fileName,
+      contract_uploaded_at: new Date().toISOString(),
+    })
+    .eq("id", playId);
+  if (updateError) throw updateError;
+}
 
 // Public, unauthenticated surface: the /approve/[token] page and these two
 // actions are how management/the artist respond to an offer without a Base
@@ -141,6 +207,11 @@ async function respond(
       });
       if (contract?.ok) {
         contractAttachment = { filename: contract.fileName, base64: contract.base64 };
+        await saveContractToPlay(data.play_id, contract.fileName, contract.base64).catch(
+          (err) => {
+            console.error("Saving the generated contract to the play failed:", err);
+          }
+        );
       } else if (contract && !contract.ok) {
         console.error("Contract generation failed during approval response:", contract.error);
       }
