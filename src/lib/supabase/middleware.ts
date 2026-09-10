@@ -35,12 +35,22 @@ export async function updateSession(request: NextRequest) {
   // Base Camp account, so this route must stay reachable logged-out. /book
   // is the public offer-intake form (venues/promoters submitting a new
   // offer) -- same reasoning, no Base Camp login on that side either.
-  // Neither is an auth route itself (a logged-in user hitting them isn't
-  // bounced anywhere), just exempt from the login redirect below.
+  // /api/webhooks is server-to-server: SignWell (and any future provider)
+  // calls these with no Base Camp session/cookie at all, so without this
+  // exemption every callback got 307-redirected to /login instead of
+  // reaching the route handler -- discovered when contract_signatures
+  // never advanced past "sent" for a document SignWell itself showed as
+  // Completed. Each webhook route authenticates the call on its own terms
+  // (see verifyWebhookSignature in signwell.ts), so this exemption doesn't
+  // weaken auth -- it just lets those requests reach that check at all.
+  // None of these three are an auth route themselves (a logged-in user
+  // hitting them isn't bounced anywhere), just exempt from the login
+  // redirect below.
   const isPublicRoute =
     isAuthRoute ||
     request.nextUrl.pathname.startsWith("/approve/") ||
-    request.nextUrl.pathname.startsWith("/book");
+    request.nextUrl.pathname.startsWith("/book") ||
+    request.nextUrl.pathname.startsWith("/api/webhooks");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
