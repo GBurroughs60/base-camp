@@ -282,5 +282,19 @@ export function buildContractMergeData(ctx: ContractContext): ContractMergeData 
     purchaser_signatory_name: orTbd(purchaserContact?.full_name ?? null),
     purchaser_email: orTbd(purchaserContact?.email ?? null),
     purchaser_phone: orTbd(purchaserContact?.phone ?? null),
+    // SignWell "text tag" markers (see developers.signwell.com/reference/adding-text-tags)
+    // -- not real contract content, just invisible (white-on-white, see the template's
+    // Section 11 Signature/Date cells) instructions telling SignWell where to place a
+    // signature/date field and for which signer. This is what actually makes a document
+    // created via the API signable: SignWell's own "with_signature_page" flag (tried
+    // first) left documents permanently stuck in a non-standard "Sending" status with no
+    // fields ever placed, confirmed via a live QA send. Signer numbers below must match
+    // recipient order in SignWellProvider.sendForSignature (buyer added first == signer 1,
+    // artist added second == signer 2) -- these two are intentionally coupled and must be
+    // changed together if the signing order ever changes.
+    purchaser_signature_tag: "{{signature:1:y}}",
+    purchaser_date_tag: "{{date:1:y}}",
+    artist_rep_signature_tag: "{{signature:2:y}}",
+    artist_rep_date_tag: "{{date:2:y}}",
   };
 }

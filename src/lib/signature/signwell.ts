@@ -85,12 +85,21 @@ export class SignWellProvider implements SignatureProvider {
         files: [{ name: input.fileName, file_base64: input.fileBase64 }],
         recipients,
         apply_signing_order: true,
-        // Lets SignWell drop in its own signature page/fields rather than
-        // us having to specify exact field coordinates on a template we
-        // don't control pixel-for-pixel (the .docx is regenerated fresh
-        // from live data every time -- there's no fixed layout to pin
-        // fields to).
-        with_signature_page: true,
+        // Fields are placed via SignWell "text tags" embedded (invisibly --
+        // white-on-white) in the contract template's own Section 11
+        // Signature/Date cells -- see purchaser_signature_tag /
+        // artist_rep_signature_tag etc. in buildContractMergeData. This
+        // replaced an earlier attempt using `with_signature_page: true`,
+        // which was meant to let SignWell auto-place its own signature
+        // page without us having to pin exact pixel coordinates on a
+        // .docx that's regenerated fresh from live data every time (so
+        // there's no fixed layout to target). That flag did not work in
+        // practice: a live QA send with it left the document permanently
+        // stuck in a non-standard "Sending" status, never reaching "Sent",
+        // with the document's own field checklist confirming no fields
+        // had actually been placed for either recipient. Text tags don't
+        // have that problem since they ride along with the contract's
+        // real content regardless of how the page layout shifts.
       }),
     });
 
