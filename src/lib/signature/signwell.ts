@@ -175,19 +175,39 @@ export class SignWellProvider implements SignatureProvider {
   }
 
   parseWebhookEvent(rawBody: string): NormalizedSignatureEvent {
-    // NEEDS LIVE VERIFICATION: the per-recipient status field inside
-    // data.recipients[] (used here as a best-effort fallback) isn't fully
-    // pinned down by the public docs -- the primary signal this relies on
-    // is event.type plus event.related_signer_id, which are documented.
+    // Confirmed against developers.signwell.com/reference/event-data (the
+    // "NEEDS LIVE VERIFICATION" guess this replaced had both of these
+    // wrong, caught by a post-fix regression send: real events never fired
+    // a recipientId match, silently no-op'ing every webhook after the
+    // middleware fix let them through at all):
+    //
+    //  - The document id is at data.object.id, not data.id -- every event
+    //    was logging "no contract_signatures row for provider_document_id="
+    //    (empty) because parsed.data.id doesn't exist.
+    //  - There is no related_signer_id/related_recipient_id field at all.
+    //    SignWell identifies the signer by related_signer.email (or
+    //    related_recipient.email/.id for SMS-specific events) -- getting
+    //    back to *our* recipient id ("artist"/"buyer", assigned in
+    //    sendForSignature) means cross-referencing that email against
+    //    data.object.recipients[], which echoes the id we originally sent.
     const parsed = JSON.parse(rawBody) as {
-      event?: { type?: string; related_signer_id?: string; related_recipient_id?: string };
-      data?: { id?: string };
+      event?: {
+        type?: string;
+        related_signer?: { email?: string };
+        related_recipient?: { id?: string; email?: string };
+      };
+      data?: { object?: { id?: string; recipients?: { id?: string; email?: string }[] } };
     };
 
     const rawType = parsed.event?.type ?? "";
-    const providerDocumentId = parsed.data?.id ?? "";
+    const providerDocumentId = parsed.data?.object?.id ?? "";
+    const relatedEmail =
+      parsed.event?.related_signer?.email ?? parsed.event?.related_recipient?.email ?? null;
+    const recipients = parsed.data?.object?.recipients ?? [];
     const recipientId =
-      parsed.event?.related_signer_id ?? parsed.event?.related_recipient_id ?? null;
+      (relatedEmail ? recipients.find((r) => r.email === relatedEmail)?.id : undefined) ??
+      parsed.event?.related_recipient?.id ??
+      null;
 
     const typeMap: Record<string, NormalizedSignatureEvent["type"]> = {
       document_sent: "sent",
