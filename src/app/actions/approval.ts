@@ -36,6 +36,20 @@ export type ApprovalSummary = {
   // Set once someone has responded -- the matched contact's name, or the
   // free-text name they typed if they weren't in responderOptions.
   respondedByName: string | null;
+  // Added so management/the artist can actually evaluate the offer on this
+  // page rather than just seeing the headline numbers -- they have no Base
+  // Camp login, so this page (not the play record itself) is the only
+  // place they ever see these before deciding. See RespondForm in
+  // app/approve/[token]/page.tsx.
+  showType: string | null;
+  billPosition: string | null;
+  otherArtistsOnBill: string | null;
+  showLength: string | null;
+  productionProvided: boolean | null;
+  foodProvided: boolean | null;
+  drinksProvided: boolean | null;
+  hotelProvided: boolean | null;
+  travelProvided: boolean | null;
 };
 
 type SummaryRow = {
@@ -51,6 +65,15 @@ type SummaryRow = {
   approval_responded_at: string | null;
   responder_options: { id: string; full_name: string }[] | null;
   responded_by_name: string | null;
+  show_type: string | null;
+  bill_position: string | null;
+  other_artists_on_bill: string | null;
+  show_length: string | null;
+  production_provided: boolean | null;
+  food_provided: boolean | null;
+  drinks_provided: boolean | null;
+  hotel_provided: boolean | null;
+  travel_provided: boolean | null;
 };
 
 export async function getApprovalSummary(token: string): Promise<ApprovalSummary | null> {
@@ -77,6 +100,15 @@ export async function getApprovalSummary(token: string): Promise<ApprovalSummary
       fullName: r.full_name,
     })),
     respondedByName: data.responded_by_name,
+    showType: data.show_type,
+    billPosition: data.bill_position,
+    otherArtistsOnBill: data.other_artists_on_bill,
+    showLength: data.show_length,
+    productionProvided: data.production_provided,
+    foodProvided: data.food_provided,
+    drinksProvided: data.drinks_provided,
+    hotelProvided: data.hotel_provided,
+    travelProvided: data.travel_provided,
   };
 }
 

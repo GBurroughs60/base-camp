@@ -91,6 +91,11 @@ function formatMoney(n: number | null): string | null {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function yesNo(b: boolean | null): string | null {
+  if (b === null || b === undefined) return null;
+  return b ? "Yes" : "No";
+}
+
 // Shared "who's responding?" control, duplicated inside both the approve
 // and decline <form> elements below (each form only submits its own
 // fields, and there's no client JS here to sync one control across two
@@ -148,6 +153,31 @@ function RespondForm({
     ...(summary.dealTerms ? ([["Deal terms", summary.dealTerms]] as [string, string][]) : []),
     ...(summary.capacity != null
       ? ([["Capacity", String(summary.capacity)]] as [string, string][])
+      : []),
+    ...(summary.showType ? ([["Show type", summary.showType]] as [string, string][]) : []),
+    ...(summary.billPosition
+      ? ([["Bill position", summary.billPosition]] as [string, string][])
+      : []),
+    ...(summary.otherArtistsOnBill
+      ? ([["Other artists on bill", summary.otherArtistsOnBill]] as [string, string][])
+      : []),
+    ...(summary.showLength ? ([["Set length", summary.showLength]] as [string, string][]) : []),
+    ...(summary.productionProvided !== null
+      ? ([
+          ["Production provided by", summary.productionProvided ? "Purchaser" : "Artist"],
+        ] as [string, string][])
+      : []),
+    ...(yesNo(summary.foodProvided)
+      ? ([["Food provided", yesNo(summary.foodProvided) as string]] as [string, string][])
+      : []),
+    ...(yesNo(summary.drinksProvided)
+      ? ([["Drinks provided", yesNo(summary.drinksProvided) as string]] as [string, string][])
+      : []),
+    ...(yesNo(summary.hotelProvided)
+      ? ([["Hotel provided", yesNo(summary.hotelProvided) as string]] as [string, string][])
+      : []),
+    ...(yesNo(summary.travelProvided)
+      ? ([["Travel provided", yesNo(summary.travelProvided) as string]] as [string, string][])
       : []),
   ];
 
