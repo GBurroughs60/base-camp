@@ -6,6 +6,7 @@ import type {
   SignatureSignerRole,
 } from "./types";
 import crypto from "node:crypto";
+import { FALLBACK_NOTIFY_EMAIL } from "@/lib/constants";
 
 const API_BASE = "https://www.signwell.com/api/v1";
 
@@ -85,6 +86,16 @@ export class SignWellProvider implements SignatureProvider {
         files: [{ name: input.fileName, file_base64: input.fileBase64 }],
         recipients,
         apply_signing_order: true,
+        // Ridge wants visibility into every contract's signing progress
+        // without that being tied to whichever email the SignWell account
+        // itself logs in as (deliberately kept on Greg's personal address --
+        // see the account's own Profile settings). copied_contacts is
+        // SignWell's mechanism for exactly this: a non-signing recipient who
+        // gets the account's own notification emails (sent/viewed/completed
+        // -- each toggle lives on the SignWell account's Profile page, all
+        // left at their default "Yes") plus the final signed document,
+        // without being added as a signer or shown in the signature block.
+        copied_contacts: [{ name: "Greg Burroughs", email: FALLBACK_NOTIFY_EMAIL }],
         // Fields are placed via SignWell "text tags" embedded (invisibly --
         // white-on-white) in the contract template's own Section 11
         // Signature/Date cells -- see purchaser_signature_tag /
