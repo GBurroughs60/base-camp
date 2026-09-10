@@ -88,18 +88,22 @@ export class SignWellProvider implements SignatureProvider {
         // Fields are placed via SignWell "text tags" embedded (invisibly --
         // white-on-white) in the contract template's own Section 11
         // Signature/Date cells -- see purchaser_signature_tag /
-        // artist_rep_signature_tag etc. in buildContractMergeData. This
-        // replaced an earlier attempt using `with_signature_page: true`,
-        // which was meant to let SignWell auto-place its own signature
-        // page without us having to pin exact pixel coordinates on a
-        // .docx that's regenerated fresh from live data every time (so
-        // there's no fixed layout to target). That flag did not work in
-        // practice: a live QA send with it left the document permanently
-        // stuck in a non-standard "Sending" status, never reaching "Sent",
-        // with the document's own field checklist confirming no fields
-        // had actually been placed for either recipient. Text tags don't
-        // have that problem since they ride along with the contract's
-        // real content regardless of how the page layout shifts.
+        // artist_rep_signature_tag etc. in buildContractMergeData. Chosen
+        // over pinning exact pixel coordinates via `fields` (the .docx is
+        // regenerated fresh from live data every time, so there's no fixed
+        // layout to target) and over `with_signature_page` (a live QA send
+        // with that flag left the document sitting in an unusual "Sending"
+        // status noticeably longer than a normal send, with no confirmed
+        // way to verify fields had actually been placed).
+        //
+        // text_tags defaults to false -- without explicitly setting it,
+        // SignWell doesn't scan the file for tags at all, and a `false`
+        // create-document call with no `fields` and no `with_signature_page`
+        // is rejected outright: a live test confirmed the exact error
+        // (422, recipients.with_no_fields: "These recipients have no fields
+        // associated: [buyer, artist]"), which is what sent us digging for
+        // this flag in the first place.
+        text_tags: true,
       }),
     });
 
