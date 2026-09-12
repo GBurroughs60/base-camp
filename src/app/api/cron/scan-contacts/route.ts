@@ -12,11 +12,26 @@ import { sendContactDigestEmail } from "@/lib/contactDigestEmail";
 // Triggered by Vercel Cron (see vercel.json, Mondays 14:00 UTC), which
 // sends `Authorization: Bearer $CRON_SECRET` automatically. A `?secret=`
 // query param is also accepted for manual/local testing (`curl`), and an
-// optional `?days=N` overrides the normal 8-day lookback window -- use a
-// short value (e.g. 1) for a first manual run so it doesn't dump a whole
-// backlog into one digest.
+// optional `?days=N` overrides the normal 8-day lookback window (`?days=0`
+// or `?days=all` means unbounded -- the entire mailbox).
+//
+// IMPORTANT -- do not use `?days=0`/`all` against the *deployed* route: The
+// Ridge's Vercel plan is Hobby, which hard-caps every serverless function
+// at 60s (see maxDuration below -- already set to that ceiling) regardless
+// of any greater value configured here. A one-time full-history backfill
+// across two mailboxes -- one Gmail API round trip per message -- will
+// almost certainly blow past that and just time out with partial results.
+// Run that specific backfill against `next dev` on a real machine instead
+// (this exact route, same code, just no serverless time limit), then let
+// the deployed route take over for the normal weekly 8-day-window runs,
+// which comfortably fit in 60s.
 const GREG_MAILBOX = "gburroughs@theridgemusicgroup.com";
 const JUSTIN_MAILBOX = "jmayotte@theridgemusicgroup.com";
+
+// Raise Hobby's default 10s timeout to its own 60s ceiling -- the most this
+// plan allows a serverless function to run, regardless of a larger value
+// here. Even a normal weekly run benefits from the extra margin.
+export const maxDuration = 60;
 
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -52,8 +67,13 @@ export async function GET(req: NextRequest) {
   }
 
   const url = new URL(req.url);
-  const daysParam = Number(url.searchParams.get("days"));
-  const lookbackDays = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 8;
+  const daysRaw = url.searchParams.get("days");
+  const lookbackDays =
+    daysRaw === "0" || daysRaw === "all"
+      ? 0
+      : Number.isFinite(Number(daysRaw)) && Number(daysRaw) > 0
+        ? Number(daysRaw)
+        : 8;
 
   const supabase = createServiceRoleClient();
 

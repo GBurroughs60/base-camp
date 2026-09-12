@@ -139,6 +139,12 @@ export type ScannedCandidate = {
 // re-triggers a digest entry or duplicates a row. The cron route exposes a
 // `?days=` override so a first manual run can use a short window instead of
 // dumping a whole backlog into one digest -- see the route for details.
+//
+// `lookbackDays: 0` means unbounded -- no `newer_than` filter at all, i.e.
+// the entire mailbox. This is meant for a one-time full-history backfill
+// (Greg wants the first run to capture everything, not just the last
+// week), NOT for routine invocation: see the cron route's own comment on
+// why that backfill should run outside the deployed serverless function.
 export async function scanMailbox(
   mailbox: string,
   source: ScanSource,
@@ -151,7 +157,7 @@ export async function scanMailbox(
   do {
     const { data } = await gmail.users.messages.list({
       userId: "me",
-      q: `newer_than:${lookbackDays}d`,
+      ...(lookbackDays > 0 ? { q: `newer_than:${lookbackDays}d` } : {}),
       pageToken,
       maxResults: 500,
     });
