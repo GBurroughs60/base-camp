@@ -117,6 +117,27 @@ type ActionResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string; blockers?: DeleteBlocker[] };
 
+// Maps a unique-index name to a message a user can actually act on. Without
+// this, a collision (e.g. entering an email or website already on another
+// record) surfaces Postgres's raw "duplicate key value violates unique
+// constraint \"contacts_email_unique_ci\"" -- technically correct, not
+// helpful. Add an entry here whenever a new unique index is introduced on a
+// user-editable column.
+const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
+  contacts_email_unique_ci: "Another contact already has this email address.",
+  companies_website_unique_ci: "Another company already has this website.",
+};
+
+function friendlyDbError(error: { code?: string; message: string }): string {
+  if (error.code === "23505") {
+    for (const [constraint, message] of Object.entries(UNIQUE_CONSTRAINT_MESSAGES)) {
+      if (error.message.includes(constraint)) return message;
+    }
+    return "This value is already in use by another record.";
+  }
+  return error.message;
+}
+
 export async function updateField(
   table: TableName,
   id: string,
@@ -132,7 +153,7 @@ export async function updateField(
     .update({ [field]: value === "" ? null : value })
     .eq("id", id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error) };
 
   // The one place every play status change flows through -- board
   // drag-and-drop and the detail-page dropdown both call this. Firing the
@@ -269,7 +290,7 @@ export async function updateFields(
   const supabase = await createClient();
   const { error } = await supabase.from(table).update(data).eq("id", id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error) };
   return { ok: true, data: undefined };
 }
 
@@ -353,7 +374,7 @@ export async function createRecord(
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: friendlyDbError(error) };
   return { ok: true, data: { id: inserted.id as string } };
 }
 
