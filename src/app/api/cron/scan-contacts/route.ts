@@ -15,23 +15,22 @@ import { sendContactDigestEmail } from "@/lib/contactDigestEmail";
 // optional `?days=N` overrides the normal 8-day lookback window (`?days=0`
 // or `?days=all` means unbounded -- the entire mailbox).
 //
-// IMPORTANT -- do not use `?days=0`/`all` against the *deployed* route: The
-// Ridge's Vercel plan is Hobby, which hard-caps every serverless function
-// at 60s (see maxDuration below -- already set to that ceiling) regardless
-// of any greater value configured here. A one-time full-history backfill
-// across two mailboxes -- one Gmail API round trip per message -- will
-// almost certainly blow past that and just time out with partial results.
-// Run that specific backfill against `next dev` on a real machine instead
-// (this exact route, same code, just no serverless time limit), then let
-// the deployed route take over for the normal weekly 8-day-window runs,
-// which comfortably fit in 60s.
+// IMPORTANT -- be cautious using `?days=0`/`all` against the *deployed*
+// route: The Ridge's Vercel plan is Hobby, which hard-caps every
+// serverless function at 300s (5 min -- see maxDuration below, already at
+// that ceiling) regardless of any greater value configured here. A normal
+// weekly run comfortably fits; a one-time full-history backfill across two
+// mailboxes -- one Gmail API round trip per message -- might still exceed
+// 5 minutes if either inbox has a large multi-year history. If a manual
+// `?days=all` run against the deployed route times out (504), fall back to
+// running this exact route via `next dev` on a real machine instead, which
+// has no such limit.
 const GREG_MAILBOX = "gburroughs@theridgemusicgroup.com";
 const JUSTIN_MAILBOX = "jmayotte@theridgemusicgroup.com";
 
-// Raise Hobby's default 10s timeout to its own 60s ceiling -- the most this
-// plan allows a serverless function to run, regardless of a larger value
-// here. Even a normal weekly run benefits from the extra margin.
-export const maxDuration = 60;
+// Hobby's max duration is already 300s by default -- this just makes that
+// explicit rather than relying on the platform default.
+export const maxDuration = 300;
 
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
