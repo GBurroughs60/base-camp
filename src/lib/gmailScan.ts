@@ -152,12 +152,21 @@ export async function scanMailbox(
 ): Promise<ScannedCandidate[]> {
   const gmail = gmailClientFor(mailbox);
 
+  // The gmail.metadata scope does not support the `q` search parameter at
+  // all -- Google rejects it outright with a 403 "Metadata scope does not
+  // support 'q' parameter". Discovered when the normal weekly
+  // `newer_than:8d` query broke every real scan in production, even
+  // though the unbounded backfill (which never sent `q`) had worked fine.
+  // So every list call now always fetches the full message id list, and
+  // the lookbackDays cutoff below is applied client-side against each
+  // message's own Date header instead -- keeps the same minimal
+  // headers-only scope rather than upgrading to a broader one just for
+  // server-side date filtering.
   const messageIds: string[] = [];
   let pageToken: string | undefined;
   do {
     const { data } = await gmail.users.messages.list({
       userId: "me",
-      ...(lookbackDays > 0 ? { q: `newer_than:${lookbackDays}d` } : {}),
       pageToken,
       maxResults: 500,
     });
@@ -168,6 +177,7 @@ export async function scanMailbox(
   } while (pageToken);
 
   const found = new Map<string, ScannedCandidate>();
+  const cutoff = lookbackDays > 0 ? Date.now() - lookbackDays * 24 * 60 * 60 * 1000 : null;
 
   for (const id of messageIds) {
     const { data: msg } = await gmail.users.messages.get({
@@ -180,6 +190,13 @@ export async function scanMailbox(
     const headers = msg.payload?.headers ?? [];
     const headerValue = (name: string) =>
       headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
+
+    if (cutoff !== null) {
+      const messageDate = new Date(headerValue("Date"));
+      if (Number.isNaN(messageDate.getTime()) || messageDate.getTime() < cutoff) {
+        continue;
+      }
+    }
 
     for (const headerVal of [headerValue("From"), headerValue("To"), headerValue("Cc")]) {
       if (!headerVal) continue;
