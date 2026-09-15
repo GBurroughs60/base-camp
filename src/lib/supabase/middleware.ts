@@ -43,14 +43,21 @@ export async function updateSession(request: NextRequest) {
   // Completed. Each webhook route authenticates the call on its own terms
   // (see verifyWebhookSignature in signwell.ts), so this exemption doesn't
   // weaken auth -- it just lets those requests reach that check at all.
-  // None of these three are an auth route themselves (a logged-in user
+  // /api/cron is the same situation: Vercel Cron (and a manual `?secret=`
+  // curl) calls these with no Base Camp session either, and each route
+  // checks CRON_SECRET itself (see isAuthorized in scan-contacts/route.ts)
+  // -- found this one live, via the exact same symptom as the webhooks
+  // bug above (a 307 to /login instead of reaching the handler), while
+  // testing the scan-contacts route directly against production.
+  // None of these four are an auth route themselves (a logged-in user
   // hitting them isn't bounced anywhere), just exempt from the login
   // redirect below.
   const isPublicRoute =
     isAuthRoute ||
     request.nextUrl.pathname.startsWith("/approve/") ||
     request.nextUrl.pathname.startsWith("/book") ||
-    request.nextUrl.pathname.startsWith("/api/webhooks");
+    request.nextUrl.pathname.startsWith("/api/webhooks") ||
+    request.nextUrl.pathname.startsWith("/api/cron");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
