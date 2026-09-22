@@ -88,7 +88,18 @@ export const NOISE_DOMAIN_DENYLIST = [
 const NOISE_LOCAL_PART_RE =
   /^(no[-.]?reply|noreply|do[-.]?not[-.]?reply|notifications?|mailer-daemon|postmaster|calendar|invite|bounce|alerts?|updates?|digest|newsletter|support|help|info|hello|contact|billing|receipts?|automated|system|admin|webmaster|feedback)$/i;
 
+// Greg's own addresses that aren't @theridgemusicgroup.com -- never a new
+// contact either, same reasoning as RIDGE_DOMAIN above, just for the one
+// or two specific personal addresses rather than a whole domain (a
+// personal Gmail/Yahoo address can't be denylisted by domain the way a
+// company's can -- it's shared with millions of real prospects).
+const KNOWN_PERSONAL_EMAILS = new Set([
+  "greg.burroughs@yahoo.com",
+  "justinmayottephoto@gmail.com",
+]);
+
 function isNoiseAddress(email: string): boolean {
+  if (KNOWN_PERSONAL_EMAILS.has(email)) return true;
   const at = email.lastIndexOf("@");
   if (at === -1) return true;
   const domain = email.slice(at + 1).toLowerCase();

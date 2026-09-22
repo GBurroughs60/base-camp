@@ -133,22 +133,71 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "gmail scan failed, see logs" });
   }
 
-  // 2. Filter out anything already a contact, and anything on a
-  // Greg-curated always-exclude domain.
-  const [{ data: existingContacts }, { data: excludedDomains }] = await Promise.all([
-    supabase.from("contacts").select("email").not("email", "is", null),
-    supabase.from("domain_rules").select("domain_normalized").eq("rule", "always_exclude"),
-  ]);
+  // 2. Filter out anything already a contact, anything on a Greg-curated
+  // always-exclude domain, and anything already "inside" a Ridge artist
+  // relationship -- a new address at a company Ridge already works with
+  // isn't a fresh lead just because that exact address hasn't shown up
+  // before (e.g. a second person at an existing artist's management
+  // company), and an artist's own personal/promo address is never a lead
+  // either even though nothing links it to anything else in the database.
+  const [{ data: existingContacts }, { data: excludedDomains }, { data: teamContacts }, { data: activeArtists }] =
+    await Promise.all([
+      supabase.from("contacts").select("email").not("email", "is", null),
+      supabase.from("domain_rules").select("domain_normalized").eq("rule", "always_exclude"),
+      supabase.from("contact_artists").select("contacts(email)"),
+      supabase.from("artists").select("name").eq("archived", false),
+    ]);
 
   const existingEmails = new Set(
     (existingContacts ?? []).map((c) => (c.email as string).toLowerCase())
   );
   const excludedDomainSet = new Set((excludedDomains ?? []).map((d) => d.domain_normalized as string));
 
+  // Free/consumer webmail providers are deliberately excluded from the
+  // team-domain set below -- an artist's manager happening to use Gmail
+  // doesn't mean every other Gmail address is "already known", which
+  // would silently blackhole most of what this scan is supposed to find.
+  const GENERIC_EMAIL_PROVIDERS = new Set([
+    "gmail.com",
+    "yahoo.com",
+    "aol.com",
+    "outlook.com",
+    "hotmail.com",
+    "icloud.com",
+    "live.com",
+    "msn.com",
+    "me.com",
+  ]);
+  const teamDomains = new Set(
+    (teamContacts ?? [])
+      .map((row) => (row.contacts as unknown as { email: string | null } | null)?.email)
+      .filter((e): e is string => !!e)
+      .map((e) => e.toLowerCase().split("@")[1])
+      .filter((d): d is string => !!d && !GENERIC_EMAIL_PROVIDERS.has(d))
+  );
+
+  // Catches an artist's own address (e.g. brittanyelisemusic1@gmail.com
+  // for "Brittany Elise") even though nothing in the database links that
+  // specific address to anything -- there's no domain or contact row to
+  // match against, only the name itself showing up in the address. A
+  // higher length floor than the venue/event name-mention match
+  // (matchByNameMention, below) since this is matching inside a compact
+  // username-style string with no word boundaries to anchor on, where a
+  // short name risks a false positive.
+  function normalizeForMatch(s: string): string {
+    return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+  const artistNameFragments = (activeArtists ?? [])
+    .map((a) => normalizeForMatch(a.name as string))
+    .filter((n) => n.length >= 6);
+
   const filtered = scanned.filter((c) => {
     if (existingEmails.has(c.email)) return false;
     const domain = c.email.split("@")[1];
     if (domain && excludedDomainSet.has(domain)) return false;
+    if (domain && teamDomains.has(domain)) return false;
+    const localPart = normalizeForMatch(c.email.split("@")[0] ?? "");
+    if (artistNameFragments.some((fragment) => localPart.includes(fragment))) return false;
     return true;
   });
 
