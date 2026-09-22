@@ -19,22 +19,16 @@ export type CandidateListRow = {
   bodySnippet: string | null;
 };
 
-// Shared column template applied to both the header and every row, via
-// CSS grid rather than a real <table>/<td>. A <table> was the original
-// build here, and it broke in a way that isn't easily patched: the
-// InlineRelationField/RelationSearchPicker dropdown is an absolutely
-// positioned popover, and an ancestor <td>/<table> combined with
-// DataTable's own overflow-x-auto wrapper clips and z-index-fights any
-// popover that tries to escape it -- so the "add a venue" search box came
-// out half-hidden behind neighboring cells, and on a row near the bottom
-// of the table the Add/Dismiss actions column could end up past whatever
-// the wrapper's clipped bounds were, with no way to reach it. Plain
-// sibling divs with no clipping ancestor don't have either problem: a
-// popover just renders on top of whatever's below it and the page scrolls
-// normally past the wrapper's edge.
+// One grid, not one-grid-per-row. The first cut of this used a separate
+// grid container for the header and for each row (all sharing the same
+// grid-template-columns string), which reads as "should line up" but
+// didn't reliably: each is an independent grid that resolves its own fr
+// tracks, and in practice the header ended up visibly offset from the
+// data below it. A single shared grid removes the question entirely --
+// every cell, header or data, is a track in the exact same grid instance,
+// so there's only one column layout to compute, period.
 const GRID_COLS =
-  "grid gap-3 items-center " +
-  "[grid-template-columns:minmax(200px,1.4fr)_minmax(140px,1fr)_minmax(170px,1.1fr)_minmax(150px,1fr)_minmax(120px,0.9fr)_auto]";
+  "grid-cols-[minmax(200px,1.4fr)_minmax(140px,1fr)_minmax(170px,1.1fr)_minmax(150px,1fr)_minmax(120px,0.9fr)_auto]";
 
 export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
   const [query, setQuery] = useState("");
@@ -63,30 +57,35 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
         />
       </div>
 
-      <div className="border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900 overflow-visible">
+      {filtered.length === 0 ? (
+        <p className="p-6 text-sm text-black/60 dark:text-white/60 border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900">
+          {rows.length ? "No matches." : "No new candidates right now -- check back after the next weekly scan."}
+        </p>
+      ) : (
         <div
-          className={`${GRID_COLS} px-4 py-2 text-xs font-medium text-black/50 dark:text-white/50 bg-black/[.03] dark:bg-white/[.06] rounded-t-lg`}
+          className={`grid ${GRID_COLS} border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900 overflow-visible`}
         >
-          <span>Email</span>
-          <span>Name</span>
-          <span>Company / Venue</span>
-          <span>Event</span>
-          <span>Phone</span>
-          <span />
-        </div>
+          {(["Email", "Name", "Company / Venue", "Event", "Phone", ""] as const).map((label, i) => (
+            <div
+              key={label || `h-${i}`}
+              className="px-4 py-2 text-xs font-medium text-black/50 dark:text-white/50 bg-black/[.03] dark:bg-white/[.06]"
+            >
+              {label}
+            </div>
+          ))}
 
-        {filtered.length === 0 && (
-          <p className="p-6 text-sm text-black/60 dark:text-white/60">
-            {rows.length ? "No matches." : "No new candidates right now -- check back after the next weekly scan."}
-          </p>
-        )}
-
-        <div className="divide-y divide-black/10 dark:divide-white/10">
-          {filtered.map((c) => {
+          {filtered.map((c, rowIndex) => {
             const context = [c.subject, c.bodySnippet].filter(Boolean).join(" — ") || undefined;
+            // Every cell in a row gets the same top border, which -- since
+            // they're contiguous tracks in one grid with no column gap --
+            // paints as a single unbroken line across the full row, same
+            // effect as divide-y on a normal block list.
+            const rowBorder =
+              rowIndex > 0 ? "border-t border-black/10 dark:border-white/10" : "";
+
             return (
-              <div key={c.id} className={`${GRID_COLS} px-4 py-3`}>
-                <div className="min-w-0">
+              <div key={c.id} className="contents">
+                <div className={`min-w-0 px-4 py-3 ${rowBorder}`}>
                   <a
                     href={`mailto:${c.email}`}
                     className="block truncate text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
@@ -103,7 +102,7 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
                   )}
                 </div>
 
-                <div className="min-w-0">
+                <div className={`min-w-0 px-4 py-3 ${rowBorder}`}>
                   <InlineEditField
                     table="candidates"
                     id={c.id}
@@ -113,7 +112,7 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
                   />
                 </div>
 
-                <div className="min-w-0">
+                <div className={`min-w-0 px-4 py-3 ${rowBorder}`}>
                   <InlineRelationField
                     table="candidates"
                     id={c.id}
@@ -128,7 +127,7 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
                   />
                 </div>
 
-                <div className="min-w-0">
+                <div className={`min-w-0 px-4 py-3 ${rowBorder}`}>
                   <InlineRelationField
                     table="candidates"
                     id={c.id}
@@ -143,7 +142,7 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
                   />
                 </div>
 
-                <div className="min-w-0">
+                <div className={`min-w-0 px-4 py-3 ${rowBorder}`}>
                   <InlineEditField
                     table="candidates"
                     id={c.id}
@@ -153,7 +152,7 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
                   />
                 </div>
 
-                <div>
+                <div className={`px-4 py-3 ${rowBorder}`}>
                   <CandidateRowActions
                     candidateId={c.id}
                     name={c.inferred_name}
@@ -167,7 +166,7 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
             );
           })}
         </div>
-      </div>
+      )}
     </div>
   );
 }

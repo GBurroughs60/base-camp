@@ -109,6 +109,7 @@ export default function CreateRecordModal({
   const [type, setType] = useState("venue");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
+  const [website, setWebsite] = useState("");
   const [showDate, setShowDate] = useState("");
   const [venue, setVenue] = useState<{ id: string; label: string } | null>(null);
   const [event, setEvent] = useState<{ id: string; label: string } | null>(null);
@@ -151,12 +152,19 @@ export default function CreateRecordModal({
       setError("Pick or create a venue or event");
       return;
     }
+    // Website drives domain-based candidate matching in the weekly scan --
+    // a venue created without one is invisible to that matching, so it's
+    // required here rather than left optional like city/state.
+    if (table === "companies" && !website.trim()) {
+      setError("Website is required");
+      return;
+    }
 
     const data: Record<string, unknown> =
       table === "contacts"
         ? { full_name: name, email: email || null, phone: phone || null }
         : table === "companies"
-          ? { name, type, city: city || null, state: state || null }
+          ? { name, type, city: city || null, state: state || null, website: website || null }
           : table === "events"
             ? { name, city: city || null, state: state || null }
             : table === "artists"
@@ -301,6 +309,20 @@ export default function CreateRecordModal({
                       </option>
                     ))}
                   </select>
+                </div>
+              )}
+              {table === "companies" && (
+                <div>
+                  <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
+                    Website
+                  </label>
+                  <input
+                    type="url"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange placeholder:text-black/30 dark:placeholder:text-white/30"
+                  />
                 </div>
               )}
               {(table === "companies" || table === "events") && (

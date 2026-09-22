@@ -76,10 +76,10 @@ export default function CandidateRowActions({
           type="button"
           onClick={handleAdd}
           disabled={pending || !canAdd}
-          title={canAdd ? undefined : "Add a name first"}
+          title={canAdd ? "Add to Base Camp" : "Add a name first"}
           className="rounded-md bg-ridge-orange text-white text-xs font-medium px-3 py-1.5 hover:bg-ridge-orange-dark transition-colors disabled:opacity-50 whitespace-nowrap"
         >
-          {busy === "add" ? "Adding…" : "Add to Base Camp"}
+          {busy === "add" ? "Adding…" : "Add"}
         </button>
         {confirmingDismiss ? (
           <span className="text-xs whitespace-nowrap">

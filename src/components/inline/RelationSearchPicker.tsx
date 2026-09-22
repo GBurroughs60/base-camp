@@ -49,6 +49,7 @@ export default function RelationSearchPicker({
   const [newType, setNewType] = useState("venue");
   const [newCity, setNewCity] = useState("");
   const [newState, setNewState] = useState("");
+  const [newWebsite, setNewWebsite] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -75,11 +76,19 @@ export default function RelationSearchPicker({
     setNewName(query);
     setNewEmail("");
     setNewPhone("");
+    setNewWebsite("");
   }, [showCreate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreate() {
     if (!newName.trim()) {
       setCreateError("Name is required");
+      return;
+    }
+    // Website drives domain-based candidate matching in the weekly scan --
+    // a venue/company created without one is invisible to that matching,
+    // so it's required here rather than left optional like city/state.
+    if (table === "companies" && !newWebsite.trim()) {
+      setCreateError("Website is required");
       return;
     }
     setCreating(true);
@@ -88,7 +97,13 @@ export default function RelationSearchPicker({
       table === "contacts"
         ? { full_name: newName, email: newEmail || null, phone: newPhone || null }
         : table === "companies"
-          ? { name: newName, type: newType, city: newCity || null, state: newState || null }
+          ? {
+              name: newName,
+              type: newType,
+              city: newCity || null,
+              state: newState || null,
+              website: newWebsite || null,
+            }
           : { name: newName };
 
     const res = await createRecord(table, data);
@@ -197,6 +212,13 @@ export default function RelationSearchPicker({
                   </option>
                 ))}
               </select>
+              <input
+                type="url"
+                value={newWebsite}
+                onChange={(e) => setNewWebsite(e.target.value)}
+                placeholder="Website"
+                className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1 text-sm outline-none focus:border-ridge-orange"
+              />
               <div className="flex gap-2">
                 <input
                   value={newCity}

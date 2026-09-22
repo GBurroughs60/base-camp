@@ -127,7 +127,13 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
 
 const REQUIRED_ON_CREATE: Record<TableName, string[]> = {
   contacts: ["full_name"],
-  companies: ["name"],
+  // Website drives the weekly scan's domain-based candidate matching (see
+  // scan-contacts/route.ts) -- a venue/company created without one is
+  // simply invisible to that matching, so it's required at creation
+  // rather than left to be filled in "eventually." Enforced here (not
+  // just in the two quick-create forms) so it can never be bypassed by a
+  // future caller of createRecord.
+  companies: ["name", "website"],
   events: ["name"],
   plays: [],
   artists: ["name"],

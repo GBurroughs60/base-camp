@@ -346,7 +346,15 @@ export async function scanMailbox(
     const outbound = fromEmail.endsWith(`@${RIDGE_DOMAIN}`);
 
     const greetingName = singleExternal && outbound ? extractGreetingName(newContent) : null;
-    const phone = singleExternal ? extractPhone(newContent) : null;
+    // Only from an INBOUND message -- a phone number in the body of an
+    // OUTBOUND message (Greg or Justin writing) is Greg's or Justin's own
+    // signature, not the external recipient's, and attaching it to the
+    // recipient's candidate row would be wrong. (Confirmed in practice:
+    // the same number showed up attached to two unrelated venue contacts
+    // who'd both received the same outbound message.) Only a number the
+    // external person wrote themselves, in a message they authored, is
+    // plausibly theirs.
+    const phone = singleExternal && !outbound ? extractPhone(newContent) : null;
 
     for (const headerVal of [headerValue("From"), headerValue("To"), headerValue("Cc")]) {
       if (!headerVal) continue;
