@@ -207,9 +207,26 @@ function extractGreetingName(text: string): string | null {
 // readily as one mentioned inline.
 const PHONE_RE = /(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/;
 
+// Greg's own cell -- he drops it into email bodies himself sometimes for
+// convenience, and the !outbound guard on the caller below is meant to be
+// the main defense against that (see the phone-attribution comment there),
+// but this is a second, unconditional backstop specifically for this
+// number: matched against digits-only so "513.490.9855", "(513) 490-9855",
+// etc. all normalize the same way, regardless of which direction/context
+// it turns up in. Confirmed by Greg directly -- if this number is ever
+// attributed to anyone else, it's wrong.
+const KNOWN_PERSONAL_PHONES = new Set(["5134909855"]);
+
+function normalizePhoneDigits(phone: string): string {
+  return phone.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+}
+
 function extractPhone(text: string): string | null {
   const m = PHONE_RE.exec(text);
-  return m ? m[0].trim() : null;
+  if (!m) return null;
+  const phone = m[0].trim();
+  if (KNOWN_PERSONAL_PHONES.has(normalizePhoneDigits(phone))) return null;
+  return phone;
 }
 
 // Deliberately simple, not RFC-5322-complete -- good enough for real
