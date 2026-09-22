@@ -13,6 +13,7 @@ export default async function AppLayout({
     { count: companyCount },
     { count: eventCount },
     { count: playCount },
+    { count: candidateCount },
   ] = await Promise.all([
     supabase
       .from("artists")
@@ -28,6 +29,12 @@ export default async function AppLayout({
       .select("*", { count: "exact", head: true })
       .eq("archived", false),
     supabase.from("plays").select("*", { count: "exact", head: true }),
+    // Same "new" definition as the candidates page itself -- imported/
+    // dismissed rows (and nothing else) drop out of this count.
+    supabase
+      .from("candidates")
+      .select("*", { count: "exact", head: true })
+      .or("status.is.null,status.eq.new"),
   ]);
 
   const counts = {
@@ -36,6 +43,7 @@ export default async function AppLayout({
     "/companies": companyCount ?? 0,
     "/events": eventCount ?? 0,
     "/plays": playCount ?? 0,
+    "/candidates": candidateCount ?? 0,
   };
 
   return (

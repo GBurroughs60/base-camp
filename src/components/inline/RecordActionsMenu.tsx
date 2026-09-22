@@ -17,6 +17,10 @@ const LIST_ROUTE: Record<TableName, string> = {
   events: "/events",
   plays: "/plays",
   artists: "/artists",
+  // Not reachable -- this menu is never rendered for candidates, which use
+  // their own CandidateRowActions (Add to Base Camp / Dismiss) instead of
+  // generic archive/delete, but TableName must be exhaustive.
+  candidates: "/candidates",
 };
 
 const LABEL: Record<TableName, string> = {
@@ -25,6 +29,7 @@ const LABEL: Record<TableName, string> = {
   events: "event",
   plays: "play",
   artists: "artist",
+  candidates: "candidate",
 };
 
 function MenuItem({

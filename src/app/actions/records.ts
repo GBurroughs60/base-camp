@@ -4,7 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { sendApprovalEmail } from "@/lib/approvalEmail";
 import { FALLBACK_NOTIFY_EMAIL } from "@/lib/constants";
 
-export type TableName = "contacts" | "companies" | "events" | "plays" | "artists";
+export type TableName =
+  | "contacts"
+  | "companies"
+  | "events"
+  | "plays"
+  | "artists"
+  | "candidates";
 
 // Whitelist of columns each table allows editing/creating through the
 // generic inline-edit and quick-create UI. This is the single source of
@@ -101,6 +107,22 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "signatory_contact_id",
     "legal_entity_name",
   ]),
+  // Candidates are never created through this generic system -- only the
+  // weekly scan cron inserts rows (service-role, bypassing this whitelist
+  // entirely) -- but existing fields are editable here so the review page
+  // can correct a wrong guess before importing, and so the review actions
+  // (candidates.ts) can flip status/contact_id once a candidate is
+  // resolved.
+  candidates: new Set([
+    "inferred_name",
+    "inferred_phone",
+    "inferred_company_name",
+    "matched_company_id",
+    "inferred_event_name",
+    "matched_event_id",
+    "status",
+    "contact_id",
+  ]),
 };
 
 const REQUIRED_ON_CREATE: Record<TableName, string[]> = {
@@ -109,6 +131,9 @@ const REQUIRED_ON_CREATE: Record<TableName, string[]> = {
   events: ["name"],
   plays: [],
   artists: ["name"],
+  // Never created through createRecord -- see the comment on
+  // EDITABLE_FIELDS.candidates above.
+  candidates: [],
 };
 
 export type DeleteBlocker = { label: string; href: string };

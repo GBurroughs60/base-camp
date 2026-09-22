@@ -12,6 +12,9 @@ const ROUTE: Record<TableName, string> = {
   events: "/events",
   plays: "/plays",
   artists: "/artists",
+  // Not reachable -- this modal is never opened for candidates (they're
+  // only ever created by the scan cron), but TableName must be exhaustive.
+  candidates: "/candidates",
 };
 
 const TITLE: Record<TableName, string> = {
@@ -20,6 +23,7 @@ const TITLE: Record<TableName, string> = {
   events: "New Event",
   plays: "New Play",
   artists: "New Artist",
+  candidates: "New Candidate",
 };
 
 const COMPANY_TYPES = [
@@ -157,12 +161,16 @@ export default function CreateRecordModal({
             ? { name, city: city || null, state: state || null }
             : table === "artists"
               ? { name }
-              : {
-                  show_date: showDate || null,
-                  venue_id: venue?.id ?? null,
-                  event_id: event?.id ?? null,
-                  artist_id: artistId,
-                };
+              : table === "plays"
+                ? {
+                    show_date: showDate || null,
+                    venue_id: venue?.id ?? null,
+                    event_id: event?.id ?? null,
+                    artist_id: artistId,
+                  }
+                : // Unreachable -- this modal is never opened for
+                  // candidates (see the ROUTE/TITLE comment above).
+                  {};
 
     setSubmitting(true);
     const res = await createRecord(table, data);

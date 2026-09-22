@@ -12,6 +12,7 @@ const links = [
   { href: "/companies", label: "Venues" },
   { href: "/events", label: "Events" },
   { href: "/plays", label: "Plays" },
+  { href: "/candidates", label: "Candidates" },
 ];
 
 export default function Nav({

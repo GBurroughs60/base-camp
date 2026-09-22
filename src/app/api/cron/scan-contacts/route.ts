@@ -3,11 +3,14 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { scanMailbox, type ScannedCandidate } from "@/lib/gmailScan";
 import { sendContactDigestEmail } from "@/lib/contactDigestEmail";
 
-// Weekly contact auto-discovery, Phase 1. Scans Greg's and Justin's Ridge
-// inboxes for email addresses that might be genuinely new contacts/venues,
-// records them in `candidates` so nothing resurfaces once handled, and
-// emails a digest of what's new this run. See the "Base Camp -- Weekly
-// Contact Auto-Discovery" plan for the full design.
+// Weekly contact auto-discovery. Scans Greg's and Justin's Ridge inboxes
+// for email addresses that might be genuinely new contacts/venues, records
+// them in `candidates` so nothing resurfaces once handled, and emails a
+// digest of what's new this run. See the "Base Camp -- Weekly Contact
+// Auto-Discovery" and "Richer candidate signals" plans for the full
+// design -- the latter added body-based name/company/event/phone
+// inference (see gmailScan.ts) on top of this route's original
+// header-only, domain-match version.
 //
 // Triggered by Vercel Cron (see vercel.json, Mondays 14:00 UTC), which
 // sends `Authorization: Bearer $CRON_SECRET` automatically. A `?secret=`
@@ -58,6 +61,32 @@ function normalizeWebsiteDomain(website: string): string | null {
   } catch {
     return trimmed.toLowerCase().replace(/^www\./, "").replace(/\/.*$/, "") || null;
   }
+}
+
+// Escapes a record name for use inside a RegExp -- names can contain
+// parens, periods, etc (e.g. "The Fillmore (Denver)").
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Best-guess a venue/event mention in free text (subject + trimmed body) by
+// scanning for any known record's name as a whole word/phrase. This is the
+// fallback signal alongside (companies) or in place of (events, which have
+// no domain to match against at all) the domain-based match above -- same
+// "load once per run, substring-match" shape as companyByDomain. Names
+// under 4 characters are skipped so a short, common word/abbreviation
+// doesn't produce a false positive.
+function matchByNameMention<T extends { id: string; name: string }>(
+  text: string,
+  records: T[]
+): T | null {
+  if (!text) return null;
+  for (const record of records) {
+    if (record.name.trim().length < 4) continue;
+    const re = new RegExp(`\\b${escapeRegExp(record.name.trim())}\\b`, "i");
+    if (re.test(text)) return record;
+  }
+  return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -123,35 +152,56 @@ export async function GET(req: NextRequest) {
     return true;
   });
 
-  // 3. Best-guess a company match against every company with a website on
-  // file (only 245 companies today -- cheap to load in full).
-  const { data: companies } = await supabase
-    .from("companies")
-    .select("id, name, website")
-    .not("website", "is", null);
+  // 3. Best-guess a company match. First pass: domain, against every
+  // company with a website on file (only 245 companies today -- cheap to
+  // load in full). Second pass (only when the first found nothing): scan
+  // the candidate's subject + body excerpt for a known company's name
+  // mention -- catches a venue that's referenced by name but doesn't have
+  // (or doesn't match on) a website on file. Separately, always try a name
+  // mention against events too, since there's no domain to match an event
+  // against at all.
+  const [{ data: companiesWithWebsite }, { data: allCompanies }, { data: allEvents }] =
+    await Promise.all([
+      supabase.from("companies").select("id, name, website").not("website", "is", null),
+      supabase.from("companies").select("id, name").eq("archived", false),
+      supabase.from("events").select("id, name").eq("archived", false),
+    ]);
 
   const companyByDomain = new Map<string, { id: string; name: string }>();
-  for (const company of companies ?? []) {
+  for (const company of companiesWithWebsite ?? []) {
     const domain = normalizeWebsiteDomain(company.website as string);
     if (domain && !companyByDomain.has(domain)) {
       companyByDomain.set(domain, { id: company.id as string, name: company.name as string });
     }
   }
+  const companyRecords = (allCompanies ?? []) as { id: string; name: string }[];
+  const eventRecords = (allEvents ?? []) as { id: string; name: string }[];
 
   type EnrichedCandidate = ScannedCandidate & {
     matchedCompanyId: string | null;
     inferredCompanyName: string | null;
     inferredCompanyDomain: string | null;
+    matchedEventId: string | null;
+    inferredEventName: string | null;
   };
 
   const enriched: EnrichedCandidate[] = filtered.map((c) => {
     const domain = c.email.split("@")[1] ?? null;
-    const match = domain ? companyByDomain.get(domain) : undefined;
+    const domainMatch = domain ? companyByDomain.get(domain) : undefined;
+
+    const mentionText = [c.subject, c.bodySnippet].filter(Boolean).join(" ");
+    const companyMention = domainMatch ? null : matchByNameMention(mentionText, companyRecords);
+    const eventMention = matchByNameMention(mentionText, eventRecords);
+
+    const company = domainMatch ?? companyMention ?? null;
+
     return {
       ...c,
-      matchedCompanyId: match?.id ?? null,
-      inferredCompanyName: match?.name ?? null,
+      matchedCompanyId: company?.id ?? null,
+      inferredCompanyName: company?.name ?? null,
       inferredCompanyDomain: domain,
+      matchedEventId: eventMention?.id ?? null,
+      inferredEventName: eventMention?.name ?? null,
     };
   });
 
@@ -183,9 +233,14 @@ export async function GET(req: NextRequest) {
         toInsert.map((c) => ({
           email: c.email,
           inferred_name: c.inferredName,
+          inferred_phone: c.inferredPhone,
           inferred_company_name: c.inferredCompanyName,
           inferred_company_domain: c.inferredCompanyDomain,
           matched_company_id: c.matchedCompanyId,
+          matched_event_id: c.matchedEventId,
+          inferred_event_name: c.inferredEventName,
+          subject: c.subject,
+          body_snippet: c.bodySnippet,
           source: c.source,
           source_message_ref: c.sourceMessageRef,
         }))

@@ -1,18 +1,22 @@
 import { google } from "googleapis";
 
-// Weekly contact auto-discovery, Phase 1 -- see the "Base Camp -- Weekly
-// Contact Auto-Discovery" plan. Scans Greg's and Justin's Gmail inboxes for
-// email addresses that might be net-new contacts/venues worth adding to
-// Base Camp, without ever reading message bodies or attachments.
+// Weekly contact auto-discovery, Phase 1+2 -- see the "Base Camp -- Weekly
+// Contact Auto-Discovery" and "Richer candidate signals" plans. Scans
+// Greg's and Justin's Gmail inboxes for email addresses that might be
+// net-new contacts/venues worth adding to Base Camp, and now also reads
+// message bodies (subject line + top of message, quoted history excluded)
+// to infer a greeting-line name, a phone number, and context for the
+// review UI.
 //
 // Auth: domain-wide delegation. A Google Cloud service account is
 // authorized in the Workspace Admin Console to impersonate any mailbox in
-// the theridgemusicgroup.com domain for the gmail.metadata scope (headers/
-// labels/snippet only -- no body, no attachments). Each call below builds a
-// fresh JWT client scoped to one mailbox via the `subject` field; nothing
-// is cached across calls since this only ever runs once a week from the
-// cron route.
-const GMAIL_METADATA_SCOPE = "https://www.googleapis.com/auth/gmail.metadata";
+// the theridgemusicgroup.com domain for the gmail.readonly scope (was
+// gmail.metadata -- upgraded so body content can be read; Greg approved
+// this trade-off explicitly and re-authorized the scope in Workspace
+// Admin). Each call below builds a fresh JWT client scoped to one mailbox
+// via the `subject` field; nothing is cached across calls since this only
+// ever runs once a week from the cron route.
+const GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 
 type ServiceAccountKey = { client_email: string; private_key: string };
 
@@ -51,7 +55,7 @@ function gmailClientFor(mailbox: string) {
   const auth = new google.auth.JWT({
     email: creds.client_email,
     key: creds.private_key,
-    scopes: [GMAIL_METADATA_SCOPE],
+    scopes: [GMAIL_READONLY_SCOPE],
     subject: mailbox,
   });
   return google.gmail({ version: "v1", auth });
@@ -96,6 +100,107 @@ function isNoiseAddress(email: string): boolean {
   return NOISE_LOCAL_PART_RE.test(localPart);
 }
 
+// -- Body extraction -----------------------------------------------------
+//
+// Everything below is new with the gmail.readonly upgrade: pulling a
+// plain-text version of the message body out of Gmail's MIME structure,
+// trimming it down to just the "new" content above any quoted thread
+// history, and running two small heuristics over that trimmed text. None
+// of this needs a new dependency -- Gmail already hands back the MIME tree
+// in `messages.get(..., format: "full")`.
+
+type GmailPart = {
+  mimeType?: string | null;
+  filename?: string | null;
+  body?: { data?: string | null; size?: number | null } | null;
+  parts?: GmailPart[] | null;
+};
+
+// Large parts (a big attachment, an embedded image) are skipped outright --
+// this is only ever looking for ordinary message text.
+const MAX_PART_BYTES = 200_000;
+
+function decodeBase64Url(data: string): string {
+  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Recursively walks the MIME tree for the first text/plain part, falling
+// back to text/html (tags stripped) if no plain-text part exists. Any part
+// with a `filename` is an attachment and is skipped, not walked into.
+function extractBodyText(payload: GmailPart | null | undefined): string {
+  if (!payload) return "";
+
+  let plainFound: string | null = null;
+  let htmlFound: string | null = null;
+
+  function walk(part: GmailPart) {
+    if (part.filename) return;
+    const size = part.body?.size ?? 0;
+    if (plainFound === null && part.mimeType === "text/plain" && part.body?.data && size <= MAX_PART_BYTES) {
+      plainFound = decodeBase64Url(part.body.data);
+      return;
+    }
+    if (htmlFound === null && part.mimeType === "text/html" && part.body?.data && size <= MAX_PART_BYTES) {
+      htmlFound = decodeBase64Url(part.body.data);
+      return;
+    }
+    for (const child of part.parts ?? []) walk(child);
+  }
+
+  walk(payload);
+  if (plainFound !== null) return plainFound;
+  if (htmlFound !== null) return stripHtml(htmlFound);
+  return "";
+}
+
+// Cuts a message body down to just the newly-written content, dropping
+// everything from the first quoted-history marker onward (Gmail's "On ...
+// wrote:", Outlook's "-----Original Message-----", or a "> " blockquote
+// line). This is what both extraction heuristics below run against, and
+// what gets stored as reviewer context -- neither should ever see the tail
+// of a long reply chain.
+const QUOTE_MARKER_RE = /(^On .+ wrote:\s*$)|(^-{2,}\s*Original Message\s*-{2,}$)|(^>.*$)/im;
+
+function newContentOnly(text: string): string {
+  const match = QUOTE_MARKER_RE.exec(text);
+  return (match ? text.slice(0, match.index) : text).trim();
+}
+
+// A greeting near the top of the new content ("Hi Mark," / "Dear Sarah,")
+// -- only meaningful for an OUTBOUND message (Ridge addressing someone by
+// name), so this is only invoked that way by the caller below. Scoped to
+// the first ~300 chars so it can't match a name inside the message body
+// itself, just the salutation line.
+function extractGreetingName(text: string): string | null {
+  const m = /^\s*(?:hi|hello|hey|dear)[,]?\s+([A-Z][a-zA-Z'’-]{1,20})\b/im.exec(
+    text.slice(0, 300)
+  );
+  return m ? m[1] : null;
+}
+
+// A plain US phone number pattern, run over the same new-content text --
+// catches a number left in a signature block at the bottom of a reply as
+// readily as one mentioned inline.
+const PHONE_RE = /(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/;
+
+function extractPhone(text: string): string | null {
+  const m = PHONE_RE.exec(text);
+  return m ? m[0].trim() : null;
+}
+
 // Deliberately simple, not RFC-5322-complete -- good enough for real
 // From/To/Cc header values, which are what Gmail actually sends back.
 // First pulls out "Display Name <email>" pairs, then whatever bare
@@ -126,6 +231,14 @@ export type ScanSource = "greg" | "justin";
 export type ScannedCandidate = {
   email: string;
   inferredName: string | null;
+  inferredPhone: string | null;
+  // Subject and a trimmed body excerpt from the message the candidate was
+  // first seen on -- reviewer context in the candidates UI, and the raw
+  // material the cron route's venue/event name-mention matching runs
+  // against. Never the full message; bodySnippet is already capped to the
+  // pre-quote "new content" only (see newContentOnly above).
+  subject: string | null;
+  bodySnippet: string | null;
   source: ScanSource;
   // The Gmail message id an address was (first) seen on, kept purely for
   // manual debugging -- not surfaced anywhere in the digest.
@@ -133,12 +246,14 @@ export type ScannedCandidate = {
 };
 
 // Lists messages from the last `lookbackDays` (default 8 -- a 7-day cadence
-// plus a 1-day overlap buffer) and reads only their From/To/Cc/Subject/Date
-// headers -- never a body or attachment. Overlap is safe because re-seeing
-// an address just bumps candidates.times_seen in the cron route; it never
-// re-triggers a digest entry or duplicates a row. The cron route exposes a
-// `?days=` override so a first manual run can use a short window instead of
-// dumping a whole backlog into one digest -- see the route for details.
+// plus a 1-day overlap buffer), reading From/To/Cc/Subject/Date headers
+// plus (since the gmail.readonly upgrade) the message body -- trimmed down
+// to subject + the pre-quote "new content" only, see newContentOnly.
+// Overlap is safe because re-seeing an address just bumps
+// candidates.times_seen in the cron route; it never re-triggers a digest
+// entry or duplicates a row. The cron route exposes a `?days=` override so
+// a first manual run can use a short window instead of dumping a whole
+// backlog into one digest -- see the route for details.
 //
 // `lookbackDays: 0` means unbounded -- no `newer_than` filter at all, i.e.
 // the entire mailbox. This is meant for a one-time full-history backfill
@@ -152,16 +267,15 @@ export async function scanMailbox(
 ): Promise<ScannedCandidate[]> {
   const gmail = gmailClientFor(mailbox);
 
-  // The gmail.metadata scope does not support the `q` search parameter at
-  // all -- Google rejects it outright with a 403 "Metadata scope does not
-  // support 'q' parameter". Discovered when the normal weekly
-  // `newer_than:8d` query broke every real scan in production, even
-  // though the unbounded backfill (which never sent `q`) had worked fine.
-  // So every list call now always fetches the full message id list, and
-  // the lookbackDays cutoff below is applied client-side against each
-  // message's own Date header instead -- keeps the same minimal
-  // headers-only scope rather than upgrading to a broader one just for
-  // server-side date filtering.
+  // The metadata scope this used to run under didn't support the `q`
+  // search parameter at all -- Google rejected it outright with a 403
+  // "Metadata scope does not support 'q' parameter". gmail.readonly does
+  // support `q`, but there's no need to reintroduce server-side date
+  // filtering now that this already works correctly client-side (and
+  // changing it back would be pure risk for no benefit) -- every list call
+  // still fetches the full message id list, and the lookbackDays cutoff
+  // below is still applied client-side against each message's own Date
+  // header.
   const messageIds: string[] = [];
   let pageToken: string | undefined;
   do {
@@ -183,8 +297,7 @@ export async function scanMailbox(
     const { data: msg } = await gmail.users.messages.get({
       userId: "me",
       id,
-      format: "metadata",
-      metadataHeaders: ["From", "To", "Cc", "Subject", "Date"],
+      format: "full",
     });
 
     const headers = msg.payload?.headers ?? [];
@@ -198,19 +311,55 @@ export async function scanMailbox(
       }
     }
 
+    const subjectHeader = headerValue("Subject") || null;
+    const newContent = newContentOnly(extractBodyText(msg.payload as GmailPart | undefined));
+    const bodySnippet = newContent ? newContent.slice(0, 500) : null;
+
+    // A greeting name and a signature-block phone number are only
+    // attributable to a specific candidate when exactly one external
+    // (non-Ridge, non-noise) address is involved in the message -- with
+    // more than one, there's no way to tell who "Hi Mark," or a phone
+    // number in the body actually belongs to, so both are skipped rather
+    // than guessed.
+    const externalEmails = new Set<string>();
+    for (const headerVal of [headerValue("From"), headerValue("To"), headerValue("Cc")]) {
+      if (!headerVal) continue;
+      for (const { email } of parseAddressList(headerVal)) {
+        const normalized = email.toLowerCase();
+        if (!isNoiseAddress(normalized)) externalEmails.add(normalized);
+      }
+    }
+    const singleExternal = externalEmails.size === 1 ? [...externalEmails][0] : null;
+
+    const fromEmail = parseAddressList(headerValue("From"))[0]?.email?.toLowerCase() ?? "";
+    const outbound = fromEmail.endsWith(`@${RIDGE_DOMAIN}`);
+
+    const greetingName = singleExternal && outbound ? extractGreetingName(newContent) : null;
+    const phone = singleExternal ? extractPhone(newContent) : null;
+
     for (const headerVal of [headerValue("From"), headerValue("To"), headerValue("Cc")]) {
       if (!headerVal) continue;
       for (const { email, name } of parseAddressList(headerVal)) {
         const normalized = email.toLowerCase();
         if (isNoiseAddress(normalized)) continue;
 
+        const isSingleExternal = normalized === singleExternal;
         const existing = found.get(normalized);
         if (existing) {
           if (!existing.inferredName && name) existing.inferredName = name;
+          if (!existing.inferredName && isSingleExternal && greetingName) {
+            existing.inferredName = greetingName;
+          }
+          if (!existing.inferredPhone && isSingleExternal && phone) {
+            existing.inferredPhone = phone;
+          }
         } else {
           found.set(normalized, {
             email: normalized,
-            inferredName: name,
+            inferredName: name ?? (isSingleExternal ? greetingName : null),
+            inferredPhone: isSingleExternal ? phone : null,
+            subject: subjectHeader,
+            bodySnippet,
             source,
             sourceMessageRef: id,
           });
