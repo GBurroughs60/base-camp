@@ -79,8 +79,24 @@ function toRow(t: PlayRow): DataRow {
         >
           {t.venue.name}
         </Link>
+      ) : t.venue_name ? (
+        // No venue_id -- either never linked, or a /book submission the
+        // fuzzy-match step in submit_offer_inquiry wasn't confident enough
+        // to auto-link. Flagged so these don't quietly sit unreviewed; fix
+        // it from the play's own detail page (InlineRelationField already
+        // handles venue_id there).
+        <Link
+          href={`/plays/${t.id}`}
+          className="inline-flex items-center gap-1.5 hover:underline underline-offset-4"
+          title="No matching venue found — needs review"
+        >
+          <span>{t.venue_name}</span>
+          <span className="text-[10px] leading-none px-1.5 py-1 rounded-full border border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 whitespace-nowrap">
+            needs match
+          </span>
+        </Link>
       ) : (
-        t.venue_name ?? "—"
+        "—"
       ),
       city: t.city ?? "—",
       state: t.state ?? "—",
