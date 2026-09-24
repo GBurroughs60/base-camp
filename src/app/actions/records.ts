@@ -787,6 +787,35 @@ export async function removeArtistTeamMember(rowId: string): Promise<ActionResul
   return { ok: true, data: undefined };
 }
 
+export type CompanyFuzzyMatch = {
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  website: string | null;
+  type: string | null;
+  similarity: number;
+};
+
+// Wraps the fuzzy_match_companies() Postgres function (pg_trgm-based) so
+// the quick-create flows can surface "did you mean" suggestions before
+// adding a new companies row -- the same dedup mechanism /book's
+// submit_offer_inquiry uses server-side, now reused here per the plan's
+// "in creation too" scope. See docs/outreach-engine-plan.md, sections 4
+// and 8. Short names are skipped -- under three characters there's too
+// little signal for a useful trigram match.
+export async function fuzzyMatchCompanies(name: string): Promise<CompanyFuzzyMatch[]> {
+  const trimmed = name.trim();
+  if (trimmed.length < 3) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("fuzzy_match_companies", {
+    p_name: trimmed,
+    p_limit: 4,
+  });
+  if (error || !data) return [];
+  return data as CompanyFuzzyMatch[];
+}
+
 export type SearchTable = "companies" | "events" | "contacts";
 
 export async function searchRecords(

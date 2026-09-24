@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   createRecord,
   searchRecords,
+  fuzzyMatchCompanies,
   type SearchTable,
+  type CompanyFuzzyMatch,
 } from "@/app/actions/records";
 import { SearchIcon } from "./icons";
 
@@ -50,6 +52,7 @@ export default function RelationSearchPicker({
   const [newCity, setNewCity] = useState("");
   const [newState, setNewState] = useState("");
   const [newWebsite, setNewWebsite] = useState("");
+  const [fuzzyMatches, setFuzzyMatches] = useState<CompanyFuzzyMatch[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -78,6 +81,25 @@ export default function RelationSearchPicker({
     setNewPhone("");
     setNewWebsite("");
   }, [showCreate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Surfaces "did you mean" suggestions while typing a new company name, so
+  // a near-duplicate gets caught before it's created rather than left for
+  // later cleanup -- same fuzzy-match function /book uses server-side.
+  useEffect(() => {
+    if (table !== "companies" || !showCreate) {
+      setFuzzyMatches([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const matches = await fuzzyMatchCompanies(newName);
+      if (!cancelled) setFuzzyMatches(matches);
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [table, showCreate, newName]);
 
   async function handleCreate() {
     if (!newName.trim()) {
@@ -234,6 +256,28 @@ export default function RelationSearchPicker({
                 />
               </div>
             </>
+          )}
+          {table === "companies" && fuzzyMatches.length > 0 && (
+            <div className="rounded border border-amber-400/40 bg-amber-50 dark:bg-amber-500/10 p-2 space-y-1">
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                Possible existing match — pick one instead of creating a duplicate:
+              </p>
+              {fuzzyMatches.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => onSelect(m.id, m.name)}
+                  className="w-full text-left px-2 py-1 rounded text-sm bg-white dark:bg-neutral-900 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                >
+                  {m.name}
+                  {(m.city || m.state) && (
+                    <span className="text-black/40 dark:text-white/40">
+                      {" "}
+                      · {[m.city, m.state].filter(Boolean).join(", ")}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           )}
           {createError && <p className="text-xs text-red-500">{createError}</p>}
           <div className="flex gap-2 pt-1">

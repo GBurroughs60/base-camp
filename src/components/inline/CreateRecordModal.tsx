@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createRecord, listActiveArtists, type TableName } from "@/app/actions/records";
+import {
+  createRecord,
+  listActiveArtists,
+  fuzzyMatchCompanies,
+  type TableName,
+  type CompanyFuzzyMatch,
+} from "@/app/actions/records";
 import RelationSearchPicker from "./RelationSearchPicker";
 import { ChevronIcon } from "./icons";
 
@@ -117,9 +123,29 @@ export default function CreateRecordModal({
   const [artistId, setArtistId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fuzzyMatches, setFuzzyMatches] = useState<CompanyFuzzyMatch[]>([]);
 
   const nameLabel = table === "contacts" ? "Full name" : "Name";
   const playNeedsLink = table === "plays" && !venue && !event;
+
+  // Same "did you mean" nudge as RelationSearchPicker's quick-create, for
+  // this modal's own top-level company form (the Companies page's "+ New
+  // Venue" flow, as opposed to picking/creating a venue inline on a Play).
+  useEffect(() => {
+    if (table !== "companies") {
+      setFuzzyMatches([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const matches = await fuzzyMatchCompanies(name);
+      if (!cancelled) setFuzzyMatches(matches);
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [table, name]);
 
   useEffect(() => {
     if (table !== "plays") return;
@@ -350,6 +376,32 @@ export default function CreateRecordModal({
                 </div>
               )}
             </>
+          )}
+
+          {table === "companies" && fuzzyMatches.length > 0 && (
+            <div className="rounded border border-amber-400/40 bg-amber-50 dark:bg-amber-500/10 p-2 space-y-1">
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                Possible existing match — open it instead of creating a duplicate:
+              </p>
+              {fuzzyMatches.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => {
+                    onClose();
+                    router.push(`/companies/${m.id}`);
+                  }}
+                  className="w-full text-left px-2 py-1 rounded text-sm bg-white dark:bg-neutral-900 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                >
+                  {m.name}
+                  {(m.city || m.state) && (
+                    <span className="text-black/40 dark:text-white/40">
+                      {" "}
+                      · {[m.city, m.state].filter(Boolean).join(", ")}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           )}
 
           {error && <p className="text-sm text-red-500">{error}</p>}
