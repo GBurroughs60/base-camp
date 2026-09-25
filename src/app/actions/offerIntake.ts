@@ -136,6 +136,8 @@ export async function submitOfferInquiry(input: OfferIntakeInput): Promise<Submi
       p_buyer_email: input.buyerEmail.trim(),
       p_buyer_phone: toTextOrNull(input.buyerPhone),
       p_buyer_mailing_address: buyerMailingAddress,
+      p_buyer_city: toTextOrNull(input.buyerCity),
+      p_buyer_state: toTextOrNull(input.buyerState),
     })
     .maybeSingle<RpcRow>();
 

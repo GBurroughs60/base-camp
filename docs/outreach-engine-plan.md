@@ -340,20 +340,38 @@ booking agent joins later.
 
 ## 8. The /book gap
 
-Locked in, in scope. The public offer-intake form (`/book`) is a separate,
+**Shipped.** The public offer-intake form (`/book`) is a separate,
 unauthenticated path where any outside venue or promoter submits an offer
-directly. It writes venue name/address/city/state as free text straight
-onto the new `plays` row through a database function that never touches
-`companies`, and the buyer's own company only gets a loose exact-name
-match-or-create — both sides sit outside every rule above by construction.
-A venue we've already researched and verified can submit through `/book`
-and land as a second, disconnected representation of the same real place.
+directly, through the `SECURITY DEFINER` function `submit_offer_inquiry`.
 
-Fix: run both the venue and the buyer-company fields on every incoming
-`/book` submission through the same fuzzy-match-before-create step used
-everywhere else (see Identity & dedup) — auto-link clean matches, queue the
-rest for a quick human confirm. Same review-queue pattern as `candidates`,
-reused rather than reinvented. In scope for this build.
+Venue matching already ran the same 3-tier fuzzy scheme used elsewhere
+(near-exact name; distinctive multi-word name; moderate similarity + city/
+state match) — that side needed no change. Buyer-company matching didn't:
+it was a loose exact-name-or-single-tier-fuzzy match, and any miss silently
+created a bare `name` + `type='promoter'` stub with no city/state/phone and
+no record that a near-match existed.
+
+Fix applied (migration `submit_offer_inquiry_buyer_company_fuzzy_match`):
+buyer-company matching now runs the identical 3-tier scheme venues use,
+with `p_buyer_city`/`p_buyer_state` (already collected on the `/book` form,
+now actually passed through from `offerIntake.ts`) supplying the geo signal
+for the third tier. A newly-created buyer company gets `city`/`state`
+populated from the submission. When a weaker candidate existed (similarity
+> 0.3, the same floor the `candidates` review flow uses) but didn't clear
+the auto-link bar, the new company's `notes` records the closest candidate
+and its similarity so the near-miss isn't silently lost — a human still
+has to link it, but not by noticing a stray duplicate later. This reuses
+the `notes`-breadcrumb pattern rather than adding new review-queue UI,
+since the ask was to wire the matching step itself, not build a second
+review surface next to the existing "needs match" flag on the Plays list
+(which still covers unlinked venues) and the `candidates` review queue.
+
+Known limitation, inherited from the venue-matching thresholds this reuses
+rather than introduced by this fix: heavily abbreviated near-misses (e.g.
+"Arts Ctr of Kershaw Cty" vs. "Arts Center of Kershaw County") can fall
+short of the 0.6 similarity floor even with a city/state match, since
+abbreviating words breaks up trigram similarity badly. Worth revisiting if
+it shows up in practice, but out of scope for this pass.
 
 ## 9. Geographic sequencing
 
