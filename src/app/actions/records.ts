@@ -25,12 +25,14 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "state",
     "country",
     "phone",
+    "email",
     "website",
     "notes",
     "capacity",
     "is_indoor",
     "is_outdoor",
     "archived",
+    "disqualified_reason",
   ]),
   events: new Set([
     "name",
@@ -43,6 +45,7 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "primary_contact_id",
     "notes",
     "archived",
+    "disqualified_reason",
   ]),
   plays: new Set([
     "show_date",

@@ -124,6 +124,7 @@ export default function RelationSearchPicker({
               type: newType,
               city: newCity || null,
               state: newState || null,
+              email: newEmail || null,
               website: newWebsite || null,
             }
           : { name: newName };
@@ -234,6 +235,13 @@ export default function RelationSearchPicker({
                   </option>
                 ))}
               </select>
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="Email (optional)"
+                className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1 text-sm outline-none focus:border-ridge-orange"
+              />
               <input
                 type="url"
                 value={newWebsite}

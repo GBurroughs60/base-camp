@@ -113,8 +113,32 @@ export default async function EventsPage({
 
   if (activeVisibility === "public") query = query.eq("is_public", true);
   if (activeVisibility === "private") query = query.eq("is_public", false);
-  if (activeStatus === "active") query = query.eq("archived", false);
   if (activeStatus === "archived") query = query.eq("archived", true);
+  else if (activeStatus === "active" || activeStatus === "needs-date") {
+    query = query.eq("archived", false); // "needs-date" is scoped to the live set too
+  } // "all" applies no archived filter
+
+  // "Needs Date" -- events with nothing live for the catch-up/standing-
+  // cadence engines to act on: no occurrence row at all, or every one on
+  // file is null or already in the past. Same definition as the
+  // events_needing_attention view (see docs/outreach-engine-plan.md) --
+  // expressed here as a plain NOT IN against a small id list rather than
+  // querying the view directly, since PostgREST's relationship embedding
+  // (companies(...), contacts(...)) isn't guaranteed to follow through a
+  // view the way it does the base table.
+  if (activeStatus === "needs-date") {
+    const { data: liveOccurrences } = await supabase
+      .from("event_occurrences")
+      .select("event_id")
+      .not("occurrence_date", "is", null)
+      .gte("occurrence_date", new Date().toISOString().slice(0, 10));
+    const liveEventIds = Array.from(
+      new Set((liveOccurrences ?? []).map((o) => o.event_id as string))
+    );
+    if (liveEventIds.length > 0) {
+      query = query.not("id", "in", `(${liveEventIds.join(",")})`);
+    }
+  }
 
   const { data } = await query;
   const events = (data ?? []) as unknown as EventRow[];
@@ -152,6 +176,7 @@ export default async function EventsPage({
     <>
       {[
         { key: "active", label: "Active" },
+        { key: "needs-date", label: "Needs Date" },
         { key: "archived", label: "Archived" },
         { key: "all", label: "All" },
       ].map((f) => (

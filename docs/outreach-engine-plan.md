@@ -60,11 +60,143 @@ dropped between the two engines. A fresh draft regenerates each cycle as an
 event re-enters the window — no per-event follow-up bookkeeping needed once
 this is running.
 
-**Refresh.** Annual, per event — not tied to the region cycle. Each event's
-refresh comes due 12 months after its `discovered_at` date, checked against
-its `source_url` rather than a blind re-scrape: what's new, what's stopped
-happening, is the contact still right, is the recurrence pattern ("every
-Thursday, March–October") still accurate.
+**Refresh.** Every 6 months, per event — a flat calendar interval from
+`discovered_at`, not tied to the region cycle and deliberately not anchored
+to the event's own (possibly estimated) next occurrence. An anchored
+schedule was considered and rejected: it would make refresh's own
+timeliness depend on the accuracy of the estimate it exists to correct — a
+wrong estimate could push refresh so late that the real booking window is
+already gone by the time anything catches it, defeating the purpose. A
+flat interval has no such dependency; halving it from the original
+12-month plan to 6 also halves the worst-case staleness window for any
+single event. Checked against its `source_url` rather than a blind
+re-scrape: what's new, what's stopped happening, is the contact still
+right, is the recurrence pattern ("every Thursday, March–October") still
+accurate. Costs roughly double the research effort of the original annual
+plan across the whole database — accepted as the right tradeoff for not
+missing a window.
+
+**Occurrence rollover.** A lightweight daily check, independent of Refresh
+and of any engine's region cycle: for every event with a `recurrence_rule`
+whose most recent `event_occurrences` row (any confidence) is dated in the
+past with nothing future already on file, insert a new `estimated`
+occurrence projected one cycle forward from the pattern (annual: same
+day-of-week/ordinal a year later; a seasonal series: the following season's
+first date). This exists because Refresh and the region cadence both work
+on a scale of months, and neither guarantees a future-dated anchor exists
+at the moment Engine 2/3 actually need one — without it, an event whose
+only known occurrence has already passed is invisible to both engines
+until its refresh happens to land inside the right window, which can
+arrive after that year's booking window has already closed. First surfaced
+by a September 2026 import row where the only known date ("Sat Sept 12,
+2026") had already passed by the time of import: with no rollover, that
+event would have sat with only a past-dated occurrence until its next
+refresh, missing the entire 2027 booking window. Rollover only ever
+inserts `estimated` rows; it never touches `confirmed_date`/
+`confirmed_pattern` rows, and Refresh's own job — checking the source_url,
+correcting a wrong estimate — is unchanged and still runs on its own flat
+6-month clock (see Refresh, above).
+
+**Date/pattern extraction order.** The pilot import's parser originally
+only ever looked for one explicit stated date and fell back straight to
+"needs manual review" the instant it didn't find one — even on rows where
+the source's own date text plainly stated a recurrence ("3rd Saturday
+monthly", "Friday nights in season") or the event's own name carried an
+obvious date cue ("4th of July Festival", "Sounds of Summer"). Both are
+real signal that was being thrown away. `src/lib/dateSignalExtraction.ts`
+fixes this with a fixed resolution order, checked in this sequence for
+every event, before anything is allowed to fall back to `unknown`:
+
+1. A single explicit date stated in the source text → `confirmed_date`.
+   Matches both a written month name ("Sept 12, 2026") and a numeric
+   `M/D/YYYY` date (e.g. "10/04/2025", including embedded in a timestamp
+   string like `"Fri, 05/08/2026 - 18:00"`) — the numeric form was a real
+   gap found while verifying this against the full 238-row sheet, so both
+   forms are checked before falling through to anything below.
+2. An ordinal-weekday-plus-frequency pattern stated in the source text
+   itself (e.g. "3rd Saturday monthly") → `confirmed_pattern`. Season
+   window uses an explicit range if the source gives one (full or
+   abbreviated month names, e.g. "May-Aug"), otherwise defaults to
+   year-round rather than guessing narrow.
+3. A weekday-plus-frequency pattern stated in the source text (e.g.
+   "Friday nights") — if the source also states the season window,
+   `confirmed_pattern`; if the source only vaguely gestures at a season
+   ("in season") and the actual window has to be filled in from the
+   event's own name (e.g. "Sounds of Summer" → June–August) or defaulted
+   to year-round, `estimated` — the weekday/frequency part is real, the
+   season part is a guess, so the whole rule is marked at the lower
+   confidence rather than overclaiming.
+4. A single month named in the source text with no day and no weekday
+   (e.g. "Mid-May", "Annual, December") → `estimated`, anchored to the
+   1st of that month. Deliberately refuses to fire when the text names
+   two or more months (even ones that don't cleanly parse as an explicit
+   range in step 2) rather than guessing which one is "the" month — caught
+   on a real row, "Year-round, Sept 2026-June 2027 posted", where grabbing
+   just "June" out of that range would have been actively wrong.
+5. Only once the source text has nothing at all: fall back to the event's
+   own name — an ordinal-weekday phrase embedded in the name itself, a
+   fixed-date holiday name (July 4th, Halloween, Memorial Day, etc. — via
+   a new `annual-date` recurrence variant for the fixed-day cases), a bare
+   month name, or a season word. Always `estimated`, and the notes record
+   which cue it came from so a human or Refresh can sanity-check it later.
+   Bare "Christmas" is deliberately handled as a month-only cue (December)
+   rather than a fixed December 25th — a "Christmas Parade" is almost
+   never literally held on Christmas Day, so claiming that exact day would
+   be a confident-looking wrong guess rather than a useful placeholder;
+   the same month-only treatment applies whether "Christmas" appears in
+   the source text or only in the name.
+6. Nothing usable anywhere in either text → genuinely `unknown`, and the
+   event lands in Needs Date (below) rather than being silently guessed
+   at wrong.
+
+This is what let 3 of the pilot's 4 "needs manual review" events resolve
+automatically on reprocessing (Hagood Mill's "3rd Saturday" series, the
+Easley 4th of July Festival, and Sounds of Summer) — only Newberry Opera
+House genuinely needed a human, since it's a year-round touring venue
+with no single recurring pattern to extract, not a one-off name/date
+extraction miss. Checked against the full 238-row SC sheet: of the 74
+rows with no single clean stated date under the original parser, 31 now
+resolve automatically (3 `confirmed_pattern`, 28 `estimated`) and 40
+genuinely still need a human. This resolution order applies to every
+future state's Engine 1 output too (see section 12), not just the SC
+backlog — the goal is for `unknown`/Needs Date to be the genuine last
+resort, not the default outcome whenever a source doesn't spell out one
+clean date.
+
+An event that resolves via any step above is no different from a
+confirmed one as far as Engines 2 and 3 are concerned — it has a real
+future-dated `event_occurrences` row, so catch-up and the standing
+cadence compute "days out" from it and draft on the normal rhythm exactly
+like a `confirmed_date` event would. `estimated` only changes when
+Refresh double-checks it (every 6 months instead of never), not whether
+it participates in outreach in the meantime.
+
+**Needs Date (manual touch).** Occurrence rollover only helps once a
+`recurrence_rule` exists to project from — an event with no inferable
+pattern (a one-off with no stated recurrence, or existence confirmed with
+no date given at all) has no future-dated `event_occurrences` row and
+nothing to roll forward. Those sit outside catch-up and the standing
+cadence indefinitely, since both engines only pull events with a
+future-dated anchor. Rather than leave them silently dormant until a
+refresh pass happens to notice, a Postgres view,
+`events_needing_attention`, surfaces every non-archived event with no
+`event_occurrences` row dated today or later. It backs two things: a
+"Needs Date" filter pill on the Events page (same non-archived + no live
+occurrence definition, expressed as a plain query against
+`event_occurrences` rather than through the view directly, since
+PostgREST's relationship embedding for the companies/contacts joins isn't
+guaranteed to follow through a view the way it does the base table), and a
+weekly digest email (`events-needing-attention` cron, Mondays) listing the
+same set with links back into the app. This is the human path for records
+Refresh and Rollover can't reach on their own — a regular, low-effort
+check rather than something that has to be remembered.
+
+**`companies.email`** — A general/organizational address (e.g. "City of
+Greenville general contact"), distinct from a real contact's own email.
+Exists because a source often names an organizer with a public contact
+address but no actual person — that's organizer-level information, not a
+contact, and previously had nowhere structured to live. Optional; a
+company can be created and fully populated without one.
 
 ## 3. Data model
 
@@ -78,7 +210,38 @@ anchors, not every date — the first occurrence of the season plus, once
 known, the last — with a `recurrence_rule` on the parent event (frequency,
 day of week, season start/end) describing the pattern in between. Outreach
 timing for a series is always computed off its first-occurrence anchor.
-`discovered_at` is also what the annual refresh counts 12 months from.
+`discovered_at` is also what Refresh counts its flat 6-month interval from.
+`date_confidence` distinguishes what the source actually said from what we
+inferred: `confirmed_date` is a specific date the source stated outright;
+`confirmed_pattern` is a recurrence the source stated outright ("every
+Thursday, March–October", "3rd Saturday monthly"); `estimated` is a date
+or pattern *we* projected — from a single past date assumed annual, from
+occurrence rollover (above), from a source-stated pattern whose season
+window wasn't given and had to be filled in from the event's own name or
+defaulted to year-round, or from a date/season cue read out of the event's
+name alone with no source pattern at all (see "Date/pattern extraction
+order," above) — and is expected to be corrected by the next Refresh pass
+rather than trusted as fact; `unknown` means no usable date information
+exists in either the source text or the event's own name.
+
+**Disqualification.** Two distinct cases, deliberately not merged into one
+mechanism. A real `companies`/`events` row that turns out to be wrong —
+the organizer replies that the event is cancelled or postponed
+indefinitely, or a human judges it's not a fit for the roster (e.g. a
+large professionally-booked touring venue, already flagged as such in some
+SC import notes) — is archived exactly like any other soft-delete
+(`archived = true`, already respected by every picker/list/outreach
+query), plus a new `disqualified_reason` text column on both tables so the
+story isn't lost the way a bare `archived` flag would lose it. A lead that
+never became a real row at all — Engine 1's own nothing-found and
+false-lead logs, or any future lead ruled out before it was verified
+enough to create real records — has nowhere to go in `companies`/`events`
+by construction, so it lives in a new, deliberately lightweight
+`dead_leads` table instead (organizer name, event name if any,
+region/county/state, a `reason` of `nothing_found` / `false_lead` /
+`not_a_fit` / `other`, notes, source_url). Its only job is to stop a
+future discovery pass from re-spending research credits on the same dead
+end — it's a checklist, not a CRM table, and nothing else reads from it.
 
 **`outreach_log`** — Locked in. Scoped to `company_id` (falling back to
 `contact_id` when no company match exists) rather than siloed by artist or
@@ -237,6 +400,53 @@ rather than a forecast.
 - Exact chunk size for a single discovery run within a state.
 - The concrete, ordered state-priority list for Engine 1.
 - The concrete 10-region map for Engines 2 & 3.
+
+## 12. Discovery output contract (Engine 1)
+
+Locked in, prompted by importing the South Carolina tracker (238 verified
+rows, built by a parallel research pass before this contract existed).
+That tracker used free-text research-notes columns — readable by a human,
+but requiring a full reconciliation pass before it could become real
+`companies`/`events`/`event_occurrences`/`contacts` rows: recurrence had to
+be inferred from prose, contact name and channel had to be split out of one
+field, tier/priority columns didn't map to anything in the schema. Doing
+that translation once was acceptable; doing it for every future state would
+turn a one-time cost into a recurring one. Going forward, Engine 1's own
+output — whatever runs the state-by-state research pass — must be produced
+already in Basecamp's shape, not as a free-text tracker translated after
+the fact:
+
+- **Organizer** — company name, a real attempted website (root domain is
+  an acceptable placeholder, but every organizer should be deduped by name
+  against already-created companies in the same run *and* against the
+  existing `companies` table before a new row is created — never one row
+  per source row), city, state, phone if found, and a general/org email if
+  the source gives one with no named person attached (`companies.email`
+  — see section 3; a named person's email belongs on a `contacts` row
+  instead).
+- **Event** — event name, and either a `confirmed_date` (a specific date
+  the source stated) or a `recurrence_rule` (frequency, day of week,
+  season start/end) plus a first occurrence anchor — never a bare
+  free-text date string requiring later parsing. Before falling back to no
+  date at all, run the full date/pattern extraction order (see section 2,
+  "Date/pattern extraction order") against both the source's own date
+  notes and the event's own name — `unknown` should be the genuine last
+  resort, not the default whenever a source doesn't spell out one clean
+  date.
+- **Contact** — full name and title as separate fields, email and phone as
+  separate fields, only populated when the source names an actual person.
+  A generic line ("City of Greenville general contact") is organizer-level
+  information, not a contact, and belongs on the company's own `phone`
+  field instead.
+- **Evidence** — `source_url` per event, so a later refresh has something
+  to check against.
+- **No priority/tier column** — outreach urgency is computed live by
+  Engine 2 from the occurrence date, never carried as a static value from
+  research time (a value frozen at discovery time goes stale the moment
+  time passes). A field like "Booking Deadline" — a hard organizer-side
+  cutoff distinct from our own 180-day rule — is useful context and should
+  still be captured, but as free text on the event until it earns a
+  structured field of its own.
 
 ## Keeping this in sync
 

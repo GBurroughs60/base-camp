@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/scan-contacts",
       "schedule": "0 14 * * 1"
+    },
+    {
+      "path": "/api/cron/rollover-occurrences",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/events-needing-attention",
+      "schedule": "30 14 * * 1"
     }
   ]
 }
