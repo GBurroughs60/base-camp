@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { sendNewOfferEmail } from "@/lib/approvalEmail";
 import { FALLBACK_NOTIFY_EMAIL } from "@/lib/constants";
+import { type TierDraft, draftsToSavedPriceTiers } from "@/lib/ticketTiers";
 
 // Public, unauthenticated surface: the /book page and these two actions are
 // how outside venues/promoters/buyers submit a new offer without a Base
@@ -36,7 +37,7 @@ export type OfferIntakeInput = {
   capacity: string;
   ageLimit: string;
   guaranteeAmount: string;
-  ticketPrice: string;
+  ticketPriceTiers: TierDraft[];
   dealTerms: string;
   radiusClause: string;
   productionContactName: string;
@@ -121,7 +122,6 @@ export async function submitOfferInquiry(input: OfferIntakeInput): Promise<Submi
       p_deal_terms: toTextOrNull(input.dealTerms),
       p_show_time: toTextOrNull(input.showTime),
       p_show_length: toTextOrNull(input.showLength),
-      p_ticket_price: toNumberOrNull(input.ticketPrice),
       p_radius_clause: toTextOrNull(input.radiusClause),
       p_production_contact_name: toTextOrNull(input.productionContactName),
       p_production_contact_info: toTextOrNull(input.productionContactInfo),
@@ -138,6 +138,7 @@ export async function submitOfferInquiry(input: OfferIntakeInput): Promise<Submi
       p_buyer_mailing_address: buyerMailingAddress,
       p_buyer_city: toTextOrNull(input.buyerCity),
       p_buyer_state: toTextOrNull(input.buyerState),
+      p_ticket_price_tiers: draftsToSavedPriceTiers(input.ticketPriceTiers),
     })
     .maybeSingle<RpcRow>();
 

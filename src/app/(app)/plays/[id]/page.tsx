@@ -12,11 +12,13 @@ import AdditionalContacts, {
 } from "@/components/inline/AdditionalContacts";
 import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 import InlineBooleanChip from "@/components/inline/InlineBooleanChip";
+import TicketTierField from "@/components/inline/TicketTierField";
 import {
   type PlayStatus,
   PLAY_STATUS_OPTIONS,
   PLAY_STATUS_BADGE_CLASSES,
 } from "@/lib/playStatus";
+import type { SavedPriceTier, SavedActualTier } from "@/lib/ticketTiers";
 
 export default async function PlayDetailPage({
   params,
@@ -30,10 +32,12 @@ export default async function PlayDetailPage({
     .from("plays")
     .select(
       `id, show_date, set_type, status, artist_id, attendance, tickets_sold, ticket_price, gross_revenue,
+       ticket_price_tiers, actual_ticket_tiers,
        gross_merch_sales, band_percentage, guarantee_amount, amount_due_to_agency,
        management_commission_pct, management_commission_amount,
        booking_agent_commission_pct, booking_agent_commission_amount,
        contract_status, contract_due_date, deposit_status, deposit_amount, deposit_due_date,
+       deposit_instructions,
        final_payment_received, capacity, age_limit, deal_terms, bill_position,
        other_artists_on_bill, notes, details, venue_name, city, state, address, show_type,
        show_time, show_length, radius_clause,
@@ -65,6 +69,28 @@ export default async function PlayDetailPage({
   const contact = play.primary_contact as unknown as
     | { id: string; full_name: string; email: string | null; phone: string | null }
     | null;
+  // Post-show actuals: if none have been entered yet, seed the editor from
+  // whatever was quoted pre-show (quantity 0) as a convenient starting
+  // point -- purely a display default, nothing is written until the user
+  // actually edits a row. Once real actuals exist, tickets_sold/gross_revenue
+  // become computed read-only totals (kept in sync by a DB trigger) rather
+  // than separately-editable numbers, so there's only ever one place to
+  // change them.
+  const storedActualTiers = (play.actual_ticket_tiers as unknown as SavedActualTier[] | null) ?? [];
+  const quotedTiers = (play.ticket_price_tiers as unknown as SavedPriceTier[] | null) ?? [];
+  const hasActualTiers = storedActualTiers.length > 0;
+  // Seeding priority when no actuals exist yet: quoted pre-show tiers first,
+  // then the legacy single ticket_price/tickets_sold scalars (so an older
+  // play that only ever had those two plain fields doesn't lose access to
+  // them now that this editor is the only ticket-price UI on the page).
+  const displayActualTiers: SavedActualTier[] = hasActualTiers
+    ? storedActualTiers
+    : quotedTiers.length > 0
+      ? quotedTiers.map((t) => ({ label: t.label, price: t.price, quantity: 0 }))
+      : play.ticket_price != null
+        ? [{ label: "", price: play.ticket_price, quantity: play.tickets_sold ?? 0 }]
+        : [];
+
   const approvedBy = play.approved_by as unknown as { id: string; full_name: string } | null;
   const respondedByName = approvedBy?.full_name ?? play.approved_by_other_name;
   const details = (play.details as Record<string, unknown> | null) ?? {};
@@ -274,15 +300,23 @@ export default async function PlayDetailPage({
             </dd>
             <dt className="text-black/50 dark:text-white/50">Tickets sold</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="tickets_sold" value={play.tickets_sold} type="number" placeholder="Add" />
-            </dd>
-            <dt className="text-black/50 dark:text-white/50">Ticket price</dt>
-            <dd>
-              <InlineEditField table="plays" id={play.id} field="ticket_price" value={play.ticket_price} type="number" format="money" placeholder="Add" />
+              {hasActualTiers ? (
+                <span title="Computed from the ticket tiers below">{play.tickets_sold ?? 0}</span>
+              ) : (
+                <InlineEditField table="plays" id={play.id} field="tickets_sold" value={play.tickets_sold} type="number" placeholder="Add" />
+              )}
             </dd>
             <dt className="text-black/50 dark:text-white/50">Gross revenue</dt>
             <dd>
-              <InlineEditField table="plays" id={play.id} field="gross_revenue" value={play.gross_revenue} type="number" format="money" placeholder="Add" />
+              {hasActualTiers ? (
+                <span title="Computed from the ticket tiers below">
+                  {play.gross_revenue != null
+                    ? Number(play.gross_revenue).toLocaleString("en-US", { style: "currency", currency: "USD" })
+                    : "$0.00"}
+                </span>
+              ) : (
+                <InlineEditField table="plays" id={play.id} field="gross_revenue" value={play.gross_revenue} type="number" format="money" placeholder="Add" />
+              )}
             </dd>
             <dt className="text-black/50 dark:text-white/50">Gross merch sales</dt>
             <dd>
@@ -293,6 +327,28 @@ export default async function PlayDetailPage({
               <InlineEditField table="plays" id={play.id} field="band_percentage" value={play.band_percentage} type="number" format="percent" placeholder="Add" />
             </dd>
           </dl>
+          <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
+            <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">
+              Actual ticket tiers
+            </div>
+            <TicketTierField
+              table="plays"
+              id={play.id}
+              field="actual_ticket_tiers"
+              tiers={displayActualTiers}
+              withQuantity
+              priceLabel="Price"
+            />
+            <p className="text-xs text-black/40 dark:text-white/40 mt-2">
+              {hasActualTiers
+                ? "Tickets sold and gross revenue above are computed from these rows."
+                : quotedTiers.length > 0
+                  ? "Seeded from the quoted tiers on the contract (quantity 0) -- edit any row to start tracking actuals."
+                  : play.ticket_price != null
+                    ? "Seeded from this play's earlier single ticket price -- edit any row to start tracking actuals here instead."
+                    : "Optional -- add a row per price point (e.g. ADV/DOS/VIP) to track actual sales; not required."}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -317,6 +373,10 @@ export default async function PlayDetailPage({
             <dt className="text-black/50 dark:text-white/50">Deposit due</dt>
             <dd>
               <InlineEditField table="plays" id={play.id} field="deposit_due_date" value={play.deposit_due_date} type="date" format="date" placeholder="Add" />
+            </dd>
+            <dt className="text-black/50 dark:text-white/50">Deposit instructions</dt>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="deposit_instructions" value={play.deposit_instructions} placeholder="Add" />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Deposit status</dt>
             <dd>

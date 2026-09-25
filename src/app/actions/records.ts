@@ -75,6 +75,7 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "deposit_status",
     "deposit_amount",
     "deposit_due_date",
+    "deposit_instructions",
     "final_payment_received",
     "notes",
     "venue_id",
@@ -324,6 +325,54 @@ export async function updateFields(
   const supabase = await createClient();
   const { error } = await supabase.from(table).update(data).eq("id", id);
 
+  if (error) return { ok: false, error: friendlyDbError(error) };
+  return { ok: true, data: undefined };
+}
+
+// Ticket-tier columns (plays.ticket_price_tiers, plays.actual_ticket_tiers)
+// are jsonb arrays, not the string|number|boolean|null value updateField/
+// updateFields accept -- kept as their own small whitelist and action
+// rather than widening those two, so nothing can accidentally hand a raw
+// array to a scalar field by mistake. Rows are shaped by TicketTierField
+// client-side (draftsToSavedPriceTiers/draftsToSavedActualTiers in
+// ticketTiers.ts) before this is ever called, but validated again here
+// since a server action is a public entry point regardless of what the UI
+// currently sends.
+const TIER_FIELDS: Record<TableName, Set<string>> = {
+  contacts: new Set(),
+  companies: new Set(),
+  events: new Set(),
+  plays: new Set(["ticket_price_tiers", "actual_ticket_tiers"]),
+  artists: new Set(),
+  candidates: new Set(),
+};
+
+export type TierRow = { label: string; price: number; quantity?: number };
+
+export async function updateTierField(
+  table: TableName,
+  id: string,
+  field: string,
+  tiers: TierRow[]
+): Promise<ActionResult> {
+  if (!TIER_FIELDS[table]?.has(field)) {
+    return { ok: false, error: `"${field}" is not a tier field on ${table}` };
+  }
+  if (
+    !Array.isArray(tiers) ||
+    tiers.some(
+      (t) =>
+        typeof t?.label !== "string" ||
+        typeof t?.price !== "number" ||
+        !Number.isFinite(t.price) ||
+        (t.quantity !== undefined && (typeof t.quantity !== "number" || !Number.isFinite(t.quantity)))
+    )
+  ) {
+    return { ok: false, error: "Invalid tier data." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from(table).update({ [field]: tiers }).eq("id", id);
   if (error) return { ok: false, error: friendlyDbError(error) };
   return { ok: true, data: undefined };
 }

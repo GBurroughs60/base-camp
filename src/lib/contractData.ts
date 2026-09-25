@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { CONTRACT_TBD, type ContractMergeData } from "@/lib/generateContract";
+import type { SavedPriceTier } from "@/lib/ticketTiers";
 
 // Used specifically for Section 2 (Schedule) fields Base Camp has no
 // structured data for -- distinct from CONTRACT_TBD, which still applies
@@ -27,6 +28,26 @@ export function orTbd(v: string | null | undefined): string {
   return trimmed ? trimmed : CONTRACT_TBD;
 }
 
+// Renders the pre-show quoted tiers into the same {ticket_price} slot the
+// template already has -- no template change needed for this part, since
+// docxtemplater just substitutes whatever string this produces. A single
+// unlabeled tier (the common case -- nobody added a "+ Add another tier"
+// row) reads as a plain price, same as before tiers existed at all. Falls
+// back to the legacy scalar ticket_price column when no tiers are set --
+// tiers are additive, never required (see docs/outreach-engine-plan.md
+// notwithstanding; this wasn't in that plan, per Greg's direct request).
+function fmtTicketPriceTiers(tiers: SavedPriceTier[], legacyScalar: number | null): string {
+  if (tiers.length === 0) {
+    return legacyScalar != null ? fmtMoney(legacyScalar) : "N/A";
+  }
+  if (tiers.length === 1 && !tiers[0].label.trim()) {
+    return fmtMoney(tiers[0].price);
+  }
+  return tiers
+    .map((t) => (t.label.trim() ? `${t.label.trim()}: ${fmtMoney(t.price)}` : fmtMoney(t.price)))
+    .join(", ");
+}
+
 export type ContractPlay = {
   id: string;
   show_date: string | null;
@@ -42,9 +63,11 @@ export type ContractPlay = {
   contract_due_date: string | null;
   guarantee_amount: number | null;
   ticket_price: number | null;
+  ticket_price_tiers: SavedPriceTier[];
   deal_terms: string | null;
   deposit_amount: number | null;
   deposit_due_date: string | null;
+  deposit_instructions: string | null;
   production_contact_name: string | null;
   production_contact_info: string | null;
   production_provided: boolean | null;
@@ -114,7 +137,7 @@ export async function fetchContractContext(playId: string): Promise<ContractCont
     .select(
       `id, show_date, venue_name, address, city, state, show_type, bill_position,
        other_artists_on_bill, capacity, age_limit, contract_due_date,
-       guarantee_amount, ticket_price, deal_terms, deposit_amount, deposit_due_date,
+       guarantee_amount, ticket_price, ticket_price_tiers, deal_terms, deposit_amount, deposit_due_date, deposit_instructions,
        production_contact_name, production_contact_info, production_provided,
        food_provided, drinks_provided, hotel_provided, travel_provided,
        governing_law_state, show_time, show_length, radius_clause, artist_id, venue_id,
@@ -179,9 +202,11 @@ export async function fetchContractContext(playId: string): Promise<ContractCont
     contract_due_date: play.contract_due_date,
     guarantee_amount: play.guarantee_amount,
     ticket_price: play.ticket_price,
+    ticket_price_tiers: (play.ticket_price_tiers as unknown as SavedPriceTier[] | null) ?? [],
     deal_terms: play.deal_terms,
     deposit_amount: play.deposit_amount,
     deposit_due_date: play.deposit_due_date,
+    deposit_instructions: play.deposit_instructions,
     production_contact_name: play.production_contact_name,
     production_contact_info: play.production_contact_info,
     production_provided: play.production_provided,
@@ -264,10 +289,11 @@ export function buildContractMergeData(ctx: ContractContext): ContractMergeData 
     show_length: play.show_length?.trim() ? play.show_length : SCHEDULE_PER_ADVANCE,
     curfew: SCHEDULE_PER_ADVANCE,
     guarantee_amount: fmtMoney(play.guarantee_amount),
-    ticket_price: play.ticket_price != null ? fmtMoney(play.ticket_price) : "N/A",
+    ticket_price: fmtTicketPriceTiers(play.ticket_price_tiers, play.ticket_price),
     deal_terms: orTbd(play.deal_terms),
     deposit_amount: fmtMoney(play.deposit_amount),
     deposit_due_date: fmtDate(play.deposit_due_date),
+    deposit_instructions: orTbd(play.deposit_instructions),
     production_contact_name: orTbd(play.production_contact_name),
     production_contact_info: orTbd(play.production_contact_info),
     production_provided: play.production_provided ? "Purchaser" : "Artist",

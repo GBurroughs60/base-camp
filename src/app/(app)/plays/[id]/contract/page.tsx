@@ -5,6 +5,7 @@ import { CONTRACT_TBD } from "@/lib/generateContract";
 import InlineEditField from "@/components/inline/InlineEditField";
 import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineBooleanChip from "@/components/inline/InlineBooleanChip";
+import TicketTierField from "@/components/inline/TicketTierField";
 import GenerateContractButton from "@/components/inline/GenerateContractButton";
 import ContractReviewActions from "@/components/inline/ContractReviewActions";
 import { getContractSignature } from "@/app/actions/contractReview";
@@ -254,8 +255,12 @@ export default async function ContractReviewPage({
         <FieldRow label="Guarantee" resolved={merged.guarantee_amount}>
           <InlineEditField table="plays" id={play.id} field="guarantee_amount" value={play.guarantee_amount} type="number" format="money" placeholder="Add" />
         </FieldRow>
-        <FieldRow label="Ticket price" resolved={merged.ticket_price}>
-          <InlineEditField table="plays" id={play.id} field="ticket_price" value={play.ticket_price} type="number" format="money" placeholder="N/A" />
+        <FieldRow
+          label="Ticket price"
+          resolved={merged.ticket_price}
+          note="Unlimited free-text tiers (ADV/DOS/VIP, etc.) -- not required. Falls back to N/A if none are set."
+        >
+          <TicketTierField table="plays" id={play.id} field="ticket_price_tiers" tiers={play.ticket_price_tiers} />
         </FieldRow>
         <FieldRow label="Deal terms" resolved={merged.deal_terms}>
           <InlineEditField table="plays" id={play.id} field="deal_terms" value={play.deal_terms} placeholder="Add" />
@@ -265,6 +270,13 @@ export default async function ContractReviewPage({
         </FieldRow>
         <FieldRow label="Deposit due date" resolved={merged.deposit_due_date}>
           <InlineEditField table="plays" id={play.id} field="deposit_due_date" value={play.deposit_due_date} type="date" format="date" placeholder="Add" />
+        </FieldRow>
+        <FieldRow
+          label="Deposit instructions"
+          resolved={merged.deposit_instructions}
+          note="Internal -- not shown on the public offer form. How the deposit should actually be paid (wire details, check payable to, etc.)."
+        >
+          <InlineEditField table="plays" id={play.id} field="deposit_instructions" value={play.deposit_instructions} placeholder="Add" />
         </FieldRow>
       </SectionTable>
 

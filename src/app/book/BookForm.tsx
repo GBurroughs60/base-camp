@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { BookableArtist } from "@/app/actions/offerIntake";
 import { submitOfferInquiry } from "@/app/actions/offerIntake";
+import TicketTierEditor from "@/components/inline/TicketTierEditor";
+import { type TierDraft, makeEmptyTierDraft } from "@/lib/ticketTiers";
 
 const inputClass =
   "border border-black/15 dark:border-white/15 rounded-md px-3 py-2 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-ridge-orange/40 focus:border-ridge-orange transition-colors";
@@ -21,7 +23,7 @@ const initialState = {
   capacity: "",
   ageLimit: "",
   guaranteeAmount: "",
-  ticketPrice: "",
+  ticketPriceTiers: [makeEmptyTierDraft()] as TierDraft[],
   dealTerms: "",
   radiusClause: "",
   productionContactName: "",
@@ -271,28 +273,22 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
       </SectionCard>
 
       <SectionCard title="The Offer">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Offer amount / guarantee">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.guaranteeAmount}
-              onChange={(e) => set("guaranteeAmount", e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Ticket price">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.ticketPrice}
-              onChange={(e) => set("ticketPrice", e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-        </div>
+        <Field label="Offer amount / guarantee">
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.guaranteeAmount}
+            onChange={(e) => set("guaranteeAmount", e.target.value)}
+            className={inputClass + " max-w-[12rem]"}
+          />
+        </Field>
+        <Field label="Ticket price">
+          <TicketTierEditor
+            tiers={form.ticketPriceTiers}
+            onChange={(t) => set("ticketPriceTiers", t)}
+          />
+        </Field>
         <Field label="Deal terms">
           <textarea
             rows={2}
