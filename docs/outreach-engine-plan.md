@@ -37,6 +37,19 @@ faster whenever that's affordable. Priority order: Southeast first, then
 Midwest, then Northeast, then the rest of the country. Runs once per state
 as the initial build-out.
 
+**Pacing correction (2026-09-26).** The first real firing on Georgia
+stopped after only two sub-regions (coastal GA + north GA mountains) in
+about 12 minutes — nowhere near the "roughly every other day" baseline
+above, and far too slow to get through the country. It stopped early by
+its own judgment ("reasonable research time for today"), not because it
+ran out of real sources to check. Rewrote the scheduled task's prompt to
+require building an explicit region/metro checklist for the state up
+front and working straight through the whole thing in one sitting —
+finishing an average-sized state entirely in a single firing is now the
+target, with a second firing only as a fallback for unusually large states
+(TX/CA/FL-scale), not the default. Watching the next GA firing to confirm
+this actually closes the gap; will tune further from that real result.
+
 **Engine 2 — Catch-up.** Fires once, as a burst, the moment a state finishes
 discovery — not an ongoing rotation. Works the new backlog by how far out
 each event is:
