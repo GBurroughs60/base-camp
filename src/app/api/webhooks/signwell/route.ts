@@ -3,6 +3,30 @@ import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { saveSignedContractToPlay } from "@/lib/contractStorage";
 import { getSignatureProvider, fetchCompletedDocumentBase64 } from "@/lib/signature";
 
+// A fully-executed contract means the offer is confirmed -- advance the
+// play's own pipeline stage automatically rather than leaving it stuck on
+// "Contract Sent" until someone notices a completed signature and drags the
+// card by hand (found happening for real: three plays sitting on
+// contract_sent with a completed signature already on file). Only fires
+// from the expected prior stage: if the play is already somewhere else
+// (played/settled/declined/cancelled, or someone already moved it), leave
+// it alone rather than clobbering a status this webhook has no real basis
+// to override. The .eq("status", "contract_sent") makes this a no-op, not
+// an error, on webhook redelivery once the play has already advanced.
+async function advancePlayToConfirmed(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  playId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("plays")
+    .update({ status: "confirmed" })
+    .eq("id", playId)
+    .eq("status", "contract_sent");
+  if (error) {
+    console.error("Signature webhook: failed to advance play to confirmed", error);
+  }
+}
+
 // SignWell posts here every time something happens on a signature request:
 // sent, viewed, one signer completing, everyone completing, or a decline.
 // This is the only inbound side of the whole signature integration -- an
@@ -105,6 +129,7 @@ export async function POST(req: NextRequest) {
         // endpoint doesn't stop working once the document is done).
         console.error("Signature webhook: failed to store signed PDF", err);
       }
+      await advancePlayToConfirmed(supabase, row.play_id);
       break;
     }
 
