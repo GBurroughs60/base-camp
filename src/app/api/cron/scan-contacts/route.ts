@@ -211,9 +211,22 @@ export async function GET(req: NextRequest) {
   // against at all.
   const [{ data: companiesWithWebsite }, { data: allCompanies }, { data: allEvents }] =
     await Promise.all([
-      supabase.from("companies").select("id, name, website").not("website", "is", null),
-      supabase.from("companies").select("id, name").eq("archived", false),
-      supabase.from("events").select("id, name").eq("archived", false),
+      supabase
+        .from("companies")
+        .select("id, name, website")
+        .not("website", "is", null)
+        .eq("archived", false)
+        .eq("pending_state_review", false),
+      supabase
+        .from("companies")
+        .select("id, name")
+        .eq("archived", false)
+        .eq("pending_state_review", false),
+      supabase
+        .from("events")
+        .select("id, name")
+        .eq("archived", false)
+        .eq("pending_state_review", false),
     ]);
 
   const companyByDomain = new Map<string, { id: string; name: string }>();

@@ -13,6 +13,8 @@ type CompanyRow = {
   is_indoor: boolean;
   is_outdoor: boolean;
   archived: boolean;
+  pending_state_review: boolean;
+  dedup_uncertain: boolean;
   contacts: { id: string; full_name: string }[] | null;
 };
 
@@ -48,6 +50,16 @@ function toRow(c: CompanyRow): DataRow {
           {c.archived && (
             <span className="text-xs px-1.5 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
               Archived
+            </span>
+          )}
+          {c.pending_state_review && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
+              Pending Review
+            </span>
+          )}
+          {c.dedup_uncertain && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full border border-amber-500/40 text-amber-700 dark:text-amber-400">
+              Needs Dedup Check
             </span>
           )}
         </span>
@@ -108,12 +120,17 @@ export default async function CompaniesPage({
   let query = supabase
     .from("companies")
     .select(
-      "id, name, type, city, state, capacity, is_indoor, is_outdoor, archived, contacts(id, full_name)"
+      "id, name, type, city, state, capacity, is_indoor, is_outdoor, archived, pending_state_review, dedup_uncertain, contacts(id, full_name)"
     )
     .order("name");
 
-  if (activeFilter === "active") query = query.eq("archived", false);
+  // Discovery-sourced rows still pending their state's sample review stay
+  // hidden here, same treatment as archived -- see companies.pending_state_review.
+  if (activeFilter === "active")
+    query = query.eq("archived", false).eq("pending_state_review", false);
   if (activeFilter === "archived") query = query.eq("archived", true);
+  if (activeFilter === "dedup-check")
+    query = query.eq("dedup_uncertain", true).eq("archived", false);
 
   const { data } = await query;
   const companies = (data ?? []) as unknown as CompanyRow[];
@@ -122,6 +139,7 @@ export default async function CompaniesPage({
     <>
       {[
         { key: "active", label: "Active" },
+        { key: "dedup-check", label: "Needs Dedup Check" },
         { key: "archived", label: "Archived" },
         { key: "all", label: "All" },
       ].map((f) => (

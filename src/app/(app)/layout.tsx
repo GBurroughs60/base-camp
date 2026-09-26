@@ -23,11 +23,13 @@ export default async function AppLayout({
     supabase
       .from("companies")
       .select("*", { count: "exact", head: true })
-      .eq("archived", false),
+      .eq("archived", false)
+      .eq("pending_state_review", false),
     supabase
       .from("events")
       .select("*", { count: "exact", head: true })
-      .eq("archived", false),
+      .eq("archived", false)
+      .eq("pending_state_review", false),
     supabase.from("plays").select("*", { count: "exact", head: true }),
     // Same "new" definition as the candidates page itself -- imported/
     // dismissed rows (and nothing else) drop out of this count.

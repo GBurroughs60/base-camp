@@ -11,6 +11,8 @@ type EventRow = {
   state: string | null;
   country: string | null;
   archived: boolean;
+  pending_state_review: boolean;
+  dedup_uncertain: boolean;
   companies: { id: string; name: string } | null;
   contacts: { id: string; full_name: string } | null;
 };
@@ -40,6 +42,16 @@ function toRow(e: EventRow): DataRow {
           {e.archived && (
             <span className="text-xs px-1.5 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
               Archived
+            </span>
+          )}
+          {e.pending_state_review && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
+              Pending Review
+            </span>
+          )}
+          {e.dedup_uncertain && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full border border-amber-500/40 text-amber-700 dark:text-amber-400">
+              Needs Dedup Check
             </span>
           )}
         </span>
@@ -107,7 +119,7 @@ export default async function EventsPage({
   let query = supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, archived, companies(id, name), contacts(id, full_name)"
+      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, companies(id, name), contacts(id, full_name)"
     )
     .order("name");
 
@@ -115,8 +127,15 @@ export default async function EventsPage({
   if (activeVisibility === "private") query = query.eq("is_public", false);
   if (activeStatus === "archived") query = query.eq("archived", true);
   else if (activeStatus === "active" || activeStatus === "needs-date") {
-    query = query.eq("archived", false); // "needs-date" is scoped to the live set too
-  } // "all" applies no archived filter
+    // "needs-date" is scoped to the live set too. Discovery-sourced rows
+    // still pending their state's sample review stay hidden here, same
+    // treatment as archived -- see events.pending_state_review.
+    query = query.eq("archived", false).eq("pending_state_review", false);
+  } else if (activeStatus === "dedup-check") {
+    // Surfaces flagged near-misses regardless of review state, so nothing
+    // waits on a state being approved before it can be resolved.
+    query = query.eq("dedup_uncertain", true).eq("archived", false);
+  } // "all" applies no archived/pending-review filter
 
   // "Needs Date" -- events with nothing live for the catch-up/standing-
   // cadence engines to act on: no occurrence row at all, or every one on
@@ -177,6 +196,7 @@ export default async function EventsPage({
       {[
         { key: "active", label: "Active" },
         { key: "needs-date", label: "Needs Date" },
+        { key: "dedup-check", label: "Needs Dedup Check" },
         { key: "archived", label: "Archived" },
         { key: "all", label: "All" },
       ].map((f) => (

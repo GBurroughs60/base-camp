@@ -66,7 +66,8 @@ export async function GET(req: NextRequest) {
     .from("events")
     .select("id, name, recurrence_rule")
     .not("recurrence_rule", "is", null)
-    .eq("archived", false);
+    .eq("archived", false)
+    .eq("pending_state_review", false);
 
   if (eventsError) {
     console.error("rollover-occurrences: failed to load events", eventsError);

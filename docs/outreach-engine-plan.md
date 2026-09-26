@@ -271,6 +271,40 @@ and would otherwise make a routine refresh look like a brand-new event.
 Every new event goes through a dedup-before-insert review step first, the
 same pattern as the `candidates` queue.
 
+**Shipped, for Engine 1 (migration `discovery_visibility_and_dedup`).**
+"Dedup-before-insert review step" turned out to mean an *automated*
+fuzzy-match check, not a per-event human gate — Greg confirmed he reviews
+a sample per state (see section 10/discovery_progress below), not hundreds
+of individual events a day. Two new SQL functions, `find_company_match`
+and `find_event_match`, run the same 3-tier auto-link scheme as `/book`
+(section 8) before every discovery insert: near-exact name; a distinctive
+multi-word name at moderate similarity; moderate similarity plus a geo/
+venue match (event identity uses `venue_id` equality as the strongest geo
+signal, per the composite identity above, falling back to city/state).
+Anything above the 0.3 similarity floor that doesn't clear the auto-link
+bar still gets created (discovery never blocks on a human) but is marked
+`dedup_uncertain = true` and gets the same notes-breadcrumb the `/book` fix
+uses, so it surfaces on the Events/Companies "Needs Dedup Check" filter
+pill and in the state's review digest — Greg's "manually dedupe anything
+questionable" middle ground between full per-event review and silent
+auto-linking. These two functions deliberately do NOT exclude
+`pending_state_review` rows from their candidate pool, since discovery has
+to catch duplicates against its own not-yet-reviewed finds too (a state
+can span several days of runs, and the same organizer often recurs).
+
+Separately, discovery-sourced `events`/`companies` rows carry
+`pending_state_review = true` until their state flips to `approved` in
+`discovery_progress` — this is a *visibility* gate, not the dedup gate
+above: it keeps unreviewed rows out of the live Events/Companies pages,
+their nav-sidebar counts, relation-field pickers (`searchRecords`), the
+`events_needing_attention` view, and the `rollover-occurrences` /
+`scan-contacts` crons, the same way `archived` rows already are. It has no
+effect on the fuzzy-match candidate pool (previous paragraph) or on
+existing `/book`/quick-create matching, which now also excludes
+`pending_state_review` rows from their own candidate pools (a public offer
+submission or a manual quick-create shouldn't auto-link to a still-hidden
+discovery row).
+
 The same fuzzy-match-before-create step applies everywhere a company can
 come into existence, not only during discovery: the quick-create popovers
 on any relation field, the `candidates` review flow, and both sides of a
