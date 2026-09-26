@@ -13,6 +13,7 @@ type EventRow = {
   archived: boolean;
   pending_state_review: boolean;
   dedup_uncertain: boolean;
+  refresh_flagged: boolean;
   companies: { id: string; name: string } | null;
   contacts: { id: string; full_name: string } | null;
 };
@@ -52,6 +53,11 @@ function toRow(e: EventRow): DataRow {
           {e.dedup_uncertain && (
             <span className="text-xs px-1.5 py-0.5 rounded-full border border-amber-500/40 text-amber-700 dark:text-amber-400">
               Needs Dedup Check
+            </span>
+          )}
+          {e.refresh_flagged && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full border border-amber-500/40 text-amber-700 dark:text-amber-400">
+              Needs Refresh Check
             </span>
           )}
         </span>
@@ -119,7 +125,7 @@ export default async function EventsPage({
   let query = supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, companies(id, name), contacts(id, full_name)"
+      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, refresh_flagged, companies(id, name), contacts(id, full_name)"
     )
     .order("name");
 
@@ -135,6 +141,10 @@ export default async function EventsPage({
     // Surfaces flagged near-misses regardless of review state, so nothing
     // waits on a state being approved before it can be resolved.
     query = query.eq("dedup_uncertain", true).eq("archived", false);
+  } else if (activeStatus === "refresh-check") {
+    // Refresh (see events.refresh_flagged) couldn't confidently verify
+    // these -- surfaced the same way dedup-check is.
+    query = query.eq("refresh_flagged", true).eq("archived", false);
   } // "all" applies no archived/pending-review filter
 
   // "Needs Date" -- events with nothing live for the catch-up/standing-
@@ -197,6 +207,7 @@ export default async function EventsPage({
         { key: "active", label: "Active" },
         { key: "needs-date", label: "Needs Date" },
         { key: "dedup-check", label: "Needs Dedup Check" },
+        { key: "refresh-check", label: "Needs Refresh Check" },
         { key: "archived", label: "Archived" },
         { key: "all", label: "All" },
       ].map((f) => (

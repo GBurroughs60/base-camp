@@ -112,10 +112,36 @@ re-scanning already-covered ground instead of pitching. Discovery of
 states not yet covered at all continues on its own separate timeline in
 parallel — this sweep is only for ground already covered.
 
-Not yet built — Refresh and the annual sweep are both resolved design, no
-code or scheduled task exists for either yet. Not urgent while Engine 1 is
-still working through its first states; worth building once there's a
-real backlog of approved states old enough to need a first refresh pass.
+**Shipped** (migration `refresh_mechanism`; scheduled task "Ridge CRM —
+Refresh pass", daily `CRON_TZ=America/New_York 45 9 * * *`, 30 minutes
+after discovery's own daily slot so the two never compete for the same
+window). Both triggers live in one view, `events_due_for_refresh`, read by
+the scheduled task each morning rather than recomputed ad hoc:
+`events.last_refreshed_at` (null until first refresh; falls back to the
+earliest `event_occurrences.discovered_at`, then `created_at`, for the flat
+clock) plus each event's soonest future `event_occurrences.occurrence_date`
+for the lead-time check. `events.refresh_flagged` is the "questionable"
+counterpart to `dedup_uncertain` — set when a check comes back inconclusive
+(dead source_url, ambiguous page, conflicting info) instead of guessing,
+surfaced on the Events page's "Needs Refresh Check" pill; a successful
+later refresh clears it.
+
+Unlike discovery, Refresh is not a review gate — it only ever touches
+events that are already live and already approved, so a confident
+correction (date changed, contact changed, event confirmed defunct) is
+applied directly; only the genuinely inconclusive case gets flagged
+instead of decided. Capped at 25 events/day (tunable, same "watch real
+consumption and adjust" approach as discovery's own pacing) — checked
+against the real numbers before shipping: 120 of the 522 live events were
+already within the 240-day lead-time window on day one (0 via the flat
+clock yet, since nothing's 6 months old), so the initial backlog clears in
+about a week at that rate rather than landing all at once, and this cap is
+exactly what keeps it that way as it becomes steady-state, per the
+pile-up/lead-time analysis above.
+
+The annual new-discovery sweep (last two weeks of December) is still just
+resolved design — not built. Separate piece of work, deliberately scoped
+out of this one.
 
 **Occurrence rollover.** A lightweight daily check, independent of Refresh
 and of any engine's region cycle: for every event with a `recurrence_rule`
