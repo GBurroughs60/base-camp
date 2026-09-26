@@ -60,21 +60,62 @@ dropped between the two engines. A fresh draft regenerates each cycle as an
 event re-enters the window — no per-event follow-up bookkeeping needed once
 this is running.
 
-**Refresh.** Every 6 months, per event — a flat calendar interval from
-`discovered_at`, not tied to the region cycle and deliberately not anchored
-to the event's own (possibly estimated) next occurrence. An anchored
-schedule was considered and rejected: it would make refresh's own
-timeliness depend on the accuracy of the estimate it exists to correct — a
-wrong estimate could push refresh so late that the real booking window is
-already gone by the time anything catches it, defeating the purpose. A
-flat interval has no such dependency; halving it from the original
-12-month plan to 6 also halves the worst-case staleness window for any
-single event. Checked against its `source_url` rather than a blind
-re-scrape: what's new, what's stopped happening, is the contact still
-right, is the recurrence pattern ("every Thursday, March–October") still
-accurate. Costs roughly double the research effort of the original annual
-plan across the whole database — accepted as the right tradeoff for not
-missing a window.
+**Refresh.** Resolved as two triggers per event, whichever fires first:
+
+1. **Flat safety net** — every 6 months from `discovered_at` (or the last
+   refresh). Guarantees no event goes unchecked for more than 6 months no
+   matter how wrong our date estimate for it is. This was the original,
+   simpler design (see below for why it isn't enough alone).
+2. **Booking-lead-time trigger** — the moment an event's currently-believed
+   next occurrence comes within 240 days (~8 months) out, refresh it right
+   then, regardless of where its flat clock stands. 240 is deliberately
+   ~60 days ahead of Engine 3's own 180-day standing-cadence cutoff (see
+   "Engine 3" above and section 10) — by the time any engine would
+   consider pitching an event, its date has already been freshly
+   re-verified, not coasting on a months-old guess. This also directly
+   serves Ridge's real booking lead time (acts are typically booked 3-6+
+   months out): the earlier a date change is caught, the better the odds
+   of still landing the booking.
+
+Checked against `source_url` rather than a blind re-scrape either way:
+what's new (including next year's dates for the same series), what's
+stopped happening, is the contact still right, is the recurrence pattern
+("every Thursday, March–October") still accurate.
+
+Why two triggers instead of one: a purely anchored schedule (checking
+based only on the event's own believed date) was considered and rejected
+early on — it would make refresh's own timeliness depend on the accuracy
+of the very estimate it exists to correct, and a wrong estimate could push
+the check so late the real booking window is already gone (an event that
+quietly moved from June to May, for instance, might not get caught until
+after May). The flat-only clock avoids that failure but creates a
+different one: discovery moves through states in tight batches, so most of
+the country's `discovered_at` timestamps land close together — a flat-only
+clock means whole states' worth of refresh work landing on the same day
+every 6 months, forever, crowding out any daily research budget left for
+finding new events at all. Combining both triggers fixes both problems:
+the flat clock stays as the guaranteed backstop, but most events get
+checked earlier, on their own natural rhythm — spread across the calendar
+the same way real event dates already are, since the trigger is tied to
+*when in the year* an event actually happens rather than when it happened
+to be discovered.
+
+**Annual new-discovery sweep.** Refresh (above) only re-checks events
+already on file — it does not go looking for a brand-new festival that
+popped up somewhere already covered, or a newly-announced series. That's a
+separate, deliberately once-a-year pass: the last two weeks of December,
+when (a) organizer sites are most likely to have just posted next year's
+dates or a new listing once budgets are set for the new year, and (b)
+booking activity/outreach responsiveness is typically quieter anyway,
+making it a low-opportunity-cost window to spend research budget
+re-scanning already-covered ground instead of pitching. Discovery of
+states not yet covered at all continues on its own separate timeline in
+parallel — this sweep is only for ground already covered.
+
+Not yet built — Refresh and the annual sweep are both resolved design, no
+code or scheduled task exists for either yet. Not urgent while Engine 1 is
+still working through its first states; worth building once there's a
+real backlog of approved states old enough to need a first refresh pass.
 
 **Occurrence rollover.** A lightweight daily check, independent of Refresh
 and of any engine's region cycle: for every event with a `recurrence_rule`
