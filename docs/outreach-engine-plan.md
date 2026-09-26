@@ -139,6 +139,21 @@ about a week at that rate rather than landing all at once, and this cap is
 exactly what keeps it that way as it becomes steady-state, per the
 pile-up/lead-time analysis above.
 
+**Bug found and fixed after the first real firing (2026-09-26).** The
+lead-time trigger originally checked only proximity to the next occurrence
+date, with no gate on how recently the event had last been refreshed —
+unlike the flat clock, which was already gated that way. Result: the
+25 events refreshed on day one stayed right back in the due list the same
+day, since their occurrence dates hadn't moved, so the daily cap would
+have re-checked the same near-term events indefinitely instead of working
+through the other 95. Fixed by adding a 30-day cooldown to the lead-time
+trigger too — mirrors the flat clock's own gating, just much shorter, so
+an event that's never been refreshed stays immediately eligible (the real
+backlog the cap is meant to drain), while a freshly-refreshed one gets 30
+days of rest before it can re-qualify, with room for another check as its
+date keeps approaching. Verified live: still-due dropped from 120 to 95
+immediately after the fix, matching the 25 processed that morning exactly.
+
 The annual new-discovery sweep (last two weeks of December) is still just
 resolved design — not built. Separate piece of work, deliberately scoped
 out of this one.
