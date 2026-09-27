@@ -171,6 +171,22 @@ The annual new-discovery sweep (last two weeks of December) is still just
 resolved design — not built. Separate piece of work, deliberately scoped
 out of this one.
 
+**Date-resolution correction (2026-09-27).** Greg raised a real gap before
+it caused any actual damage: the original "is the date/pattern unchanged"
+check could be satisfied by a source that simply hadn't posted next year's
+date yet, still showing last year's — which reads as "unchanged" but
+leaves an event with no genuine future occurrence for Catch-up/Standing
+Cadence to act on. Tightened Step 2: before judging anything "unchanged,"
+the scheduled task now explicitly checks whether a future occurrence
+already exists on file. If not — even when the page's content itself
+hasn't visibly changed — it's treated the same as a real date change: the
+task infers the recurring pattern from the event's own occurrence history
+(same `confirmed_pattern`/forward-scan logic discovery uses) and writes a
+genuine future occurrence, rather than re-stamping stale information as
+verified. Only falls to a human flag when even pattern-based projection
+isn't possible. No code changed — this lives entirely in the scheduled
+task's own prompt.
+
 **Occurrence rollover.** A lightweight daily check, independent of Refresh
 and of any engine's region cycle: for every event with a `recurrence_rule`
 whose most recent `event_occurrences` row (any confidence) is dated in the
