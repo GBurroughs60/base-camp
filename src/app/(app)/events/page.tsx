@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
+import DedupRowActions from "@/components/inline/DedupRowActions";
 import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
 
 type EventRow = {
@@ -13,6 +14,7 @@ type EventRow = {
   archived: boolean;
   pending_state_review: boolean;
   dedup_uncertain: boolean;
+  dedup_match_id: string | null;
   refresh_flagged: boolean;
   companies: { id: string; name: string } | null;
   contacts: { id: string; full_name: string } | null;
@@ -27,7 +29,19 @@ const columns: ColumnMeta[] = [
   { key: "visibility", label: "Visibility", sortable: true, width: "12%" },
 ];
 
-function toRow(e: EventRow): DataRow {
+// Same reasoning as companies/page.tsx's dedupColumns: the resolve
+// actions need real width, so Needs Dedup Check swaps Contact/Visibility
+// out for one wide Resolve column rather than shrinking every column to
+// make room in a view every other filter also has to render.
+const dedupColumns: ColumnMeta[] = [
+  { key: "name", label: "Name", sortable: true, width: "20%" },
+  { key: "venue", label: "Venue", sortable: true, width: "16%" },
+  { key: "city", label: "City", sortable: true, width: "12%" },
+  { key: "state", label: "State", sortable: true, width: "7%" },
+  { key: "dedup", label: "Resolve", width: "45%" },
+];
+
+function toRow(e: EventRow, dedupMatchName: Map<string, string>): DataRow {
   const stateOrCountry = e.state ?? (e.country && e.country !== "USA" ? e.country : null);
   return {
     id: e.id,
@@ -85,6 +99,17 @@ function toRow(e: EventRow): DataRow {
         "—"
       ),
       visibility: e.is_public ? "Public" : "Private",
+      dedup: e.dedup_uncertain ? (
+        <DedupRowActions
+          table="events"
+          id={e.id}
+          matchId={e.dedup_match_id}
+          matchLabel={e.dedup_match_id ? (dedupMatchName.get(e.dedup_match_id) ?? "Unknown") : null}
+          matchHref={e.dedup_match_id ? `/events/${e.dedup_match_id}` : null}
+        />
+      ) : (
+        "—"
+      ),
     },
     sortValues: {
       name: e.name,
@@ -125,7 +150,7 @@ export default async function EventsPage({
   let query = supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, refresh_flagged, companies(id, name), contacts(id, full_name)"
+      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, dedup_match_id, refresh_flagged, companies(id, name), contacts(id, full_name)"
     )
     .order("name");
 
@@ -171,6 +196,20 @@ export default async function EventsPage({
 
   const { data } = await query;
   const events = (data ?? []) as unknown as EventRow[];
+
+  // Matched events aren't a declared FK the DataRow embed can follow
+  // (dedup_match_id is a plain uuid, same reasoning as candidates.
+  // matched_event_id in candidates/page.tsx) -- one small separate
+  // lookup rather than a second round-trip per row.
+  const dedupMatchIds = Array.from(
+    new Set(events.map((e) => e.dedup_match_id).filter((v): v is string => !!v))
+  );
+  const { data: dedupMatches } = dedupMatchIds.length
+    ? await supabase.from("events").select("id, name").in("id", dedupMatchIds)
+    : { data: [] as { id: string; name: string }[] };
+  const dedupMatchName = new Map(
+    (dedupMatches ?? []).map((m) => [m.id as string, m.name as string])
+  );
 
   // Visibility (public/private) and archive status are independent axes,
   // so each pill link has to carry the *other* filter's current value
@@ -234,8 +273,8 @@ export default async function EventsPage({
       </p>
 
       <DataTable
-        rows={events.map(toRow)}
-        columns={columns}
+        rows={events.map((e) => toRow(e, dedupMatchName))}
+        columns={activeStatus === "dedup-check" ? dedupColumns : columns}
         searchPlaceholder="Search events..."
         emptyMessage="No events yet."
         defaultSortKey="name"

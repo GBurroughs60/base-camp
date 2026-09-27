@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
+import DedupRowActions from "@/components/inline/DedupRowActions";
 import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
 
 type CompanyRow = {
@@ -15,6 +16,7 @@ type CompanyRow = {
   archived: boolean;
   pending_state_review: boolean;
   dedup_uncertain: boolean;
+  dedup_match_id: string | null;
   contacts: { id: string; full_name: string }[] | null;
 };
 
@@ -35,7 +37,24 @@ const columns: ColumnMeta[] = [
   { key: "contacts", label: "Contacts", width: "28%" },
 ];
 
-function toRow(c: CompanyRow): DataRow {
+// Needs Dedup Check gets one extra column in place of Contacts (rarely
+// populated on a same-day discovery find anyway) -- the resolve actions
+// need real width, and cramming them into the Name cell would make every
+// other view's Name column pay for a feature only this one filter uses.
+const dedupColumns: ColumnMeta[] = [
+  { key: "name", label: "Name", sortable: true, width: "18%" },
+  { key: "type", label: "Type", sortable: true, width: "8%" },
+  { key: "city", label: "City", sortable: true, width: "12%" },
+  { key: "state", label: "State", sortable: true, width: "6%" },
+  { key: "capacity", label: "Capacity", sortable: true, width: "8%" },
+  { key: "setting", label: "Setting", width: "10%" },
+  { key: "dedup", label: "Resolve", width: "38%" },
+];
+
+function toRow(
+  c: CompanyRow,
+  dedupMatchName: Map<string, string>
+): DataRow {
   return {
     id: c.id,
     cells: {
@@ -86,6 +105,17 @@ function toRow(c: CompanyRow): DataRow {
       ) : (
         "—"
       ),
+      dedup: c.dedup_uncertain ? (
+        <DedupRowActions
+          table="companies"
+          id={c.id}
+          matchId={c.dedup_match_id}
+          matchLabel={c.dedup_match_id ? (dedupMatchName.get(c.dedup_match_id) ?? "Unknown") : null}
+          matchHref={c.dedup_match_id ? `/companies/${c.dedup_match_id}` : null}
+        />
+      ) : (
+        "—"
+      ),
     },
     sortValues: {
       name: c.name,
@@ -120,7 +150,7 @@ export default async function CompaniesPage({
   let query = supabase
     .from("companies")
     .select(
-      "id, name, type, city, state, capacity, is_indoor, is_outdoor, archived, pending_state_review, dedup_uncertain, contacts(id, full_name)"
+      "id, name, type, city, state, capacity, is_indoor, is_outdoor, archived, pending_state_review, dedup_uncertain, dedup_match_id, contacts(id, full_name)"
     )
     .order("name");
 
@@ -134,6 +164,20 @@ export default async function CompaniesPage({
 
   const { data } = await query;
   const companies = (data ?? []) as unknown as CompanyRow[];
+
+  // Matched companies aren't a declared FK the DataRow embed can follow
+  // (dedup_match_id is a plain uuid, same reasoning as candidates.
+  // matched_company_id in candidates/page.tsx) -- one small separate
+  // lookup rather than a second round-trip per row.
+  const dedupMatchIds = Array.from(
+    new Set(companies.map((c) => c.dedup_match_id).filter((v): v is string => !!v))
+  );
+  const { data: dedupMatches } = dedupMatchIds.length
+    ? await supabase.from("companies").select("id, name").in("id", dedupMatchIds)
+    : { data: [] as { id: string; name: string }[] };
+  const dedupMatchName = new Map(
+    (dedupMatches ?? []).map((m) => [m.id as string, m.name as string])
+  );
 
   const filterPills = (
     <>
@@ -166,8 +210,8 @@ export default async function CompaniesPage({
       </p>
 
       <DataTable
-        rows={companies.map(toRow)}
-        columns={columns}
+        rows={companies.map((c) => toRow(c, dedupMatchName))}
+        columns={activeFilter === "dedup-check" ? dedupColumns : columns}
         searchPlaceholder="Search venues..."
         emptyMessage="No companies yet."
         defaultSortKey="name"
