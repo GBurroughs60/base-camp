@@ -16,6 +16,7 @@ type EventRow = {
   dedup_uncertain: boolean;
   dedup_match_id: string | null;
   refresh_flagged: boolean;
+  catchup_drafted: boolean;
   companies: { id: string; name: string } | null;
   contacts: { id: string; full_name: string } | null;
 };
@@ -72,6 +73,11 @@ function toRow(e: EventRow, dedupMatchName: Map<string, string>): DataRow {
           {e.refresh_flagged && (
             <span className="text-xs px-1.5 py-0.5 rounded-full border border-amber-500/40 text-amber-700 dark:text-amber-400">
               Needs Refresh Check
+            </span>
+          )}
+          {e.catchup_drafted && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full border border-black/15 dark:border-white/15 text-black/50 dark:text-white/50">
+              Catch-Up Drafted
             </span>
           )}
         </span>
@@ -150,7 +156,7 @@ export default async function EventsPage({
   let query = supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, dedup_match_id, refresh_flagged, companies(id, name), contacts(id, full_name)"
+      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, dedup_match_id, refresh_flagged, catchup_drafted, companies(id, name), contacts(id, full_name)"
     )
     .order("name");
 
@@ -170,6 +176,10 @@ export default async function EventsPage({
     // Refresh (see events.refresh_flagged) couldn't confidently verify
     // these -- surfaced the same way dedup-check is.
     query = query.eq("refresh_flagged", true).eq("archived", false);
+  } else if (activeStatus === "catchup-drafted") {
+    // Crawl-stage Catch-up (see events.catchup_drafted) already has a
+    // Gmail draft waiting -- one place to glance at without opening Gmail.
+    query = query.eq("catchup_drafted", true).eq("archived", false);
   } // "all" applies no archived/pending-review filter
 
   // "Needs Date" -- events with nothing live for the catch-up/standing-
@@ -247,6 +257,7 @@ export default async function EventsPage({
         { key: "needs-date", label: "Needs Date" },
         { key: "dedup-check", label: "Needs Dedup Check" },
         { key: "refresh-check", label: "Needs Refresh Check" },
+        { key: "catchup-drafted", label: "Catch-Up Drafted" },
         { key: "archived", label: "Archived" },
         { key: "all", label: "All" },
       ].map((f) => (

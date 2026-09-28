@@ -63,6 +63,87 @@ each event is:
 For a recurring series or festival, "days out" is measured from the first
 occurrence of the upcoming season, not from each individual date.
 
+**Crawl-stage build (2026-09-28).** Rather than build all three tiers plus
+the full completion-triggered burst at once, Engine 2 ships in three passes
+— crawl, walk, run — starting with the smallest slice that produces real,
+reviewable drafts. Greg's scope for crawl: the < 60 day tier only, no
+real artist-fit scoring, and every draft still goes into his own Gmail for
+him to read, pick the final artist, and send by hand. Two things originally
+assumed to need new infrastructure turned out not to, once checked against
+what Discovery and Refresh had already built:
+
+- **No new Gmail infrastructure.** The original Brittany Elise proof-batch
+  plan deferred a real recurring engine to "Phase 2, needs its own
+  draft-capable Gmail client — a new JWT service-account client... with
+  `gmail.compose` added via Domain-Wide Delegation." That's still true for
+  a mature, no-human-in-the-loop production engine, but both the Discovery
+  and Refresh scheduled tasks already carry a Gmail connector in their
+  `mcp_connections` (unused by either), wired the same way the interactive
+  session used for the Brittany Elise drafts was. Crawl reuses that same
+  connector on a third scheduled task — zero new Google Workspace admin,
+  zero new deploys.
+- **No completion-triggered burst yet.** Section 10 describes catch-up as
+  firing "once, as a burst, right after a state finishes discovery." Crawl
+  doesn't build that event-driven trigger. Because urgency here is purely
+  `occurrence_date` minus today, a plain **daily poll** gets the same
+  practical result: the moment a state's rows flip `pending_state_review`
+  to `false`, anything under 60 days out becomes visible to the very next
+  day's run, with no event bus or webhook needed. The real fire-on-
+  completion design is left for the 61–179 day tier in walk/run, where
+  timing actually matters more.
+
+**Shipped** (migration `catchup_crawl_flag`; scheduled task "Ridge CRM —
+Catch-up crawl", daily `CRON_TZ=America/New_York 15 10 * * *`, an hour
+after Discovery's 9:15 slot and 30 minutes after Refresh's 9:45 slot, so
+same-morning approvals/corrections are visible before Catch-up runs).
+Candidate query: `events` joined to `event_occurrences` where
+`occurrence_date` is between today and today+60, `archived = false`,
+`pending_state_review = false`, `catchup_drafted = false`, and no `plays`
+row exists for that `event_id` — that last condition is the crawl-stage
+stand-in for "no lineup posted." It's a pure internal-data check (has
+Ridge already got a play booked against this event?), deliberately not a
+live re-fetch of the event's own source page the way Discovery/Refresh do
+— that real "is a lineup actually posted publicly" check is a walk/run
+refinement, not a crawl blocker.
+
+For each candidate, the recontact floor from `src/app/actions/outreach.ts`
+(`checkRecontactEligibility`) is honored before drafting, and a matching
+`outreach_log` row is written after — same 30-day-floor/`recontact_not_before`
+logic already proven on the Brittany Elise batch, unmodified. The scheduled
+task can't call that Next.js server action directly (it's not running the
+app), so its prompt has it read `outreach.ts` once per run and replicate
+the same query/insert in SQL, the same "read the source, follow its exact
+logic" pattern Discovery already uses for `dateSignalExtraction.ts` and
+`recurrence.ts`.
+
+Artist-fit is deliberately not scored — this reuses section 5's existing
+availability rule exactly as written, rather than inventing a simplified
+version of it. For each candidate event, the task checks every active,
+`ridge_books = true` artist against both `plays.show_date` (a confirmed
+booking on that date) and that artist's own "Shows – The Ridge" Drive
+sheet (`Confirmed`/`Block`/`Blocked` = unavailable; blank/`Open`/`Hold` =
+safe to pitch, read by column header per section 5), and drafts around
+whichever comes back available. The artist/promo block is still flagged in
+the draft as swappable (a bracketed note at the top of the body, meant to
+be deleted before sending) since this is an availability filter, not a fit
+judgment — Greg picks the actual artist while he's editing anyway, exactly
+as he does today.
+
+`events.catchup_drafted` is the new filterable flag (same pattern as
+`dedup_uncertain`/`refresh_flagged`), backing a "Catch-Up Drafted" pill on
+the Events page. The scheduled task ends with a short digest in the same
+style as Discovery/Refresh's — how many checked, how many drafted (event +
+recipient + artist), how many skipped and why (recontact floor, no
+eligible artist, already booked) — not a review request, since nothing
+here needs approval to take effect (the draft already sits in Gmail
+unsent, same as every other engine's output).
+
+Deferred to walk/run, unchanged: the 61–179 day tier, the real
+completion-triggered burst (useful once timing inside that wider window
+starts to matter), real artist-fit/genre scoring, the monthly voice-model
+refresh automation, and the real service-account Gmail setup for a
+no-human-in-the-loop version of this engine.
+
 **Engine 3 — Standing cadence.** The permanent heartbeat once a region is
 caught up: the whole country divided into 10 regions, one region's slot
 advancing roughly every other day (several smaller regions can share a
