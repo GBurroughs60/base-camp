@@ -50,6 +50,41 @@ target, with a second firing only as a fallback for unusually large states
 (TX/CA/FL-scale), not the default. Watching the next GA firing to confirm
 this actually closes the gap; will tune further from that real result.
 
+**Self-chaining (2026-09-28).** The "finish in one sitting" prompt
+language above didn't hold — North Carolina's first firing hit the same
+premature-stopping pattern GA hit on day one, confirmed by reading its
+`research_log`: real work happened, but the firing stopped well short of
+the checklist with no genuine blocker, the same "felt like enough for
+today" judgment call the 2026-09-26 fix was meant to close off. Stronger
+"don't stop" wording had already been tried once and failed, so this
+fixes it structurally instead of with more prompt pressure: a firing that
+isn't done for the day no longer just ends and waits for tomorrow's cron
+slot. Its last action is now to call `fire_trigger` on its own trigger ID,
+starting an immediate fresh continuation session rather than losing the
+rest of the day. Step 3's "must finish in one sitting" urgency is relaxed
+accordingly — a firing takes however much real, thorough research a
+checklist chunk needs, since the very next chunk starts right away instead
+of tomorrow.
+
+Bounded with a same-day safety cap so a bad pattern can't loop
+indefinitely on one state and burn a day's credit unsupervised: migration
+`discovery_self_fire_cap` added `discovery_progress.self_fire_count`/
+`self_fire_date` (the date the count applies to, so a stale count from a
+prior day is treated as 0). Capped at 8 self-fires per state per day — at
+the cap, the firing stops normally, logs that the cap was hit, and lets
+the next day's regular cron slot pick up from there, same as before this
+change existed. The daily cron itself is unchanged and stays as the
+backstop that starts each state off and recovers if self-chaining is ever
+capped or a firing genuinely gets stuck.
+
+To keep the added chaining from turning into a wall of notifications, the
+end-of-turn digest is now sized to what actually happened: an
+intermediate self-chained continuation gets one line (state, regions
+covered, how many self-fires so far today), while the full digest — the
+15-20 event sample, the dedup-uncertain list, the approval contract text —
+is reserved for a genuine `awaiting_review` completion or a real blocker,
+same as it always was.
+
 **Engine 2 — Catch-up.** Fires once, as a burst, the moment a state finishes
 discovery — not an ongoing rotation. Works the new backlog by how far out
 each event is:
