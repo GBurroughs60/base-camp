@@ -665,6 +665,27 @@ auto-linking. These two functions deliberately do NOT exclude
 to catch duplicates against its own not-yet-reviewed finds too (a state
 can span several days of runs, and the same organizer often recurs).
 
+**Cross-state false-positive fix (2026-09-28).** GA, SC, and NC's research
+logs all independently flagged the same pattern: small towns across
+different states often reuse the same generic event/org name ("Music on
+Main," "Town of X," "Festival...") for genuinely unrelated things. Greg's
+intent was always that a confirmed different city AND state means a
+distinct real-world entity, matched or not — and the functions did encode
+that, but only for the `questionable` tier. NC's run exposed the actual
+gap: an exact or near-exact name match (similarity > 0.85) short-circuited
+straight to `auto_link` before the city/state check ever ran, so "Music on
+Main" in Monroe, NC matched 100% against "Music on Main" in Spartanburg,
+SC and came back `auto_link` — a real different-state collision slipping
+through as a confirmed match. Fixed by checking the city+state divergence
+before tier assignment, not after, in both `find_company_match` and
+`find_event_match` (event matching still lets a matching `venue_id`
+override a text-only city/state mismatch, since that reflects a data-entry
+wrinkle rather than a genuinely different event). No bad merge had actually
+reached live data — the NC firing used its own judgment to insert a new
+row and flag it rather than trust the returned `auto_link` tier — but the
+function itself needed the fix so that judgment call isn't the only thing
+standing between this and a silent merge next time.
+
 Separately, discovery-sourced `events`/`companies` rows carry
 `pending_state_review = true` until their state flips to `approved` in
 `discovery_progress` — this is a *visibility* gate, not the dedup gate
