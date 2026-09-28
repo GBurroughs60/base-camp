@@ -383,6 +383,104 @@ same set with links back into the app. This is the human path for records
 Refresh and Rollover can't reach on their own — a regular, low-effort
 check rather than something that has to be remembered.
 
+**Needs Date sharpening pass (2026-09-28).** Greg flagged the weekly
+Needs Date digest as unreasonably high (359 events) and asked pointed
+questions that turned out to have real causes, not just noise: "are we
+trying to find recurring info on private events?", "are we too locked
+into a specific set of recurring patterns only?", and two concrete
+examples — Carolina Country Music Festival (a well-known early-June
+event) and Canton Labor Day Festival (obviously the Monday of Labor Day
+every year, and already matched by an existing regex rule in
+`dateSignalExtraction.ts` that had simply never been wired up for this
+case). His explicit steer: "Good is better than great for this effort...
+if it looks like early June every year, let's run with that until we
+find out otherwise." Investigation found three compounding, independently
+real causes:
+
+1. **Private events were in the view at all.** 142 of the original 369
+   rows were private one-off bookings (weddings, parties, corporate
+   events) that already have a real `plays` row on file — they can never
+   need a projected future date, and checking them was pure wasted
+   review effort. Fixed by adding `is_public = true` to
+   `events_needing_attention`'s migration and to the Events page's
+   "Needs Date" filter query.
+2. **`inferAnnualRuleFromDate` (recurrence.ts) was dead code.** It was
+   built specifically to infer a same-weekday/ordinal annual fallback
+   from a single known past date, but nothing ever called it — a
+   recurring series captured with only one `confirmed_date` (very
+   common: "Music on Main", "SummerFest Entertainment Series", etc.)
+   permanently fell out of Occurrence Rollover's reach the moment that
+   one date lapsed, since Rollover only ever projected forward from an
+   existing `recurrence_rule`, and these events had none. Fixed by
+   wiring it into `rollover-occurrences/route.ts`: any public,
+   non-archived event with no `recurrence_rule` but a real past date now
+   gets a same-weekday/ordinal annual rule inferred and persisted
+   (`estimated`, correctable by the next Refresh), same day it's
+   discovered stale. Found and fixed a related bug in the same pass:
+   `computeNextOccurrence` only scans forward from its input date, so an
+   event whose latest known date was a full cycle or more stale (found
+   via "Manning Arts Walk", last dated 2024-10-03) could land on a
+   "next" date that was itself still in the past — fixed by advancing
+   the scan until the result is genuinely future-dated.
+3. **Name-pattern matching (holiday/season/month cues in the event's own
+   name) existed in `dateSignalExtraction.ts` but had no dedicated pass
+   run against the public zero-occurrence backlog** — some rows, like
+   Canton Labor Day Festival, were legacy imports that predated the
+   resolution-order fix described above and had simply never been run
+   through it.
+
+One-time backfill executed against the live backlog to apply the
+sharpened logic retroactively (going forward, Rollover/Discovery/Refresh
+keep it current on their own): 31 recurring series with a single stale
+`confirmed_date` got an inferred annual rule + projected next occurrence;
+12 more resolved by matching holiday/season/month cues in the event's own
+name (including Canton Labor Day Festival → 1st Monday of September, and
+St. Patrick's Day Celebration, Sara's Farm Adventure - Veterans Day
+Celebration, and several month/season-only placeholder estimates in the
+spirit of "good is better than great"). The "Carolina Country Music
+Festival" / "Carolina Country Music Fest" duplicate Greg called out was
+also manually merged: the "Festival" record (which already carried 5
+real `plays` and a primary contact) was kept canonical, and the "Fest"
+duplicate's correct June recurrence rule and occurrence dates were copied
+over before archiving it. Needs Date total: 369 → 227 (private exclusion)
+→ 186 (stale-date backfill) → 174 (name-pattern backfill) → 173
+(duplicate merge).
+
+The remaining ~173 break down roughly into: genuinely one-off/unresolved
+events with no name or date cue at all (need either a source with real
+date text or a human look), and a smaller set — about 40 — that already
+have an `event_occurrences` row but with `occurrence_date is null` and
+`date_confidence = 'unknown'` (a real "no signal at all" outcome, not a
+bug). A number of these turned out on inspection to be venues or ongoing
+series without a single date (e.g. "Music Farm", "Newberry Opera House",
+several taproom/brewery names) rather than genuine single-date events —
+flagged here as a data-quality observation, not acted on without Greg's
+input, same treatment as the handful of clearly-private-sounding events
+("Frat Party", "Theta Chi Party", etc.) found mislabeled `is_public =
+true` during this same pass.
+
+**Date resolution is now a real, invokable script, not LLM re-derivation.**
+Discovery and Refresh's scheduled-task prompts previously told the agent
+to read `dateSignalExtraction.ts`/`recurrence.ts` and manually re-derive
+their logic each firing — reliable most of the time, but with no
+guarantee of matching the actual code, and this gap is the most likely
+reason Canton Labor Day Festival went unresolved despite an exact regex
+rule already existing for it. `scripts/resolve-date-signal.ts` (new,
+`tsx` added as a devDependency to run it) wraps the real
+`resolveDateSignal`/`recurrence.ts` exports as a CLI: given a JSON array
+of `{id, name, rawDateText, knownDate?}`, it returns the exact same
+rule/confidence/explanation/next-occurrence the application code would
+produce — see the file's own header comment for the full contract. Both
+scheduled tasks (`trig_01DfziVYnGMKJbe1ca5YDuu5` Discovery,
+`trig_014mRjyjnfgvpZJQzAa61bL4` Refresh) were updated to call
+`npx tsx scripts/resolve-date-signal.ts` for pattern/name-based
+resolution instead of re-deriving it by hand. Refresh's history-based
+inference (projecting from 2-3 past `event_occurrences` dates when no
+text/name signal exists at all — see the Refresh entry above) is a
+different algorithm the script doesn't cover, so that case still reasons
+directly in the scheduled task's own prompt, clearly marked as a distinct
+path from the scripted one.
+
 **`companies.email`** — A general/organizational address (e.g. "City of
 Greenville general contact"), distinct from a real contact's own email.
 Exists because a source often names an organizer with a public contact

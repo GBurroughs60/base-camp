@@ -189,8 +189,12 @@ export default async function EventsPage({
   // expressed here as a plain NOT IN against a small id list rather than
   // querying the view directly, since PostgREST's relationship embedding
   // (companies(...), contacts(...)) isn't guaranteed to follow through a
-  // view the way it does the base table.
+  // view the way it does the base table. Private events are excluded --
+  // verified every private "needs date" row is a historical one-off
+  // booking that already has a play on file and will never need a
+  // projected future date (see the view's own migration).
   if (activeStatus === "needs-date") {
+    query = query.eq("is_public", true);
     const { data: liveOccurrences } = await supabase
       .from("event_occurrences")
       .select("event_id")

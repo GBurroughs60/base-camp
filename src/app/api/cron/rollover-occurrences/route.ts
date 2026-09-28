@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
-import { computeNextOccurrence, type RecurrenceRule } from "@/lib/recurrence";
+import { computeNextOccurrence, inferAnnualRuleFromDate, describeRule, type RecurrenceRule } from "@/lib/recurrence";
 
 // Daily occurrence rollover. See docs/outreach-engine-plan.md section 2,
 // "Occurrence rollover" -- this is deliberately separate from the 12-month
@@ -59,24 +59,44 @@ export async function GET(req: NextRequest) {
   const supabase = createServiceRoleClient();
   const today = todayUTC();
 
-  // Only events with a recurrence_rule are rollover's concern -- a
-  // one-time event with a single confirmed_date never gets a projected
-  // successor.
+  // Two groups now, not one. Group A: events that already have a
+  // recurrence_rule -- rollover's original job. Group B (new): public
+  // events with NO recurrence_rule but a single past confirmed_date and
+  // nothing future -- these used to sit invisible to rollover forever
+  // ("a one-time event with a single confirmed_date never gets a
+  // projected successor"), which is exactly why obviously-recurring named
+  // series (Music on Main, SummerFest Entertainment Series, Party in the
+  // Park...) were silently falling into Needs Date the moment their one
+  // known date lapsed, even though nothing about them looked one-off. Per
+  // Greg (2026-09-28): good is better than great here -- infer a same-
+  // weekday/ordinal annual fallback from that one known date via
+  // recurrence.ts's inferAnnualRuleFromDate (built for exactly this, never
+  // wired in until now) rather than leaving the event to go dark. Always
+  // `estimated`, always correctable by the next Refresh pass. Restricted
+  // to is_public = true -- a private one-off booking (wedding, private
+  // party) is never a recurring series and shouldn't get a fabricated
+  // future date.
   const { data: events, error: eventsError } = await supabase
     .from("events")
-    .select("id, name, recurrence_rule")
-    .not("recurrence_rule", "is", null)
+    .select("id, name, recurrence_rule, is_public, notes")
     .eq("archived", false)
-    .eq("pending_state_review", false);
+    .eq("pending_state_review", false)
+    .or("recurrence_rule.not.is.null,is_public.eq.true");
 
   if (eventsError) {
     console.error("rollover-occurrences: failed to load events", eventsError);
     return NextResponse.json({ ok: false, error: "failed to load events" }, { status: 500 });
   }
 
-  const eventList = (events ?? []) as { id: string; name: string; recurrence_rule: RecurrenceRule }[];
+  const eventList = (events ?? []) as {
+    id: string;
+    name: string;
+    recurrence_rule: RecurrenceRule | null;
+    is_public: boolean;
+    notes: string | null;
+  }[];
   if (eventList.length === 0) {
-    return NextResponse.json({ ok: true, eventsChecked: 0, inserted: 0 });
+    return NextResponse.json({ ok: true, eventsChecked: 0, inserted: 0, fallbackRulesInferred: 0 });
   }
 
   const { data: occurrences, error: occurrencesError } = await supabase
@@ -112,14 +132,16 @@ export async function GET(req: NextRequest) {
     source_url: string | null;
     discovered_at: string;
   }[] = [];
+  const ruleUpdates: { id: string; recurrence_rule: RecurrenceRule; notes: string }[] = [];
   const skippedNoOccurrences: string[] = [];
 
   for (const event of eventList) {
     const latest = latestByEvent.get(event.id);
     if (!latest) {
-      // A recurring event with no occurrence rows at all shouldn't happen
-      // by the time it reaches this table, but don't silently invent a
-      // start date if it does -- flag it instead of guessing.
+      // No occurrence rows at all -- a true "needs date" case, whether or
+      // not it has a recurrence_rule. Nothing to project from, so flag
+      // rather than guess (this is expected/common now that Group B pulls
+      // in every public event, not a bug).
       skippedNoOccurrences.push(event.id);
       continue;
     }
@@ -127,9 +149,34 @@ export async function GET(req: NextRequest) {
     // there's already a live anchor for Engine 2/3 to find.
     if (latest.date.getTime() >= today.getTime()) continue;
 
-    const next = computeNextOccurrence(event.recurrence_rule, latest.date);
+    // Group B: no recurrence_rule on file, but a real past date to build
+    // one from. Infer the fallback annual rule right here (rather than
+    // just once, ad hoc) so it's persisted going forward and every future
+    // firing takes the normal Group A path for this event.
+    let rule = event.recurrence_rule;
+    if (!rule) {
+      rule = inferAnnualRuleFromDate(latest.date);
+      const note = `Rollover (${toDateOnlyString(today)}): no recurrence_rule on file, only a single past date (${toDateOnlyString(latest.date)}). Inferred "${describeRule(rule)}" from that date as a starting estimate -- correct via the next Refresh pass if wrong.`;
+      ruleUpdates.push({
+        id: event.id,
+        recurrence_rule: rule,
+        notes: event.notes ? `${event.notes}\n\n${note}` : note,
+      });
+    }
+
+    // A single forward-scan from `latest.date` finds the next date the
+    // rule matches after that specific date -- correct when latest.date
+    // is recent, but an event whose only known occurrence is a year or
+    // more stale (e.g. discovered_at long ago, never refreshed) can land
+    // on a "next" date that's itself still in the past. Keep advancing
+    // until it's genuinely in the future rather than inserting a second
+    // stale occurrence.
+    let next = computeNextOccurrence(rule, latest.date);
+    while (next && next.getTime() < today.getTime()) {
+      next = computeNextOccurrence(rule, next);
+    }
     if (!next) {
-      console.error(`rollover-occurrences: could not compute next occurrence for event ${event.id}`, event.recurrence_rule);
+      console.error(`rollover-occurrences: could not compute next occurrence for event ${event.id}`, rule);
       continue;
     }
 
@@ -140,6 +187,21 @@ export async function GET(req: NextRequest) {
       source_url: latest.sourceUrl,
       discovered_at: new Date().toISOString(),
     });
+  }
+
+  // Persist inferred fallback rules before inserting the occurrences that
+  // depend on them, so a failure here leaves nothing half-applied.
+  let fallbackRulesInferred = 0;
+  for (const update of ruleUpdates) {
+    const { error } = await supabase
+      .from("events")
+      .update({ recurrence_rule: update.recurrence_rule, notes: update.notes })
+      .eq("id", update.id);
+    if (error) {
+      console.error(`rollover-occurrences: failed to persist inferred rule for event ${update.id}`, error);
+      continue;
+    }
+    fallbackRulesInferred++;
   }
 
   let inserted = 0;
@@ -156,6 +218,7 @@ export async function GET(req: NextRequest) {
     ok: true,
     eventsChecked: eventList.length,
     inserted,
+    fallbackRulesInferred,
     skippedNoOccurrences: skippedNoOccurrences.length,
   });
 }
