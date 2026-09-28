@@ -481,6 +481,54 @@ different algorithm the script doesn't cover, so that case still reasons
 directly in the scheduled task's own prompt, clearly marked as a distinct
 path from the scripted one.
 
+**Needs Date, round two (2026-09-28, same day).** Two more things Greg
+caught by spot-checking what was left after the pass above:
+
+1. **Venues/ongoing programs miscategorized as single-date events.**
+   Greg noticed Music Farm and Newberry Opera House on the list and
+   asked how many of the rest were the same thing. Re-reading the SC
+   research notes for the remaining backlog confirmed it: several notes
+   literally said "venue, not single event," and a couple of event
+   names had even been tagged `(venue)` by the original researcher.
+   Every one of them already had a `venue_id` pointing to a real
+   `companies` row of type `venue` carrying the same information (often
+   with its own "(private venue)"/"(private brewery)" annotation), so
+   the event row was pure duplication, not a source of new information.
+   19 events (breweries/taprooms hosting occasional unscheduled live
+   music, amphitheaters and theaters bookable via a promoter rather than
+   directly, and a couple of multi-venue programs like the Murrells
+   Inlet MarshWalk) were archived with
+   `disqualified_reason = 'Reclassified: this is a venue/ongoing
+   program, not a single-date event...'`, reversible like every other
+   disqualification in this system. The venue itself stays fully live in
+   `companies` for outreach — nothing about Ridge's actual leads on these
+   venues was lost, only the redundant "event" row.
+2. **`dateSignalExtraction.ts`'s pattern matching was stricter than the
+   real research notes.** Reading the same backlog surfaced several
+   events with a genuinely real recurring cadence in their notes that
+   the parser missed on a technicality: "First Friday each month" (only
+   the literal word "monthly" triggered the ordinal-weekday branch, not
+   "each month"), "Thursdays April-Oct" and "Saturdays, ~4:30-8:30pm"
+   (a bare weekday needed one of "weekly"/"every"/"nights"/"evenings" to
+   trigger — a plain plural weekday mention like "Thursdays" didn't
+   count on its own), and "Karaoke every Wed" (weekday abbreviations
+   like "Wed"/"Thu" weren't recognized at all, only full names). Fixed:
+   added `WEEKDAY_ABBR_WORDS` (source text only, same reasoning as the
+   existing month-abbreviation split), dropped the literal-"monthly"
+   requirement for an ordinal-weekday pattern stated in source text
+   (matching the bar step 5's name-based version already used), and
+   treat a plural bare weekday or an explicit month range/season word
+   next to it as sufficient recurrence signal on their own. The one real
+   ambiguity this introduces — an ordinal-weekday phrase tied to a
+   single specific month with no "monthly"/season cue ("the 3rd Saturday
+   of October") reads as *annual*, not monthly — is handled explicitly:
+   checked first, and produces an `annual` rule instead of a `monthly`
+   one. Verified against both the new cases and a regression check
+   (Canton Labor Day Festival, from the earlier pass, still resolves
+   correctly) before backfilling; re-running the loosened logic against
+   the remaining backlog resolved 10 more events. Needs Date: 173 → 154
+   (19 venue reclassifications) → 144 (10 more resolved dates).
+
 **`companies.email`** — A general/organizational address (e.g. "City of
 Greenville general contact"), distinct from a real contact's own email.
 Exists because a source often names an organizer with a public contact

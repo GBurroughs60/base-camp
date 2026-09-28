@@ -39,6 +39,21 @@ const WEEKDAY_WORDS: Record<string, number> = {
   sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
 };
 
+// Abbreviated forms ("Wed", "Thu"/"Thurs") -- like MONTH_ABBR_WORDS below,
+// source date text commonly abbreviates ("Karaoke every Wed 8pm"). Only
+// ever used when scanning SOURCE TEXT, never an event's own name -- same
+// false-positive-avoidance reasoning as months (see findBareMonthInName's
+// comment): an abbreviation is far more likely to be a genuine weekday
+// reference in free-text research notes than embedded in a title.
+const WEEKDAY_ABBR_WORDS: Record<string, number> = {
+  sun: 0, mon: 1, tue: 2, tues: 2, wed: 3, thu: 4, thur: 4, thurs: 4, fri: 5, sat: 6,
+};
+function resolveWeekdayWord(word: string): number | undefined {
+  const w = word.toLowerCase();
+  return WEEKDAY_WORDS[w] ?? WEEKDAY_ABBR_WORDS[w];
+}
+const WEEKDAY_PATTERN_ALL = [...Object.keys(WEEKDAY_WORDS), ...Object.keys(WEEKDAY_ABBR_WORDS)].join("|");
+
 const ORDINAL_WORDS: Record<string, 1 | 2 | 3 | 4 | -1> = {
   "1st": 1, first: 1,
   "2nd": 2, second: 2,
@@ -116,23 +131,33 @@ const HOLIDAY_WEEKDAY_RULES: Array<{ pattern: RegExp; rule: RecurrenceRule; labe
   { pattern: /\bm\.?l\.?k\.?\b|\bmartin luther king\b/i, rule: { frequency: "annual", month: 1, weekday: 1, ordinal: 3 }, label: "MLK Day (3rd Monday of January)" },
 ];
 
-function findOrdinalWeekday(text: string): { weekday: number; ordinal: 1 | 2 | 3 | 4 | -1 } | null {
+// `allowAbbreviations` should only ever be true when scanning source text
+// (never an event's own name -- see WEEKDAY_ABBR_WORDS's comment).
+function findOrdinalWeekday(text: string, allowAbbreviations = false): { weekday: number; ordinal: 1 | 2 | 3 | 4 | -1 } | null {
   const ordinalPattern = Object.keys(ORDINAL_WORDS).join("|");
-  const weekdayPattern = Object.keys(WEEKDAY_WORDS).join("|");
-  const re = new RegExp(`\\b(${ordinalPattern})\\s+(${weekdayPattern})s?\\b`, "i");
+  const weekdayPattern = allowAbbreviations ? WEEKDAY_PATTERN_ALL : Object.keys(WEEKDAY_WORDS).join("|");
+  const re = new RegExp(`\\b(${ordinalPattern})\\s+(${weekdayPattern})\\.?s?\\b`, "i");
   const m = text.match(re);
   if (!m) return null;
-  return { ordinal: ORDINAL_WORDS[m[1].toLowerCase()], weekday: WEEKDAY_WORDS[m[2].toLowerCase()] };
+  const weekday = allowAbbreviations ? resolveWeekdayWord(m[2]) : WEEKDAY_WORDS[m[2].toLowerCase()];
+  if (weekday === undefined) return null;
+  return { ordinal: ORDINAL_WORDS[m[1].toLowerCase()], weekday };
 }
 
 // "Friday nights", "every Thursday", "Thursdays" -- a bare recurring
-// weekday with no ordinal, implying weekly rather than monthly.
-function findBareWeekday(text: string): { weekday: number } | null {
-  const weekdayPattern = Object.keys(WEEKDAY_WORDS).join("|");
-  const re = new RegExp(`\\b(${weekdayPattern})s?\\b`, "i");
+// weekday with no ordinal, implying weekly rather than monthly. `plural`
+// (the "Thursdays"/"Thurs." trailing "s" or "-s") is itself treated as a
+// recurrence signal by callers -- a plain plural weekday mention ("Held
+// Thursdays") is already a strong enough cue on its own, independent of
+// whether the text also uses a trigger word like "weekly"/"every".
+function findBareWeekday(text: string, allowAbbreviations = false): { weekday: number; plural: boolean } | null {
+  const weekdayPattern = allowAbbreviations ? WEEKDAY_PATTERN_ALL : Object.keys(WEEKDAY_WORDS).join("|");
+  const re = new RegExp(`\\b(${weekdayPattern})\\.?(s)?\\b`, "i");
   const m = text.match(re);
   if (!m) return null;
-  return { weekday: WEEKDAY_WORDS[m[1].toLowerCase()] };
+  const weekday = allowAbbreviations ? resolveWeekdayWord(m[1]) : WEEKDAY_WORDS[m[1].toLowerCase()];
+  if (weekday === undefined) return null;
+  return { weekday, plural: !!m[2] };
 }
 
 function findSeasonWindow(text: string): { start: number; end: number; word: string } | null {
@@ -219,15 +244,38 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
   }
 
   // 2. An ordinal-weekday pattern actually stated in the source text
-  //    ("3rd Saturday monthly") -- confirmed_pattern, since the source
-  //    said it outright. Season window: use an explicit month range if
-  //    also stated, otherwise a season word if stated, otherwise default
-  //    to year-round (many "monthly" series with rotating themes run all
-  //    12 months, e.g. the Hagood Mill series) rather than guessing narrow.
-  const ordinalInText = findOrdinalWeekday(text);
-  if (ordinalInText && /\bmonthly\b/i.test(text)) {
+  //    ("3rd Saturday monthly", "2nd Saturday, May-Sept", "First Friday
+  //    each month"). Originally this only fired when the literal word
+  //    "monthly" was also present, which missed very common real phrasings
+  //    ("each month", a bare month range with no "monthly" at all) --
+  //    loosened per Greg (2026-09-28) so the ordinal-weekday statement
+  //    itself is enough, same bar step 5 already uses for the event-name
+  //    version of this same cue. Still confirmed_pattern either way, since
+  //    the source stated the weekday/ordinal outright.
+  //
+  //    One real ambiguity this has to resolve: an ordinal-weekday phrase
+  //    tied to a SINGLE specific month with no "monthly"/"each month"
+  //    keyword and no season range ("the 3rd Saturday of October") reads
+  //    as an ANNUAL pattern, not a monthly one -- so that case is checked
+  //    first and produces an `annual` rule instead. Everything else
+  //    (an explicit month range, a season word, a "monthly"/"each month"
+  //    keyword, or no month info at all) is monthly-within-season, season
+  //    window from an explicit range if stated, else a season word, else
+  //    year-round (many "monthly" series with rotating themes run all 12
+  //    months, e.g. the Hagood Mill series).
+  const ordinalInText = findOrdinalWeekday(text, true);
+  if (ordinalInText) {
     const explicitRange = findExplicitMonthRange(text);
     const seasonWord = findSeasonWindow(text);
+    const monthlyKeyword = /\bmonthly\b|\beach month\b/i.test(text);
+    const singleMonth = !explicitRange && !seasonWord && !monthlyKeyword ? findBareMonthInText(text) : null;
+    if (singleMonth) {
+      return {
+        rule: { frequency: "annual", month: singleMonth.month, weekday: ordinalInText.weekday, ordinal: ordinalInText.ordinal },
+        confidence: "confirmed_pattern",
+        explanation: "Source date text states an ordinal-weekday pattern anchored to one specific month, with no \"monthly\"/season cue -- treated as an annual pattern, not a monthly one.",
+      };
+    }
     const season = explicitRange ?? (seasonWord ? { start: seasonWord.start, end: seasonWord.end } : { start: 1, end: 12 });
     return {
       rule: { frequency: "monthly", weekday: ordinalInText.weekday, ordinal: ordinalInText.ordinal, seasonStartMonth: season.start, seasonEndMonth: season.end },
@@ -243,8 +291,18 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
   //    and weekday are still source-confirmed but the season boundary is a
   //    guess -- so the whole rule is marked estimated rather than
   //    overclaiming confidence on the part we didn't actually confirm.
-  const weekdayInText = findBareWeekday(text);
-  if (weekdayInText && (/\bweekly\b/i.test(text) || /\bnights?\b/i.test(text) || /\bevenings?\b/i.test(text) || /\bevery\b/i.test(text))) {
+  const weekdayInText = findBareWeekday(text, true);
+  // Loosened per Greg (2026-09-28): a plural weekday mention ("Thursdays
+  // April-Oct") or a weekday sitting next to an explicit month range/
+  // season word ("Saturdays, ~4:30-8:30pm" won't have one, but "Thursdays
+  // April-Oct" does) is itself a strong enough recurrence signal -- these
+  // don't need one of the original trigger words too. A bare SINGULAR
+  // weekday with no range/season/trigger word stays unresolved rather
+  // than guessed at (that's usually a one-off mention, not a pattern).
+  const weekdayHasRecurrenceSignal =
+    /\bweekly\b/i.test(text) || /\bnights?\b/i.test(text) || /\bevenings?\b/i.test(text) || /\bevery\b/i.test(text)
+    || !!weekdayInText?.plural || !!findExplicitMonthRange(text) || !!findSeasonWindow(text);
+  if (weekdayInText && weekdayHasRecurrenceSignal) {
     const explicitRange = findExplicitMonthRange(text);
     const seasonInText = findSeasonWindow(text);
     const seasonInName = findSeasonWindow(eventName);
