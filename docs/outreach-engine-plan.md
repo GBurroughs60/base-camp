@@ -853,8 +853,20 @@ finalized — drive-time/tour-routing distance from Nashville, where most of
 the roster lives and where touring economics actually run (the dominant
 factor), with existing Basecamp relationship density (`companies`/`plays`
 already on the books) as a tiebreaker. Deliberately prioritizes
-artist-routing economics over Greg's own location in Boise. The concrete,
-ordered state list is a next deliverable, not this document.
+artist-routing economics over Greg's own location in Boise.
+
+**Resolved (2026-09-29).** The full ordered state list is now seeded in
+`discovery_progress` (`priority_order` 0-50, all 50 states + DC, SC/GA/NC
+already `approved` at 0-2) — Greg's own call, radiating out from the
+Southeast cluster: the rest of the Southeast next (TN, VA, FL, AL, then
+MS, KY, WV, AR, LA), DC/MD/DE bridging into the Northeast (PA through ME),
+most of the Midwest, then a jump out to ID/WA/OR before finishing the
+Midwest's plains states, then Texas/Oklahoma and the rest of the
+Mountain/Southwest/Pacific states, ending on AK/HI. Since Discovery's
+`fire_trigger` self-chaining already just picks the lowest `priority_order`
+row that's `pending`/`in_progress`, seeding this list once means it now
+runs the entire country end to end without ever needing a state named
+again — no separate geographic-distance logic was needed for that.
 
 **Engines 2 & 3 (draft creation)** work off a separate 10-region map once a
 state is caught up — states clustered into 10 groups sized for a roughly
@@ -885,7 +897,6 @@ rather than a forecast.
 ## 11. Still open, to resolve during build
 
 - Exact chunk size for a single discovery run within a state.
-- The concrete, ordered state-priority list for Engine 1.
 - The concrete 10-region map for Engines 2 & 3.
 
 ## 12. Discovery output contract (Engine 1)
