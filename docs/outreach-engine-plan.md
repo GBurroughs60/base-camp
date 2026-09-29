@@ -686,6 +686,47 @@ row and flag it rather than trust the returned `auto_link` tier — but the
 function itself needed the fix so that judgment call isn't the only thing
 standing between this and a silent merge next time.
 
+**Domain-based company matching (2026-09-29).** Added a HubSpot-style
+identity signal alongside name similarity: `find_company_match` now takes
+optional `p_email`/`p_website` parameters, extracts the bare domain from
+whichever is given (`extract_domain`, a small parser that strips protocol,
+`www.`, path, port, and any `@`-prefix), and treats a shared real domain
+between the candidate and an existing company as a strong match signal —
+so a renamed event series or an org listed under a slightly different name
+still links correctly when the underlying website/email domain is the
+same. A same-domain match can push a candidate to `auto_link` even at a
+fairly low name-similarity score (`domain_match and sim > 0.4`) — the 0.4
+floor exists so two genuinely unrelated orgs that happen to share a
+domain (e.g. two departments of the same city government, or two
+tenants of the same registrar's parked-page domain) don't get silently
+merged just because the domain lines up; below that floor they still
+insert as a new, separately reviewable row rather than auto-linking, with
+the breadcrumb calling out the shared domain explicitly (a different kind
+of "worth checking" than a coincidental name collision). A denylist of
+~20 common consumer webmail domains (`is_generic_email_domain` — Gmail,
+Yahoo, Outlook, iCloud, etc.) is excluded from the signal entirely, since
+most small-town organizers use personal addresses and a shared Gmail
+domain says nothing about common ownership. This is deliberately not
+about email deliverability/sending-domain concepts (SPF/DKIM) — purely an
+identity-matching signal, same spirit as the name/geo signals already in
+place. `find_event_match` and the visibility-gate mechanics below are
+unchanged; only company matching gained this signal, since events don't
+carry their own website/email. Discovery's Step 4a now passes
+`p_email`/`p_website` whenever the organizer/venue candidate has one.
+
+Two bugs surfaced and were fixed while building this, both from directly
+testing edge cases rather than from a live incident: (1) Postgres sorts
+`NULL` *first* in `ORDER BY <boolean> DESC` by default, so an unrelated
+company with no website/email at all (`domain_match` evaluating to `NULL`)
+was outranking the true domain match in candidate selection — fixed by
+wrapping every `domain_match` expression in `coalesce(..., false)`; (2)
+`CREATE OR REPLACE FUNCTION` doesn't replace a function whose parameter
+list changed, it adds a second overload — the original 3-argument
+`find_company_match` was still live alongside the new 5-argument version
+until the stale overload was explicitly dropped, which briefly made calls
+ambiguous. Both are the kind of thing worth a repeat lint before other
+`find_*_match`-style functions ever change signature again.
+
 Separately, discovery-sourced `events`/`companies` rows carry
 `pending_state_review = true` until their state flips to `approved` in
 `discovery_progress` — this is a *visibility* gate, not the dedup gate
