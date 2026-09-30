@@ -898,6 +898,17 @@ rather than a forecast.
 
 - Exact chunk size for a single discovery run within a state.
 - The concrete 10-region map for Engines 2 & 3.
+- **Enforcing/verifying the "unknown is a last resort" rule from section
+  12.** The contract says a dateless event should be rare, not a default,
+  but nothing currently checks that this actually holds — a firing that
+  falls back to `unknown` produces no signal anywhere (not in its digest,
+  not in any dashboard), so a dateless event is invisible to Engine 2's
+  live tier computation and could sit unpitchable indefinitely with no one
+  noticing. Options discussed but not decided: have each firing report its
+  own dateless-event count in its digest; add a standing "no known
+  occurrence" view/counter in Basecamp so it's visible independent of any
+  one digest; or require a `refresh_flagged`-style note explaining what was
+  checked whenever `unknown` is used, instead of a silent default.
 
 ## 12. Discovery output contract (Engine 1)
 
