@@ -768,19 +768,31 @@ Festival" in Lawrenceville, GA. (2) The `>= 3-word-name, similarity >
 unlike every other tier rule — so two different-city, same-state events
 with a generic multi-word name could auto-link on name alone. Caught
 live on "Fall Concerts in the Park" (Guntersville) vs. "Concerts in the
-Park" (Huntsville) at 81% similarity. Fixed by adding the same
-`coalesce` and gating the 3-word tier on `(venue_match or geo_match)`,
-same as the `sim > 0.6` tier just above it. Both verified directly
-against live data after the fix (the two real examples above now return
-no match / `questionable` respectively, and a genuine same-venue repeat
-still returns `auto_link` cleanly).
+Park" (Huntsville) at 81% similarity — neither pair shares a real venue
+(confirmed against the actual rows: different company, different city,
+one has no venue on file at all), they just scored high on name text
+alone. First fix added the same `coalesce` and gated the 3-word tier on
+`(venue_match or geo_match)`, same as the `sim > 0.6` tier just above it;
+Greg's call minutes later was that the gated version still wasn't worth
+keeping — this project's real data has thrown enough generic multi-word
+collisions ("Concerts in the Park," "Festival...," "City of X") that a
+bare word-count/similarity heuristic isn't a helpful signal even within
+the same city, gated or not. Removed the branch entirely
+(`remove_event_match_3word_name_only_tier`) rather than keep tightening
+it — anything that would have hit it now falls through to `questionable`
+same as any other borderline match, which never blocks discovery, it
+just gets a human glance via `dedup_uncertain`. Verified directly against
+live data after both migrations (the two real examples above return no
+match / `questionable`, and a genuine same-venue repeat still returns
+`auto_link` cleanly through the `venue_match`/`geo_match` branch).
 
-**Open — `find_company_match` likely has the same ungated 3-word tier.**
+**Open — `find_company_match` likely has the same 3-word tier issue.**
 Not yet fixed: `find_company_match`'s own tier case has the identical
 `sim > 0.75 and >= 3 words` branch with no `domain_match`/`geo_match`
 check, copied from the same original pattern. Flagged while fixing the
-event-side version, not yet confirmed against a live false-positive the
-way the two above were, and not yet actioned.
+event-side version, not yet confirmed against a live false-positive, and
+given Greg's call above, likely warrants the same full removal rather
+than a gate — needs his go-ahead before touching it.
 
 **Audited (2026-10-11), no confirmed damage found.** Checked all
 already-approved states (SC/GA/NC/TN/VA/FL/AL) for `events.state`
