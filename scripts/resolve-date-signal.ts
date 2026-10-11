@@ -36,7 +36,7 @@
 //         "source": "pattern" | "single-date-fallback",
 //         "rule": RecurrenceRule,
 //         "rule_description": "1st Monday of September, annually",
-//         "confidence": "confirmed_pattern" | "estimated",
+//         "confidence": "confirmed_date" | "confirmed_pattern" | "estimated",
 //         "explanation": "...",
 //         "next_occurrence": "YYYY-MM-DD"   // next occurrence strictly after today,
 //                                            // advanced past any stale match
@@ -68,7 +68,7 @@ type Result =
       source: "pattern" | "single-date-fallback";
       rule: RecurrenceRule;
       rule_description: string;
-      confidence: "confirmed_pattern" | "estimated";
+      confidence: "confirmed_date" | "confirmed_pattern" | "estimated";
       explanation: string;
       next_occurrence: string;
     };

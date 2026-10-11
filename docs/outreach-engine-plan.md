@@ -398,6 +398,32 @@ like a `confirmed_date` event would. `estimated` only changes when
 Refresh double-checks it (every 6 months instead of never), not whether
 it participates in outreach in the meantime.
 
+**Step 1 (explicit date) was documented but never actually built
+(fixed 2026-10-11).** This section always specified step 1 as resolving a
+single explicit date in the source text — written month name or numeric
+`M/D/YYYY` — straight to `confirmed_date`. That only ever happened in the
+one-time Python import script used for the original SC backlog; it never
+made it into `src/lib/dateSignalExtraction.ts`, the ongoing module
+Discovery and Refresh actually call. In its absence, the module's bare-
+month step (4 above) silently swallowed a stated date instead: any
+"Month Day" or "Month Day, Year" text matched the bare-month-name check
+before anything could look for a day number next to it, and got anchored
+to the 1st of that month at `estimated` confidence — wrong, and not
+flagged as wrong. Found during Alabama discovery (2026-10-02) by testing
+the live script directly against its own prompt example ("October 17,
+2026") and getting `day: 1`/`estimated` back, then confirmed against
+three more literal-date phrasings, all four wrong the same way. Fixed by
+adding `findExplicitDate` (written month) and `findExplicitNumericDate`
+(numeric, including a date embedded in a longer timestamp string like
+"Fri, 05/08/2026 - 18:00") ahead of the bare-month step, both requiring
+exactly one date-like match in the text so a range never gets mistaken
+for a single date. The result now carries a third confidence tier,
+`confirmed_date` (already a valid `event_occurrences.date_confidence`
+value at the DB level, just never reachable from this module), and is
+represented as the existing `annual-date` rule shape rather than a new
+result type, since "a fixed calendar day every year" is exactly what
+`annual-date` already means and keeps every caller's handling unchanged.
+
 **Needs Date (manual touch).** Occurrence rollover only helps once a
 `recurrence_rule` exists to project from — an event with no inferable
 pattern (a one-off with no stated recurrence, or existence confirmed with
@@ -727,6 +753,53 @@ until the stale overload was explicitly dropped, which briefly made calls
 ambiguous. Both are the kind of thing worth a repeat lint before other
 `find_*_match`-style functions ever change signature again.
 
+That "repeat lint" caught two more, this time in `find_event_match`,
+found during Alabama discovery (2026-10-02) and fixed the same day via
+the `fix_event_match_venue_null_and_3word_geo_gap` migration: (1) the
+exact NULL-vs-false bug named above as a risk, except in `venue_match`
+instead of `domain_match` — `find_event_match` never got the
+`coalesce(..., false)` fix `find_company_match` already had, so when a
+new event's organizer was already resolved to a real `venue_id` but the
+*candidate* match had `venue_id IS NULL`, the cross-state exclusion guard
+silently didn't fire (`NULL` reads as "don't block"). Caught live on
+"Boaz Harvest Festival" almost auto-linking to an unrelated "Harvest
+Festival" in Lawrenceville, GA. (2) The `>= 3-word-name, similarity >
+0.75` auto-link tier never checked `venue_match`/`geo_match` at all,
+unlike every other tier rule — so two different-city, same-state events
+with a generic multi-word name could auto-link on name alone. Caught
+live on "Fall Concerts in the Park" (Guntersville) vs. "Concerts in the
+Park" (Huntsville) at 81% similarity. Fixed by adding the same
+`coalesce` and gating the 3-word tier on `(venue_match or geo_match)`,
+same as the `sim > 0.6` tier just above it. Both verified directly
+against live data after the fix (the two real examples above now return
+no match / `questionable` respectively, and a genuine same-venue repeat
+still returns `auto_link` cleanly).
+
+**Open — `find_company_match` likely has the same ungated 3-word tier.**
+Not yet fixed: `find_company_match`'s own tier case has the identical
+`sim > 0.75 and >= 3 words` branch with no `domain_match`/`geo_match`
+check, copied from the same original pattern. Flagged while fixing the
+event-side version, not yet confirmed against a live false-positive the
+way the two above were, and not yet actioned.
+
+**Audited (2026-10-11), no confirmed damage found.** Checked all
+already-approved states (SC/GA/NC/TN/VA/FL/AL) for `events.state`
+disagreeing with `companies.state` via `venue_id` — the signature a
+wrongly cross-state-merged event/venue pair would leave if the bug above
+had already fired on live data before being caught. One real flag
+turned up ("Supermodels Unlimited," tagged `state = SC` with `city =
+Asheville`, venue "The Biltmore" correctly tagged NC) plus one unrelated
+and clearly out-of-scope row (an event/company pair both tagged
+Ontario/Canada, not a US state at all) — neither looks like a product of
+this specific bug, more likely a state field set from the state being
+researched rather than the venue's real location. Flagged below rather
+than silently corrected, since the right fix (correct the state? move
+the row? archive it?) isn't obvious without knowing original intent.
+This audit technique has a real limitation worth naming: a genuinely
+wrongly-merged event would leave no trace at all (the would-be-duplicate
+row simply never gets created), so this can rule out one specific
+signature, not prove nothing was ever merged.
+
 Separately, discovery-sourced `events`/`companies` rows carry
 `pending_state_review = true` until their state flips to `approved` in
 `discovery_progress` — this is a *visibility* gate, not the dedup gate
@@ -909,6 +982,17 @@ rather than a forecast.
   occurrence" view/counter in Basecamp so it's visible independent of any
   one digest; or require a `refresh_flagged`-style note explaining what was
   checked whenever `unknown` is used, instead of a silent default.
+- **`find_company_match`'s ungated 3-word auto-link tier.** Same shape as
+  the `find_event_match` bug fixed 2026-10-11 (section 4) — the
+  `sim > 0.75 and >= 3 words` branch doesn't check `domain_match`/
+  `geo_match` either. Flagged, not yet confirmed against a real
+  false-positive or fixed.
+- **"Supermodels Unlimited" and the Ontario/Canada event/company pair**
+  (section 4, 2026-10-11 audit) — one event tagged with a state that
+  doesn't match its own venue's real state, one event/company pair
+  tagged to a Canadian province instead of a US state. Need Greg's call
+  on what's actually wrong here (bad state field vs. intentional
+  cross-border/cross-state pitch) before touching either row.
 
 ## 12. Discovery output contract (Engine 1)
 

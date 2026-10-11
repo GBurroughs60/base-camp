@@ -9,7 +9,10 @@
 // ("4th of July Festival", "Sounds of Summer"). See
 // docs/outreach-engine-plan.md, "Date/pattern extraction order".
 //
-// Two confidence tiers, matching event_occurrences.date_confidence:
+// Three confidence tiers, matching event_occurrences.date_confidence:
+//   - confirmed_date: the SOURCE's own date text names one specific literal
+//     calendar date ("October 17, 2026", "July 4th") -- not a pattern, a
+//     date. Read directly, never inferred.
 //   - confirmed_pattern: the pattern came from the SOURCE's own date text
 //     (a weekday/ordinal/frequency phrase actually written there).
 //   - estimated: any part of the rule had to be filled in from something
@@ -18,15 +21,27 @@
 //     Expected to be corrected by the next Refresh pass, same as any
 //     other estimate.
 //
-// This module only extracts *rules*, never a specific future date -- it
-// deliberately does not invent "the 2027 date" the way a source explicitly
-// warned against (see the Easley 4th of July Festival import notes).
-// Projecting a rule to its next actual occurrence is computeNextOccurrence
-// in recurrence.ts.
+// A literal explicit date (confirmed_date) is still returned as a
+// `RecurrenceRule` here -- specifically `annual-date` (see recurrence.ts),
+// which already means exactly "a fixed calendar day every year" and is the
+// same shape used for named-holiday events. This does invent next year's
+// date the way the Easley 4th of July Festival import notes warned against
+// doing casually -- but only for a date the source itself stated, which is
+// the one case that warning doesn't apply to; a bare month/season/pattern
+// guess still never does this. Projecting the rule to its next actual
+// occurrence is computeNextOccurrence in recurrence.ts.
+//
+// This module used to stop at a bare month name whenever a day number
+// followed it in the source text ("October 17, 2026" read as just
+// "October", silently anchored to the 1st) -- found during Alabama
+// discovery (2026-10-02) by testing the live script directly against its
+// own prompt example and getting day:1 back every time. findExplicitDate
+// below is checked before the bare-month fallback specifically to close
+// that gap.
 
 import type { RecurrenceRule } from "./recurrence";
 
-export type DateSignalConfidence = "confirmed_pattern" | "estimated";
+export type DateSignalConfidence = "confirmed_date" | "confirmed_pattern" | "estimated";
 
 export type DateSignalResult = {
   rule: RecurrenceRule;
@@ -219,6 +234,56 @@ function findBareMonthInName(text: string): { month: number } | null {
   return findBareMonthWith(text, Object.keys(MONTH_WORDS).join("|"));
 }
 
+// SOURCE TEXT ONLY -- a literal "Month Day" or "Month Day, Year" calendar
+// date ("October 17, 2026", "July 4th", "Celebrated every year on July
+// 4"). Requires EXACTLY one month word in the whole text, same guard
+// findBareMonthWith already uses and for the same reason: two month
+// mentions almost always means a range ("Apr 2-Aug 27, 2026"), which
+// findExplicitMonthRange owns, not a single date -- picking one side of a
+// range as "the" date here would be actively wrong, same as picking one
+// side as "the" month would be in findBareMonthWith. The day number must
+// sit immediately after the month word (only whitespace/period between),
+// so a month mention with no day right next to it ("Mid-May", "the 3rd
+// Saturday of October") correctly falls through to the pattern/bare-month
+// logic elsewhere instead.
+function findExplicitDate(text: string): { month: number; day: number; year: number | null } | null {
+  const monthMatches = [...text.matchAll(new RegExp(`\\b(${MONTH_PATTERN_ALL})\\b\\.?`, "gi"))];
+  if (monthMatches.length !== 1) return null;
+  const month = resolveMonthWord(monthMatches[0][1]);
+  if (!month) return null;
+
+  const monthEnd = (monthMatches[0].index ?? 0) + monthMatches[0][0].length;
+  const rest = text.slice(monthEnd);
+  const dayMatch = rest.match(/^\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+  if (!dayMatch) return null;
+  const day = Number(dayMatch[1]);
+  if (day < 1 || day > 31) return null;
+
+  const afterDay = rest.slice(dayMatch[0].length);
+  const yearMatch = afterDay.match(/^[\s,]+(\d{4})\b/);
+  const year = yearMatch ? Number(yearMatch[1]) : null;
+
+  return { month, day, year };
+}
+
+// SOURCE TEXT ONLY -- a numeric M/D/YYYY or MM/DD/YYYY date, including one
+// embedded in a longer timestamp string with a weekday prefix and/or a
+// trailing time ("Fri, 05/08/2026 - 18:00"). Section 2 of the plan doc
+// ("Date/pattern extraction order", step 1) always called for this form
+// alongside the written-month form above; it just never made it from the
+// one-time SC import script into this ongoing module until now. Requires
+// exactly one such date in the text, same "don't guess which side of a
+// range is the date" reasoning as findExplicitDate above.
+function findExplicitNumericDate(text: string): { month: number; day: number; year: number } | null {
+  const matches = [...text.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g)];
+  if (matches.length !== 1) return null;
+  const month = Number(matches[0][1]);
+  const day = Number(matches[0][2]);
+  const year = Number(matches[0][3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return { month, day, year };
+}
+
 /**
  * Attempts to resolve a recurrence rule from a source's free-text date
  * notes plus the event's own name, in order from most to least confident.
@@ -327,7 +392,32 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
     };
   }
 
-  // 4. A single bare month named in the SOURCE text itself (e.g. "Mid-May",
+  // 4. A literal explicit calendar date stated in the source text itself
+  //    -- a written month ("October 17, 2026", "July 4th") or a numeric
+  //    M/D/YYYY date, including one embedded in a longer timestamp string
+  //    ("Fri, 05/08/2026 - 18:00"). Checked before the bare-month fallback
+  //    below specifically because a bare-month match would otherwise
+  //    swallow the written form (it only looks for the month word and
+  //    never checks for a day number sitting right next to it) -- the gap
+  //    found during Alabama discovery (see this file's header comment).
+  //    Always wins outright over a guessed pattern, per the Discovery
+  //    output contract (section 12): a stated date beats any inferred
+  //    rule. The year, if the source gave one, is noted in the explanation
+  //    but not carried in the rule itself -- `annual-date` is deliberately
+  //    year-agnostic, same as the existing named-holiday dates below, so
+  //    this date projects forward correctly in future years too.
+  const explicitDate = findExplicitDate(text) ?? findExplicitNumericDate(text);
+  if (explicitDate) {
+    return {
+      rule: { frequency: "annual-date", month: explicitDate.month, day: explicitDate.day },
+      confidence: "confirmed_date",
+      explanation: explicitDate.year
+        ? `Source date text states a specific calendar date (month ${explicitDate.month}, day ${explicitDate.day}, ${explicitDate.year}) -- read directly, not inferred from a pattern or guessed at.`
+        : `Source date text states a specific calendar date (month ${explicitDate.month}, day ${explicitDate.day}) with no year given -- read directly, not inferred from a pattern or guessed at.`,
+    };
+  }
+
+  // 5. A single bare month named in the SOURCE text itself (e.g. "Mid-May",
   //    with no day and no weekday) -- more specific than anything the name
   //    alone could tell us, so this outranks every name-only cue below even
   //    though it's still just a month, not a day.
@@ -340,7 +430,7 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
     };
   }
 
-  // 5. Nothing patterned or month-specific in the source text at all --
+  // 6. Nothing patterned or month-specific in the source text at all --
   //    fall back to the event's own name as a last resort before giving
   //    up. Everything here is estimated: the name is us reading a cue, not
   //    the source stating a recurrence.
