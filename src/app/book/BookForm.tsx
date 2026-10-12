@@ -99,6 +99,10 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
   const [form, setForm] = useState<FormState>(initialState);
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  // Captured once, the moment this form mounts -- paired with the honeypot
+  // server-side so a single false positive (e.g. autofill) can't silently
+  // discard a real submission on its own. See offerIntake.ts.
+  const [renderedAt] = useState(() => Date.now());
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -109,7 +113,7 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
     setStatus("submitting");
     setError(null);
 
-    const res = await submitOfferInquiry(form);
+    const res = await submitOfferInquiry({ ...form, renderedAt });
     if (res.ok) {
       setStatus("done");
     } else {

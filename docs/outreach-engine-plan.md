@@ -941,6 +941,65 @@ short of the 0.6 similarity floor even with a city/state match, since
 abbreviating words breaks up trigram similarity badly. Worth revisiting if
 it shows up in practice, but out of scope for this pass.
 
+**Incident + fix (2026-10-12): a real offer vanished with zero trace.** Ben
+Hooker (Boho Links, Chapin SC) told Greg he'd submitted an offer; nothing
+showed up anywhere -- no `plays` row, no email, no error. Root cause: the
+honeypot anti-bot field (`companyUrl` on the `/book` form, hidden from real
+visitors) had been filled in -- almost certainly by browser autofill, not
+an actual bot -- and the old code's response to a filled honeypot was to
+report success to the visitor while silently discarding the entire
+submission, with no record of it anywhere, not even for us to find
+afterward. Confirmed via direct query that no `plays` row existed for this
+or any other submission in the relevant window; traced the only code path
+(`submitOfferInquiry` in `src/app/actions/offerIntake.ts`) that produces
+exactly this symptom (apparent success, zero DB writes, zero emails) to
+that honeypot branch.
+
+Two-part fix, both approved by Greg:
+
+1. **Safety-net log, migration `offer_inquiry_attempt_safety_net_log`.**
+   New table `offer_inquiry_attempts` + two `SECURITY DEFINER` RPCs
+   (`log_offer_inquiry_attempt`, `update_offer_inquiry_attempt`). Every
+   `/book` submission is now saved to this table the instant it's
+   received -- before the honeypot check or any validation runs -- so a
+   real submission can never again disappear without a trace, regardless
+   of what later logic does with it. RLS is enabled with zero policies
+   (write-only through the two RPCs; no `SELECT` grant to `anon`/
+   `authenticated`), so this isn't a new publicly-readable surface --
+   reviewed via direct SQL same as everything else in this project. Each
+   row is later updated in place with how the submission was handled
+   (`ok`, `blocked_bot`, `validation_error`, `rpc_error`) and the
+   resulting `play_id` when there is one.
+2. **Honeypot now needs a second signal before it discards anything.**
+   `BookForm.tsx` captures `Date.now()` the moment the form mounts
+   (`renderedAt`) and sends it through with the submission.
+   `submitOfferInquiry` only treats the honeypot as a real bot -- and
+   skips the insert -- when the field is filled **and** the whole form
+   was submitted in under `HONEYPOT_MIN_HUMAN_MS` (2500ms), too fast for
+   someone who actually read and typed into the form. A filled honeypot on
+   a normally-paced submission is logged as `honeypot_triggered = true`
+   but is no longer discarded -- it's processed as a real offer, same as
+   before the honeypot existed at all. This directly targets the autofill
+   false-positive: a script that fills every field and submits
+   immediately still gets caught; a human whose browser quietly populated
+   one hidden field no longer loses their submission over it.
+
+Verified against the three cases this needs to tell apart: a clean human
+submission (no honeypot, logged + processed normally); a scripted bot
+(honeypot filled, fast, blocked and logged as `blocked_bot`, visitor still
+told "success" so it has no signal it was caught); and the Ben Hooker case
+(honeypot filled, normal human pace, logged as `honeypot_triggered: true`
+but processed through to a real `plays` row and notification, exactly as
+it should have the first time).
+
+Known gap, not addressed by this fix: `sendNewOfferEmail`'s own failures
+are still only `console.error`'d, never surfaced to Greg or retried (see
+`src/lib/approvalEmail.ts`) -- if a real submission saves correctly but the
+notification email itself fails to send, nothing currently tells anyone
+that happened. Flagged for later (section 11); out of scope for this pass,
+which was specifically about submissions that never reach the database at
+all.
+
 ## 9. Geographic sequencing
 
 Two related but separate sequencing questions — one per engine.
@@ -1013,6 +1072,13 @@ rather than a forecast.
   `sim > 0.75 and >= 3 words` branch doesn't check `domain_match`/
   `geo_match` either. Flagged, not yet confirmed against a real
   false-positive or fixed.
+- **Silent email-notification failures.** `sendNewOfferEmail`/
+  `sendApprovalEmail`/`sendApprovalResponseEmail` (`src/lib/approvalEmail.ts`)
+  only `console.error` on a Resend failure — nothing surfaces to Greg and
+  nothing retries. Flagged during the 2026-10-12 `/book` safety-net fix
+  (section 8) but intentionally not fixed in that pass, which was scoped to
+  submissions that never reach the database at all, not notification
+  delivery on top of a successful one.
 
 ## 12. Discovery output contract (Engine 1)
 
