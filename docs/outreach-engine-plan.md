@@ -804,13 +804,27 @@ Asheville`, venue "The Biltmore" correctly tagged NC) plus one unrelated
 and clearly out-of-scope row (an event/company pair both tagged
 Ontario/Canada, not a US state at all) — neither looks like a product of
 this specific bug, more likely a state field set from the state being
-researched rather than the venue's real location. Flagged below rather
-than silently corrected, since the right fix (correct the state? move
-the row? archive it?) isn't obvious without knowing original intent.
-This audit technique has a real limitation worth naming: a genuinely
-wrongly-merged event would leave no trace at all (the would-be-duplicate
-row simply never gets created), so this can rule out one specific
-signature, not prove nothing was ever merged.
+researched rather than the venue's real location. This audit technique
+has a real limitation worth naming: a genuinely wrongly-merged event
+would leave no trace at all (the would-be-duplicate row simply never
+gets created), so this can rule out one specific signature, not prove
+nothing was ever merged.
+
+**Both corrected (2026-10-11), per Greg.** "Supermodels Unlimited"'s
+`state` corrected to `NC` to match its venue and its own city
+(Asheville) — its `country` was already correctly `USA`. The Canada
+entry stays, properly labeled rather than removed: both `events` and
+`companies` already have a `country` column (default `'USA'`), just
+unused correctly here — the event row already had `state: "Ontario"`/
+`country: "Canada"` right, but the company row had `"Canada"` sitting in
+`state` (a country name in the wrong field), `country` left at the
+`USA` default, and the province folded redundantly into `city`
+("Jackson Point, Ontario"). Corrected the company row to `city: "Jackson
+Point"`, `state: "Ontario"`, `country: "Canada"`, matching the event
+row's shape. This is also the first confirmation `country` exists and
+is meant to be used this way — worth keeping in mind if Engine 1 ever
+expands past "state by state within the US" on purpose (it hasn't; this
+one row was a scope slip, not an expansion).
 
 Separately, discovery-sourced `events`/`companies` rows carry
 `pending_state_review = true` until their state flips to `approved` in
@@ -999,12 +1013,6 @@ rather than a forecast.
   `sim > 0.75 and >= 3 words` branch doesn't check `domain_match`/
   `geo_match` either. Flagged, not yet confirmed against a real
   false-positive or fixed.
-- **"Supermodels Unlimited" and the Ontario/Canada event/company pair**
-  (section 4, 2026-10-11 audit) — one event tagged with a state that
-  doesn't match its own venue's real state, one event/company pair
-  tagged to a Canadian province instead of a US state. Need Greg's call
-  on what's actually wrong here (bad state field vs. intentional
-  cross-border/cross-state pitch) before touching either row.
 
 ## 12. Discovery output contract (Engine 1)
 
