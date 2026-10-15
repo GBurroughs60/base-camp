@@ -1052,6 +1052,22 @@ rather than catching and recovering from it. Flagged as a possible future
 hardening step (section 11) if this recurs, but a larger change than this
 incident warranted on its own.
 
+**Recurring health check added (2026-10-15).** Both incidents above only
+surfaced because Greg happened to notice a missing email and asked. Nothing
+was watching the safety-net log itself. Added a daily scheduled task (Claude
+Code Remote trigger `trig_016YVz8R9vvH1vi2rHLmDsJb`, `CRON_TZ=America/New_York
+48 8 * * *`, push + email notifications) that scans `offer_inquiry_attempts`
+for the last 26 hours every morning: flags anything with `outcome` of
+`rpc_error`/`validation_error`/`NULL` (a NULL outcome means a row was logged
+but never updated -- something crashed mid-request) in detail, lists
+`blocked_bot` rows briefly in case one looks like it could've been a real
+person, and lists every clean `ok` submission so Greg can cross-check he
+actually received the notification email for each -- the one thing this
+check *can't* verify directly, since there's still no server-side record of
+whether `sendNewOfferEmail` actually succeeded (see "Silent email-
+notification failures" below). Stays quiet (one or two sentences) on a
+clean day; only goes into detail on actual anomalies.
+
 ## 9. Geographic sequencing
 
 Two related but separate sequencing questions — one per engine.
