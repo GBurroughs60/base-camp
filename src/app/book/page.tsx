@@ -7,6 +7,14 @@ import BookForm from "./BookForm";
 // booking offer. One shared URL with an artist dropdown rather than a
 // per-artist link, per the earlier scoping decision. Exempt from the login
 // redirect in middleware.ts, same pattern as /approve/[token].
+//
+// Explicit, not just implied by the DB call below: this route must never
+// be cached. A stale cached copy would reference a prior deploy's Server
+// Action IDs, which throw instead of submitting -- see the 2026-10-15 note
+// in BookForm.tsx (the Ben Hooker incident) for what that looks like from
+// a visitor's side.
+export const dynamic = "force-dynamic";
+
 export default async function BookPage() {
   const artists = await listBookableArtists();
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BookableArtist } from "@/app/actions/offerIntake";
 import { submitOfferInquiry } from "@/app/actions/offerIntake";
 import TicketTierEditor from "@/components/inline/TicketTierEditor";
@@ -45,6 +45,53 @@ const initialState = {
 };
 
 type FormState = typeof initialState;
+
+// 2026-10-15: Ben Hooker's second /book attempt vanished with no trace at
+// all -- not even in the safety-net log added for the first incident (see
+// offerIntake.ts and docs/outreach-engine-plan.md section 8). A clean test
+// submission through the live page worked perfectly, which points at the
+// one failure mode that never reaches the server at all: a tab/link left
+// open across a deploy. Server Actions are tied to the specific build that
+// rendered the page, so clicking Submit on a stale tab throws instead of
+// calling anything -- old code had no try/catch around that call, so it
+// failed completely silently (stuck on "Submitting…", nothing logged,
+// nothing shown). Greg's fair pushback: a prospect shouldn't have to know
+// to "refresh and try again" for this to work. So this now: (1) autosaves
+// whatever's been typed to sessionStorage as they go, (2) catches that
+// failure instead of swallowing it, and (3) offers a one-click reload that
+// restores everything they'd already entered -- nothing to retype, no
+// technical understanding required on their end.
+const DRAFT_STORAGE_KEY = "book-form-draft-v1";
+
+function loadDraft(): FormState {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return initialState;
+    const parsed = JSON.parse(raw);
+    // Shallow-merge over initialState so a saved draft from before a field
+    // was added/removed can't produce a malformed FormState.
+    return { ...initialState, ...parsed };
+  } catch {
+    return initialState;
+  }
+}
+
+function saveDraft(form: FormState) {
+  try {
+    sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(form));
+  } catch {
+    // Best-effort only -- a private window or blocked storage just means no
+    // autosave, never a reason to fail the form itself.
+  }
+}
+
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {
+    // Same as above -- nothing to do if storage isn't available.
+  }
+}
 
 function Field({
   label,
@@ -96,13 +143,26 @@ function SectionCard({ title, children }: { title: string; children: React.React
 }
 
 export default function BookForm({ artists }: { artists: BookableArtist[] }) {
-  const [form, setForm] = useState<FormState>(initialState);
-  const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle");
+  // loadDraft() itself falls back to initialState wherever sessionStorage
+  // isn't available (SSR included, via its own try/catch), so this is safe
+  // both server- and client-side. React doesn't hydration-warn on a
+  // mismatched controlled-input *value* specifically (the same leniency
+  // that lets browser autofill coexist with SSR), which is what makes
+  // restoring the client's real draft straight from this initializer, no
+  // separate post-mount effect needed, hydration-safe here.
+  const [form, setForm] = useState<FormState>(loadDraft);
+  const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error" | "stale">("idle");
   const [error, setError] = useState<string | null>(null);
   // Captured once, the moment this form mounts -- paired with the honeypot
   // server-side so a single false positive (e.g. autofill) can't silently
   // discard a real submission on its own. See offerIntake.ts.
   const [renderedAt] = useState(() => Date.now());
+
+  // Autosave as they type, so a forced reload (see the "stale" branch
+  // below) never costs them having to retype anything.
+  useEffect(() => {
+    saveDraft(form);
+  }, [form]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -113,12 +173,26 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
     setStatus("submitting");
     setError(null);
 
-    const res = await submitOfferInquiry({ ...form, renderedAt });
-    if (res.ok) {
-      setStatus("done");
-    } else {
-      setStatus("error");
-      setError(res.error);
+    try {
+      const res = await submitOfferInquiry({ ...form, renderedAt });
+      if (res.ok) {
+        clearDraft();
+        setStatus("done");
+      } else {
+        setStatus("error");
+        setError(res.error);
+      }
+    } catch (err) {
+      // The one failure mode that never reaches offerIntake.ts's own
+      // safety-net log at all: this tab was open from before a deploy and
+      // is calling a Server Action reference that no longer exists on the
+      // current build. Whatever was typed is already autosaved above, so
+      // a reload (which fetches the current build, and the loadDraft()
+      // initializer above restores from sessionStorage) gets them
+      // resubmitting with nothing lost -- no need for them to understand
+      // what happened or retype anything.
+      console.error("Offer submission failed unexpectedly (likely a stale page):", err);
+      setStatus("stale");
     }
   }
 
@@ -129,6 +203,25 @@ export default function BookForm({ artists }: { artists: BookableArtist[] }) {
         <p className="text-sm text-black/70 dark:text-white/70">
           Your offer has been submitted. Someone from our team will be in touch.
         </p>
+      </div>
+    );
+  }
+
+  if (status === "stale") {
+    return (
+      <div className="bg-white dark:bg-neutral-900 border border-black/10 dark:border-white/10 rounded-xl p-6 shadow-sm text-center">
+        <h2 className="font-medium text-lg mb-1">One quick refresh needed</h2>
+        <p className="text-sm text-black/70 dark:text-white/70 mb-4">
+          This page has been open a while and needs to reload before it can submit. Nothing
+          you&apos;ve entered will be lost -- click below and we&apos;ll bring it right back.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-md bg-ridge-orange hover:bg-ridge-orange-dark text-white py-2.5 px-6 font-medium transition-colors"
+        >
+          Reload &amp; continue
+        </button>
       </div>
     );
   }

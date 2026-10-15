@@ -1000,6 +1000,58 @@ that happened. Flagged for later (section 11); out of scope for this pass,
 which was specifically about submissions that never reach the database at
 all.
 
+**Second incident + fix (2026-10-15): a stale tab bypasses the safety net
+entirely.** Three days after the fix above shipped, Ben resubmitted for
+Boho Links -- using the same link Greg had originally sent him -- and it
+again produced zero trace, including in the brand-new safety-net log,
+which should catch *everything*. Ruled out a bad deploy directly: opened
+the live `/book` page myself and ran a real end-to-end test submission
+through it (clearly marked, cleaned up after), which logged and completed
+correctly (`outcome: ok`), proving the 2026-10-12 fix was live and working.
+
+That left one failure mode that still produces exactly this symptom --
+*nothing* reaches the server, not even the safety net, because the
+request never gets sent at all: Next.js Server Actions are tied to the
+specific deployment that rendered the page. A tab or bookmarked link left
+open/unused across a deploy is still running the old page's JavaScript,
+which references a Server Action ID that no longer exists once a new
+version has shipped -- clicking Submit throws instead of calling anything,
+client-side, before the request ever leaves the browser. The old
+`BookForm.tsx` had no `try/catch` around that call at all, so this failed
+completely silently: stuck on "Submitting…", nothing logged, nothing
+shown, no error anywhere for us to find. Greg's fair pushback: a prospect
+like Ben shouldn't need to know to "refresh and try again," and asking him
+to submit a third time was not acceptable.
+
+Fix (`BookForm.tsx` + `book/page.tsx`), no DB/migration changes needed:
+- `book/page.tsx` now sets `export const dynamic = "force-dynamic"`,
+  explicit insurance against this route ever being served from a cache
+  (it already behaved this way implicitly via the DB call in
+  `listBookableArtists`, but this makes it impossible to regress by
+  accident).
+- `BookForm.tsx` now autosaves the in-progress form to `sessionStorage` on
+  every change (`saveDraft`/`loadDraft`/`clearDraft`, key
+  `book-form-draft-v1`), restored via the initial `useState(loadDraft)` --
+  safe during SSR because `loadDraft`'s own `try/catch` falls back to
+  `initialState` wherever `sessionStorage` doesn't exist, and because React
+  doesn't hydration-warn on a mismatched controlled-input *value*
+  specifically (the same leniency that already lets browser autofill
+  coexist with SSR).
+- The submit call is now wrapped in `try/catch`. A thrown error (the stale
+  Server Action case) now lands on a new `"stale"` status: a plain message
+  ("This page has been open a while and needs to reload... nothing you've
+  entered will be lost") with a single "Reload & continue" button that
+  calls `window.location.reload()`. The reload fetches the current
+  deployment's Server Action IDs, and the `loadDraft()` initializer
+  restores everything they'd already typed -- they resubmit with nothing
+  retyped and no need to understand what happened.
+
+Deliberately not pursued: migrating this form off Server Actions onto a
+plain API route, which would sidestep the deployment-ID problem entirely
+rather than catching and recovering from it. Flagged as a possible future
+hardening step (section 11) if this recurs, but a larger change than this
+incident warranted on its own.
+
 ## 9. Geographic sequencing
 
 Two related but separate sequencing questions — one per engine.
@@ -1079,6 +1131,12 @@ rather than a forecast.
   (section 8) but intentionally not fixed in that pass, which was scoped to
   submissions that never reach the database at all, not notification
   delivery on top of a successful one.
+- **`/book` still runs on Next.js Server Actions.** The 2026-10-15 fix
+  (section 8) catches and recovers from a stale-tab submission rather than
+  eliminating the possibility of one. Moving this form to a plain API route
+  would remove the deployment-ID fragility entirely; worth doing if this
+  class of issue recurs, but not pursued yet since the recovery fix covers
+  the actual failure.
 
 ## 12. Discovery output contract (Engine 1)
 
