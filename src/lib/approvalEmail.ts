@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { createClient } from "@/lib/supabase/server";
 
 // Lazily constructed so a missing key doesn't crash module load (e.g. in
 // local dev before RESEND_API_KEY is set) -- sendApprovalEmail below checks
@@ -6,6 +7,31 @@ import { Resend } from "resend";
 // play's status update always succeeds even if email sending isn't
 // configured yet.
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+// Best-effort safety net, same spirit as offer_inquiry_attempts (see
+// offerIntake.ts): every real notification failure below is saved here
+// before anything else, so it shows up in the daily health check instead of
+// only ever reaching a server log nobody's watching. Logging itself must
+// never throw -- a failed log write is still just console.error'd, same as
+// the email failure it was trying to record.
+async function logEmailFailure(
+  emailKind: "approval_request" | "approval_response" | "new_offer",
+  recipient: string,
+  context: Record<string, unknown>,
+  errorDetail: string
+): Promise<void> {
+  try {
+    const supabase = await createClient();
+    await supabase.rpc("log_email_notification_failure", {
+      p_email_kind: emailKind,
+      p_recipient: recipient,
+      p_context: context,
+      p_error_detail: errorDetail,
+    });
+  } catch (err) {
+    console.error("email-notification-failure log itself failed:", err);
+  }
+}
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -105,18 +131,43 @@ export async function sendApprovalEmail(details: ApprovalEmailDetails): Promise<
     </div>
   `;
 
-  const { error } = await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
-    to: details.to,
-    ...(details.cc && details.cc.length > 0 ? { cc: details.cc } : {}),
-    subject: `Offer awaiting your approval: ${details.artistName} at ${details.venueLabel}`,
-    html,
-  });
+  // Wrapped in try/catch, not just a check on the returned `error` field --
+  // the Resend SDK call itself can throw (e.g. a network error) rather than
+  // resolving with { error }, and previously that would propagate straight
+  // out of this function uncaught. Since every call site awaits this
+  // function bare (see records.ts/approval.ts), an uncaught throw here used
+  // to fail the whole server action, including DB writes that had already
+  // happened (approval_token/approval_email_sent_at below) or hadn't
+  // happened yet -- for a problem that's just a notification, not the real
+  // state change. Always logged, never rethrown either way -- the play's
+  // status change already succeeded and must not be rolled back just
+  // because the notification failed.
+  try {
+    const { error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
+      to: details.to,
+      ...(details.cc && details.cc.length > 0 ? { cc: details.cc } : {}),
+      subject: `Offer awaiting your approval: ${details.artistName} at ${details.venueLabel}`,
+      html,
+    });
 
-  if (error) {
-    // Logged, not thrown -- the play's status change already succeeded and
-    // must not be rolled back just because the notification failed.
-    console.error("Approval email failed to send:", error);
+    if (error) {
+      console.error("Approval email failed to send:", error);
+      await logEmailFailure(
+        "approval_request",
+        details.to.join(", "),
+        { artistName: details.artistName, venueLabel: details.venueLabel, approveUrl: details.approveUrl },
+        JSON.stringify(error)
+      );
+    }
+  } catch (err) {
+    console.error("Approval email threw while sending:", err);
+    await logEmailFailure(
+      "approval_request",
+      details.to.join(", "),
+      { artistName: details.artistName, venueLabel: details.venueLabel, approveUrl: details.approveUrl },
+      err instanceof Error ? err.message : String(err)
+    );
   }
 }
 
@@ -218,15 +269,38 @@ export async function sendApprovalResponseEmail(
     </div>
   `;
 
-  const { error } = await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
-    to: [details.to],
-    subject: `${approved ? "Approved" : "Declined"}: ${details.artistName} at ${details.venueLabel}`,
-    html,
-  });
+  // See the matching try/catch in sendApprovalEmail above for why this is
+  // wrapped rather than just checking the returned `error` field -- same
+  // reasoning applies here, and this one's call site (approval.ts's public
+  // respond() action) is reached by an outside venue/management contact
+  // with no Base Camp login, so a thrown, uncaught error here used to risk
+  // showing them a broken page even though their approve/decline decision
+  // had already been recorded via the RPC just above this call.
+  try {
+    const { error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
+      to: [details.to],
+      subject: `${approved ? "Approved" : "Declined"}: ${details.artistName} at ${details.venueLabel}`,
+      html,
+    });
 
-  if (error) {
-    console.error("Approval-response email failed to send:", error);
+    if (error) {
+      console.error("Approval-response email failed to send:", error);
+      await logEmailFailure(
+        "approval_response",
+        details.to,
+        { artistName: details.artistName, venueLabel: details.venueLabel, decision: details.decision },
+        JSON.stringify(error)
+      );
+    }
+  } catch (err) {
+    console.error("Approval-response email threw while sending:", err);
+    await logEmailFailure(
+      "approval_response",
+      details.to,
+      { artistName: details.artistName, venueLabel: details.venueLabel, decision: details.decision },
+      err instanceof Error ? err.message : String(err)
+    );
   }
 }
 
@@ -291,14 +365,36 @@ export async function sendNewOfferEmail(details: NewOfferEmailDetails): Promise<
     </div>
   `;
 
-  const { error } = await resend.emails.send({
-    from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
-    to: [details.to],
-    subject: `New offer: ${details.artistName} at ${details.venueLabel}`,
-    html,
-  });
+  // See the matching try/catch in sendApprovalEmail above -- same reasoning.
+  // offerIntake.ts's own caller already wraps this whole function in a
+  // .catch(), so a thrown error here was already being swallowed safely
+  // rather than blowing up the submission; this still logs it to the same
+  // place the other two notifications do, so it shows up in the daily
+  // health check instead of only a server log.
+  try {
+    const { error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
+      to: [details.to],
+      subject: `New offer: ${details.artistName} at ${details.venueLabel}`,
+      html,
+    });
 
-  if (error) {
-    console.error("New-offer email failed to send:", error);
+    if (error) {
+      console.error("New-offer email failed to send:", error);
+      await logEmailFailure(
+        "new_offer",
+        details.to,
+        { artistName: details.artistName, venueLabel: details.venueLabel, buyerName: details.buyerName },
+        JSON.stringify(error)
+      );
+    }
+  } catch (err) {
+    console.error("New-offer email threw while sending:", err);
+    await logEmailFailure(
+      "new_offer",
+      details.to,
+      { artistName: details.artistName, venueLabel: details.venueLabel, buyerName: details.buyerName },
+      err instanceof Error ? err.message : String(err)
+    );
   }
 }

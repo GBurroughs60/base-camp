@@ -786,13 +786,21 @@ live data after both migrations (the two real examples above return no
 match / `questionable`, and a genuine same-venue repeat still returns
 `auto_link` cleanly through the `venue_match`/`geo_match` branch).
 
-**Open — `find_company_match` likely has the same 3-word tier issue.**
-Not yet fixed: `find_company_match`'s own tier case has the identical
-`sim > 0.75 and >= 3 words` branch with no `domain_match`/`geo_match`
-check, copied from the same original pattern. Flagged while fixing the
-event-side version, not yet confirmed against a live false-positive, and
-given Greg's call above, likely warrants the same full removal rather
-than a gate — needs his go-ahead before touching it.
+**Fixed (2026-10-16), per Greg's go-ahead.** `find_company_match` had the
+identical `sim > 0.75 and >= 3 words` auto-link branch with no
+`domain_match`/`geo_match` check, copied from the same original pattern as
+the event-side bug above. Not confirmed against a live false-positive
+before fixing — same as the event-side case, this kind of bug leaves no
+trace to audit for after the fact (the would-be-duplicate row simply never
+gets created) — so this was fixed proactively rather than waiting for one.
+Removed the branch entirely (migration
+`remove_company_match_3word_name_only_tier`) rather than gating it, same
+call Greg already made on the event-side version: this project's real data
+throws too many generic multi-word collisions for a bare word-count/
+similarity heuristic to be a useful signal here, gated or not. Anything
+that would have hit this tier now falls through to `questionable`, same as
+any other borderline match — never blocks discovery/quick-create, just
+surfaces for a human glance via `dedup_uncertain`.
 
 **Audited (2026-10-11), no confirmed damage found.** Checked all
 already-approved states (SC/GA/NC/TN/VA/FL/AL) for `events.state`
@@ -1062,11 +1070,51 @@ for the last 26 hours every morning: flags anything with `outcome` of
 but never updated -- something crashed mid-request) in detail, lists
 `blocked_bot` rows briefly in case one looks like it could've been a real
 person, and lists every clean `ok` submission so Greg can cross-check he
-actually received the notification email for each -- the one thing this
-check *can't* verify directly, since there's still no server-side record of
-whether `sendNewOfferEmail` actually succeeded (see "Silent email-
-notification failures" below). Stays quiet (one or two sentences) on a
-clean day; only goes into detail on actual anomalies.
+actually received the notification email for each. Stays quiet (one or two
+sentences) on a clean day; only goes into detail on actual anomalies.
+
+**Silent email-notification failures, fixed (2026-10-16).** The gap flagged
+above and in section 11 -- `sendApprovalEmail`/`sendApprovalResponseEmail`/
+`sendNewOfferEmail` (`src/lib/approvalEmail.ts`) only ever `console.error`'d
+a Resend failure, with nothing surfacing to Greg and nothing retried.
+Two-part fix, same safety-net-log pattern as `offer_inquiry_attempts`:
+
+1. **New table + RPC, migration `email_notification_failure_log`.**
+   `email_notification_failures` (`email_kind`, `recipient`, `context`
+   jsonb, `error_detail`) + `SECURITY DEFINER` function
+   `log_email_notification_failure`, same write-only-via-RPC/zero-RLS-
+   policy shape as the `/book` safety net. All three functions in
+   `approvalEmail.ts` now call it on any send failure.
+2. **A real correctness bug fixed along the way, not just logging added.**
+   All three functions previously only checked the `error` field Resend's
+   SDK *returns* -- none of them wrapped the `resend.emails.send(...)` call
+   itself in a `try`/`catch`. If the SDK call *throws* instead (a network
+   error, for instance) rather than resolving with `{ error }`, that
+   exception used to propagate straight out of these functions uncaught.
+   Every call site awaits them bare with no surrounding `try`/`catch` of
+   its own (`records.ts`, `approval.ts`), so an uncaught throw would have
+   failed the whole server action -- for `sendApprovalEmail`, that's the
+   same action that writes `approval_token`/`approval_email_sent_at` right
+   after; for `sendApprovalResponseEmail`, that's the *public*
+   `/approve/[token]` response action an outside venue/management contact
+   hits with no Base Camp login, after their approve/decline decision has
+   already been committed via RPC -- a thrown, uncaught error there risked
+   showing them a broken page over what was really just a notification
+   problem. Now wrapped in `try`/`catch`, so a thrown error is caught,
+   logged (both `console.error` and the new table), and never rethrown --
+   matching the already-documented invariant that a notification failure
+   must never block or roll back the real state change.
+
+Surfaced via the existing daily health check rather than a new cron:
+renamed "Book offer-intake health check" → "Base Camp notification health
+check" (same trigger, `trig_016YVz8R9vvH1vi2rHLmDsJb`, unchanged schedule),
+prompt extended with a Part B that reports every `email_notification_failures`
+row from the last 26 hours alongside the existing `/book` check. This also
+closes the specific gap the Part A clean-submission note used to flag: a
+failure now has somewhere to show up instead of only a server log nobody's
+watching; actual delivery (opened, not bounced) still isn't tracked, since
+Resend's API only confirms the send was accepted, not opened -- noted once
+in the health check's own prompt rather than re-litigated here.
 
 ## 9. Geographic sequencing
 
@@ -1135,18 +1183,9 @@ rather than a forecast.
   occurrence" view/counter in Basecamp so it's visible independent of any
   one digest; or require a `refresh_flagged`-style note explaining what was
   checked whenever `unknown` is used, instead of a silent default.
-- **`find_company_match`'s ungated 3-word auto-link tier.** Same shape as
-  the `find_event_match` bug fixed 2026-10-11 (section 4) — the
-  `sim > 0.75 and >= 3 words` branch doesn't check `domain_match`/
-  `geo_match` either. Flagged, not yet confirmed against a real
-  false-positive or fixed.
-- **Silent email-notification failures.** `sendNewOfferEmail`/
-  `sendApprovalEmail`/`sendApprovalResponseEmail` (`src/lib/approvalEmail.ts`)
-  only `console.error` on a Resend failure — nothing surfaces to Greg and
-  nothing retries. Flagged during the 2026-10-12 `/book` safety-net fix
-  (section 8) but intentionally not fixed in that pass, which was scoped to
-  submissions that never reach the database at all, not notification
-  delivery on top of a successful one.
+- ~~`find_company_match`'s ungated 3-word auto-link tier.~~ Fixed
+  2026-10-16 — see section 4.
+- ~~Silent email-notification failures.~~ Fixed 2026-10-16 — see section 8.
 - **`/book` still runs on Next.js Server Actions.** The 2026-10-15 fix
   (section 8) catches and recovers from a stale-tab submission rather than
   eliminating the possibility of one. Moving this form to a plain API route
