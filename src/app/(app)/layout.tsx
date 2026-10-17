@@ -7,7 +7,9 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
+  const today = new Date().toISOString().slice(0, 10);
   const [
+    { count: actionItemCount },
     { count: artistCount },
     { count: contactCount },
     { count: companyCount },
@@ -15,6 +17,14 @@ export default async function AppLayout({
     { count: playCount },
     { count: candidateCount },
   ] = await Promise.all([
+    // Same visibility rule as the Action List page itself: open, and
+    // either never hidden or past its hidden_until. superseded/completed
+    // rows never count, same as archived rows elsewhere.
+    supabase
+      .from("action_items")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "open")
+      .or(`hidden_until.is.null,hidden_until.lte.${today}`),
     supabase
       .from("artists")
       .select("*", { count: "exact", head: true })
@@ -40,6 +50,7 @@ export default async function AppLayout({
   ]);
 
   const counts = {
+    "/action-items": actionItemCount ?? 0,
     "/artists": artistCount ?? 0,
     "/contacts": contactCount ?? 0,
     "/companies": companyCount ?? 0,

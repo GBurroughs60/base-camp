@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/events-needing-attention",
       "schedule": "30 14 * * 1"
+    },
+    {
+      "path": "/api/cron/populate-action-items",
+      "schedule": "0 12 * * *"
     }
   ]
 }
