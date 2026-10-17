@@ -653,15 +653,22 @@ record for the full reasoning if it's ever questioned later.
 
 | Column | Purpose |
 |---|---|
-| `event_id` | The event this item is about. |
-| `occurrence_date` | Captured at creation, not re-read live — stays stable even if the event's date later shifts underneath it. |
+| `source` | `auto` (written by the daily population cron, always event-linked) or `manual` (a custom task Greg created himself — see "Custom tasks" below). Governs whether Mark complete writes an `outreach_log` row. |
+| `event_id` | The event this item is about. Nullable — null for a custom task with nothing to link, or linked to a different record instead (see below). |
+| `occurrence_date` | Set only on `auto` rows, captured at creation and not re-read live — stays stable even if the event's date later shifts underneath it. Null on manual tasks. |
+| `title` | Required on `manual` rows (what Greg typed when creating the task); null on `auto` rows, which display the linked event's own name instead. |
+| `due_date` | `manual` rows only. Null means "no due date, visible now" — sorts as if due today, same as a HubSpot task with no date set. |
+| `company_id` / `contact_id` / `artist_id` | Optional context links for a `manual` task — same nullable-FK shape `outreach_log` already uses. `event_id` covers the event case; these three cover "about a venue," "about a person," or "about an artist" without forcing an event connection that may not exist. |
 | `status` | `open` / `completed` / `superseded` (see below — no `dismissed`; dismissing is just a snooze, not a status). |
 | `hidden_until` | Set by Dismiss; the row stays `open`, just invisible until this date passes. Null means visible now. |
 | `completed_at` | Set on completion. |
-| `outreach_log_id` | Points at the `outreach_log` row written on completion, if any. |
-| `notes` | Free text; used today for the system-written "superseded by newer occurrence" breadcrumb below. |
+| `outreach_log_id` | Points at the `outreach_log` row written on completion, if any (`auto` rows only — see "Custom tasks"). |
+| `notes` | Free text; used today for the system-written "superseded by newer occurrence" breadcrumb below, and optionally for a manual task's own description. |
 
-Unique on `(event_id, occurrence_date)`.
+Unique on `(event_id, occurrence_date)` — Postgres treats `NULL` as
+distinct from any other value in a unique index by default, so every
+`manual` row (`event_id` null) is naturally exempt rather than needing a
+partial-index workaround.
 
 **Dismiss (2026-10-17, revised per Greg's review).** Original design had
 two separate actions — a no-date "dismiss until next year" status for
@@ -683,6 +690,38 @@ a true *permanent* "not a fit, never show this again" dismissal was also
 needed; he confirmed no — a far-future custom date covers that case well
 enough, and it keeps the model honest with "nothing here is a silent,
 permanent loss."
+
+**What a long Dismiss actually means (clarified 2026-10-17).** For the
+short presets (next week, next month) Dismiss is a literal snooze — not
+ready to work this yet, remind me later about this same occurrence. For
+the long ones (90 days, 180 days, Next year) Greg's framing is different
+and more accurate: it's not "come back on this exact calendar date," it's
+"I'm not pitching *this* occurrence, but reserve the right to pitch this
+event the next time it comes around" — i.e., tied to the event's own
+cycle, not a fixed day count. `hidden_until` still gets set (so there's a
+hard ceiling on how long a row can stay invisible even if nothing else
+happens), but the real resurfacing mechanism for a long dismiss is meant
+to be the event's *next actual occurrence* showing up, however soon that
+turns out to be — see Supersede below, which is what actually delivers
+this.
+
+**Multi-occurrence check (2026-10-17, per Greg).** Flagged a real gap in
+the above: some events/series run more than once a year (a spring date
+and a fall date, say) with both occurrence rows already on file at once.
+Because the population cron (below) only ever creates one open item per
+event at a time — for the single *soonest* future `occurrence_date` — a
+90+ day Dismiss on the spring instance would otherwise sit on its
+`hidden_until` clock with no idea a fall instance is already sitting
+right there, within the window, waiting. Fix: whenever Dismiss is applied
+with a target 90+ days out, the action — before saving — checks
+`event_occurrences` for this same `event_id` for any *other* occurrence
+date later than the one being dismissed but earlier than the requested
+target. If one exists, `hidden_until` is capped to that date instead of
+the full request, and the confirmation tells Greg why ("This event also
+has an Oct 12 date on file — bringing this back then instead, so that one
+doesn't get buried under a year-long dismiss"). If there's no such date
+on file, the full requested duration is used as-is. This only applies to
+event-linked items; it has no meaning for a custom task (below).
 
 **Supersede (new, caught while resolving the above).** Working through
 Greg's question surfaced a real gap: because `hidden_until` can now push a
@@ -720,6 +759,7 @@ join event_occurrences o on o.event_id = e.id
     where o2.event_id = e.id and o2.occurrence_date >= current_date
   )
 where ai.event_id = e.id
+  and ai.source = 'auto'
   and ai.status = 'open'
   and ai.occurrence_date < o.occurrence_date
   and o.occurrence_date between current_date and current_date + 180
@@ -727,8 +767,8 @@ where ai.event_id = e.id
 
 -- 2. Insert this cycle's row for every qualifying event that doesn't
 --    already have one (on conflict handles the case where it does).
-insert into action_items (event_id, occurrence_date)
-select e.id, o.occurrence_date
+insert into action_items (source, event_id, occurrence_date)
+select 'auto', e.id, o.occurrence_date
 from events e
 join event_occurrences o on o.event_id = e.id
   and o.occurrence_date = (
@@ -753,32 +793,60 @@ clear something he already booked through some other path.
 
 **Item actions.**
 
-- **Mark complete** — `status = 'completed'`, `completed_at = now()`, and
-  writes a real `outreach_log` row (`company_id`/`contact_id` from the
-  event, `event_id`, `sent_at = now()`) so the existing 30-day recontact
-  floor and outreach history both keep working exactly as they do for
-  every other source. `artist_id` is optional at this step (nullable on
-  `outreach_log` already) — filled in only if Greg already knows who he
-  pitched; this list never pre-computes artist fit the way the crawl
-  engine used to.
+- **Mark complete** — `status = 'completed'`, `completed_at = now()`. For
+  an `auto` (event-linked) row, also writes a real `outreach_log` row
+  (`company_id`/`contact_id` from the event, `event_id`, `sent_at =
+  now()`) so the existing 30-day recontact floor and outreach history
+  both keep working exactly as they do for every other source. `artist_id`
+  is optional at this step (nullable on `outreach_log` already) — filled
+  in only if Greg already knows who he pitched; this list never
+  pre-computes artist fit the way the crawl engine used to. For a
+  `manual` task, completing it is just that — a finished to-do, not a
+  claim that outreach happened, so no `outreach_log` row gets written even
+  if the task happens to be linked to an event (see "Custom tasks" below
+  for why that distinction matters).
 - **Dismiss** — opens the duration picker (Next week / Next month / 90
   days / 180 days / Next year / custom date), sets `hidden_until`
-  accordingly. `status` stays `open`; nothing about the event or its
-  occurrence is touched. The item reappears in the active list on its own
-  once `hidden_until` passes — same mechanism regardless of which preset
-  (or custom date) was picked, and regardless of whether the event
-  recurs.
+  accordingly (capped by the multi-occurrence check above, for `auto`
+  rows with another known occurrence sooner than the request). `status`
+  stays `open`; nothing about the event or its occurrence is touched. The
+  item reappears in the active list on its own once `hidden_until`
+  passes — same mechanism for every row, `auto` or `manual`.
+
+**Custom tasks (2026-10-17, per Greg).** A "+ New Task" button on the
+Action List page opens a small form — title (required), notes (optional),
+due date (optional, defaults to none = visible immediately), and an
+optional link to one existing record (event, company, contact, or
+artist — reusing the same relation-picker component already used
+elsewhere in Base Camp, e.g. the plays form). Saves as a `manual` row:
+`title`/`due_date`/`notes` filled in, `event_id` set only if an event was
+the chosen link (`company_id`/`contact_id`/`artist_id` for the other
+three), `occurrence_date` left null. This is the HubSpot-task-style
+escape hatch Greg asked for — "call the venue back about capacity,"
+"confirm Brittany's availability before pitching," anything that isn't
+itself a pitch opportunity the cron would ever generate on its own.
+Deliberately reuses the exact same Mark complete / Dismiss mechanics as
+`auto` rows (see above) rather than inventing a parallel system — a task
+is just a row with no `occurrence_date` and a `title` instead of an event
+to borrow one from.
 
 **UI.** New left-nav entry ("Action List" for now — easy to rename),
 count badge same convention as every other nav item (`status = 'open'`
 and `hidden_until` null or in the past — `superseded`/`completed` rows
-never count, same as before). New page, one row per item, sorted
-soonest-occurrence-first: event name (linking to the real `/events/[id]`
-page for full detail/edit), venue + city/state, contact email/phone
-(contact if one's on file, otherwise the venue company's), a link out to
-the event's own source page (falling back to the venue's website when the
-event has no `source_url` of its own — virtually every event has at least
-one of the two), and the two actions above (Mark complete, Dismiss).
+never count, same as before, regardless of `source`). New page, one list,
+`auto` and `manual` rows mixed together (not split into separate tabs —
+Greg's call: it's one daily list to work, not two places to check),
+sorted by `coalesce(occurrence_date, due_date, current_date)` ascending —
+a `manual` task with no due date sorts as "due today," landing at the top
+alongside the most urgent event items rather than getting lost at the
+bottom. Each row: event name (linking to `/events/[id]`) or the task's
+own `title`; for an `auto` row, venue + city/state, contact email/phone
+(contact if one's on file, otherwise the venue company's), and a link out
+to the event's own source page (falling back to the venue's website —
+virtually every event has at least one of the two); for a `manual` row,
+its `notes` and a link to whatever record it's tied to, if any; and the
+two actions above (Mark complete, Dismiss) on every row regardless of
+`source`.
 
 **Decommissioned as part of this pivot:** the disabled "Ridge CRM —
 Catch-up crawl" scheduled task (`trig_01FvupzKcozyhnXpCvL2Nqos`) and its
