@@ -85,6 +85,15 @@ covered, how many self-fires so far today), while the full digest — the
 is reserved for a genuine `awaiting_review` completion or a real blocker,
 same as it always was.
 
+**Superseded (2026-10-17).** Everything below describing Engine 2 and
+Engine 3 — the Gmail-draft-based catch-up/standing-cadence design, the
+crawl-stage build, and the 10-region rotation — is kept as history, not
+current design. Both are replaced by the in-app Action List described in
+the new subsection right before section 3 ("Pivot: Catch-up & Standing
+Cadence replaced by an in-app Action List"). Read that section for the
+live design; treat this one as "why we tried this first and what we
+learned," same spirit as every other superseded note in this doc.
+
 **Engine 2 — Catch-up.** Fires once, as a burst, the moment a state finishes
 discovery — not an ongoing rotation. Works the new backlog by how far out
 each event is:
@@ -178,6 +187,8 @@ completion-triggered burst (useful once timing inside that wider window
 starts to matter), real artist-fit/genre scoring, the monthly voice-model
 refresh automation, and the real service-account Gmail setup for a
 no-human-in-the-loop version of this engine.
+
+**Superseded (2026-10-17) — see the note above Engine 2.**
 
 **Engine 3 — Standing cadence.** The permanent heartbeat once a region is
 caught up: the whole country divided into 10 regions, one region's slot
@@ -596,6 +607,131 @@ Exists because a source often names an organizer with a public contact
 address but no actual person — that's organizer-level information, not a
 contact, and previously had nowhere structured to live. Optional; a
 company can be created and fully populated without one.
+
+## 2a. Pivot (2026-10-17): Catch-up & Standing Cadence replaced by an in-app Action List
+
+**Why.** The Gmail-draft design above worked (the crawl-stage build did
+successfully create one real draft on 2026-09-29), but it was switched off
+the next day and never turned back on — found during an unrelated
+conversation almost three weeks later, by which point 117 real,
+qualifying events had piled up with zero drafts created for any of them.
+Separately, Greg flagged the Google API cost/limits (Gmail draft creation,
+and the per-artist "Shows – The Ridge" Drive-sheet reads the crawl-stage
+availability check depended on) as a real constraint going forward. Rather
+than patch the old design, the decision was to replace both Catch-up and
+Standing Cadence outright with something that lives entirely in Basecamp:
+a left-nav "Action List" that surfaces events for Greg to personally work,
+with no Gmail, no Drive, and no LLM involved in the daily mechanics at
+all — pure deterministic SQL, same cost profile as `rollover-occurrences`/
+`scan-contacts`, not a daily agent session.
+
+**What it replaces, concretely.** No more auto-drafted Gmail pitches of
+any kind for the outreach-rhythm engines (Discovery and Refresh are
+unaffected — neither one actually used Gmail for real work; the connector
+was wired but unused). No more per-artist availability scoring against
+each artist's Drive sheet. No more 60-day/180-day tier split, no more
+10-region rotation map. One list, one mechanism, Greg decides the artist
+and does the actual outreach himself, same as he already does when
+reviewing Discovery's output.
+
+**Starting point: 2026-10-17, events from 2027-01-01 on only.** The 103
+events already sitting inside the old near-term window (102 under 60 days
+out, 1 more before Jan 1) are explicitly abandoned, per Greg's call — no
+backfill sweep, no special handling. Confirmed before making that call: 56
+of the 103 have a recurrence pattern on file and will resurface on their
+own next cycle (Occurrence Rollover projects next year's date once the
+current one lapses; Refresh verifies/corrects it against the real source);
+the other 47 are one-offs with no pattern, which don't auto-resurface the
+same way but do get a genuine second look from Refresh's flat 6-month
+safety-net clock (which checks the source page and only flags for a human
+rather than guessing), and show up sooner than that in the existing weekly
+"Needs Date" digest the moment their only occurrence has no future
+counterpart. Nothing here is a silent, permanent loss — see the chat
+record for the full reasoning if it's ever questioned later.
+
+**Schema — one new table, `action_items`.**
+
+| Column | Purpose |
+|---|---|
+| `event_id` | The event this item is about. |
+| `occurrence_date` | Captured at creation, not re-read live — stays stable even if the event's date later shifts underneath it. |
+| `status` | `open` / `completed` / `dismissed`. |
+| `hidden_until` | Set by "snooze to a date"; the row stays `open`, just invisible until this date passes. |
+| `completed_at` | Set on completion. |
+| `outreach_log_id` | Points at the `outreach_log` row written on completion, if any. |
+
+Unique on `(event_id, occurrence_date)`. That single constraint is what
+makes "dismiss until next year" simple: dismissing doesn't compute a
+future date at all — it just marks *this* occurrence `dismissed`. The
+population job below (keyed off the same unique pair) naturally creates a
+brand-new row once Rollover/Refresh produce next year's occurrence and it
+crosses back into the window — no resurfacing logic needed. "Dismiss
+until next year" only makes sense for a recurring event, so the UI only
+offers it when the event has a `recurrence_rule`; a true one-off gets
+"snooze to a date" instead.
+
+**Population — a plain daily cron, not an agent session.** New route
+`/api/cron/populate-action-items`, same shape as the existing
+`rollover-occurrences` cron (`CRON_SECRET` bearer auth, deterministic
+SQL, no external API calls):
+
+```sql
+insert into action_items (event_id, occurrence_date)
+select e.id, o.occurrence_date
+from events e
+join event_occurrences o on o.event_id = e.id
+  and o.occurrence_date = (
+    select min(o2.occurrence_date) from event_occurrences o2
+    where o2.event_id = e.id and o2.occurrence_date >= current_date
+  )
+where e.archived = false
+  and e.pending_state_review = false
+  and o.occurrence_date between current_date and current_date + 180
+  and o.occurrence_date >= '2027-01-01'
+  and not exists (select 1 from plays p where p.event_id = e.id)
+on conflict (event_id, occurrence_date) do nothing;
+```
+
+The `>= '2027-01-01'` clause is permanent in the query, not a one-time
+backfill filter — it only actually excludes anything during the rest of
+2026 and becomes a no-op the moment the calendar passes Jan 1, so there's
+no special-casing to remove later. An event also drops off the *visible*
+list automatically (not via this insert) the moment a `plays` row exists
+for it, however that booking came about — Greg shouldn't have to manually
+clear something he already booked through some other path.
+
+**Item actions.**
+
+- **Mark complete** — `status = 'completed'`, `completed_at = now()`, and
+  writes a real `outreach_log` row (`company_id`/`contact_id` from the
+  event, `event_id`, `sent_at = now()`) so the existing 30-day recontact
+  floor and outreach history both keep working exactly as they do for
+  every other source. `artist_id` is optional at this step (nullable on
+  `outreach_log` already) — filled in only if Greg already knows who he
+  pitched; this list never pre-computes artist fit the way the crawl
+  engine used to.
+- **Dismiss until next year** (recurring events only) — `status =
+  'dismissed'`. No date math; see the schema note above for why.
+- **Snooze to a date** — `hidden_until` set to whatever date Greg picks;
+  the item stays `open` and reappears in the active list on its own once
+  that date passes.
+
+**UI.** New left-nav entry ("Action List" for now — easy to rename),
+count badge same convention as every other nav item (open, visible items
+only). New page, one row per item, sorted soonest-occurrence-first: event
+name (linking to the real `/events/[id]` page for full detail/edit),
+venue + city/state, contact email/phone (contact if one's on file,
+otherwise the venue company's), a link out to the event's own source page
+(falling back to the venue's website when the event has no `source_url`
+of its own — virtually every event has at least one of the two), and the
+three actions above.
+
+**Decommissioned as part of this pivot:** the disabled "Ridge CRM —
+Catch-up crawl" scheduled task (`trig_01FvupzKcozyhnXpCvL2Nqos`) and its
+Gmail/Drive wiring, retired outright rather than left dormant; the two
+far-future one-off reminders ("Follow up: Finlay Fridays (2027 season)",
+"Follow up: Pickens Appalachian Folk Festival (2027)") updated so they
+don't surprise-draft via Gmail once they fire in 2027.
 
 ## 3. Data model
 
@@ -1171,14 +1307,18 @@ rather than a forecast.
 ## 11. Still open, to resolve during build
 
 - Exact chunk size for a single discovery run within a state.
-- The concrete 10-region map for Engines 2 & 3.
+- ~~The concrete 10-region map for Engines 2 & 3.~~ Moot as of the
+  2026-10-17 pivot (section 2a) — the region-rotation design it would have
+  fed is superseded.
 - **Enforcing/verifying the "unknown is a last resort" rule from section
   12.** The contract says a dateless event should be rare, not a default,
   but nothing currently checks that this actually holds — a firing that
   falls back to `unknown` produces no signal anywhere (not in its digest,
-  not in any dashboard), so a dateless event is invisible to Engine 2's
-  live tier computation and could sit unpitchable indefinitely with no one
-  noticing. Options discussed but not decided: have each firing report its
+  not in any dashboard), so a dateless event has no `event_occurrences`
+  row to compute a window from and could sit unpitchable indefinitely with
+  no one noticing — true of the old Engine 2/3 design and equally true of
+  the Action List (section 2a), which also only ever populates from a real
+  future occurrence. Options discussed but not decided: have each firing report its
   own dateless-event count in its digest; add a standing "no known
   occurrence" view/counter in Basecamp so it's visible independent of any
   one digest; or require a `refresh_flagged`-style note explaining what was
