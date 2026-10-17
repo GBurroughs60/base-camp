@@ -655,20 +655,52 @@ record for the full reasoning if it's ever questioned later.
 |---|---|
 | `event_id` | The event this item is about. |
 | `occurrence_date` | Captured at creation, not re-read live — stays stable even if the event's date later shifts underneath it. |
-| `status` | `open` / `completed` / `dismissed`. |
-| `hidden_until` | Set by "snooze to a date"; the row stays `open`, just invisible until this date passes. |
+| `status` | `open` / `completed` / `superseded` (see below — no `dismissed`; dismissing is just a snooze, not a status). |
+| `hidden_until` | Set by Dismiss; the row stays `open`, just invisible until this date passes. Null means visible now. |
 | `completed_at` | Set on completion. |
 | `outreach_log_id` | Points at the `outreach_log` row written on completion, if any. |
+| `notes` | Free text; used today for the system-written "superseded by newer occurrence" breadcrumb below. |
 
-Unique on `(event_id, occurrence_date)`. That single constraint is what
-makes "dismiss until next year" simple: dismissing doesn't compute a
-future date at all — it just marks *this* occurrence `dismissed`. The
-population job below (keyed off the same unique pair) naturally creates a
-brand-new row once Rollover/Refresh produce next year's occurrence and it
-crosses back into the window — no resurfacing logic needed. "Dismiss
-until next year" only makes sense for a recurring event, so the UI only
-offers it when the event has a `recurrence_rule`; a true one-off gets
-"snooze to a date" instead.
+Unique on `(event_id, occurrence_date)`.
+
+**Dismiss (2026-10-17, revised per Greg's review).** Original design had
+two separate actions — a no-date "dismiss until next year" status for
+recurring events, and a "snooze to a date" for everything else. Greg
+pushed back on both the split and a wrong implication in how it was
+written up: dismissing an action item never touches the event or its
+occurrence at all, recurring or not — it only ever marks *this
+`action_items` row*. That's actually what the original design already did
+(the schema never wrote to `events`/`event_occurrences`), just phrased
+confusingly ("dismiss until next year ... relies on the unique constraint
+for natural resurfacing"). Replaced with one button, **Dismiss**, that
+pops a small duration picker — **Next week / Next month / 90 days / 180
+days / Next year**, plus a custom date picker as a last resort — modeled
+directly on an unrelated outside tool Greg pointed to as the catalyst for
+this whole feature. Whatever's picked just sets `hidden_until`; the row
+stays `status = 'open'` the entire time, in every case, recurring event or
+one-off — no more special-casing by `recurrence_rule`. Asked Greg whether
+a true *permanent* "not a fit, never show this again" dismissal was also
+needed; he confirmed no — a far-future custom date covers that case well
+enough, and it keeps the model honest with "nothing here is a silent,
+permanent loss."
+
+**Supersede (new, caught while resolving the above).** Working through
+Greg's question surfaced a real gap: because `hidden_until` can now push a
+row's visibility out a full year, and because the population job below
+inserts a *new* row for a *new* `occurrence_date` without touching any
+existing row for that event, a recurring event can end up with two open
+`action_items` rows at once — an old one (possibly snoozed, possibly just
+never actioned) still pointing at an occurrence that's since passed, and
+a fresh one for the real next occurrence once Rollover/Refresh advances
+it. That's not only a Dismiss problem — the same thing happens to any
+long-untouched item once its event quietly rolls over. Fixed in the
+population query itself: before inserting a new row, it closes out any
+other still-`open` row for the same event whose `occurrence_date` is
+older than the one just found, marking it `status = 'superseded'` with a
+`notes` breadcrumb. Superseded rows are never visible, never counted, and
+never write to `outreach_log` — they're bookkeeping, not a user action,
+which is why `superseded` is a separate status from `dismissed`/`open`
+rather than reusing either.
 
 **Population — a plain daily cron, not an agent session.** New route
 `/api/cron/populate-action-items`, same shape as the existing
@@ -676,6 +708,25 @@ offers it when the event has a `recurrence_rule`; a true one-off gets
 SQL, no external API calls):
 
 ```sql
+-- 1. Close out any older still-open item an event already has once a
+--    newer occurrence is about to get its own row -- see "Supersede" above.
+update action_items ai
+set status = 'superseded',
+    notes = 'Superseded by a newer occurrence as of ' || current_date
+from events e
+join event_occurrences o on o.event_id = e.id
+  and o.occurrence_date = (
+    select min(o2.occurrence_date) from event_occurrences o2
+    where o2.event_id = e.id and o2.occurrence_date >= current_date
+  )
+where ai.event_id = e.id
+  and ai.status = 'open'
+  and ai.occurrence_date < o.occurrence_date
+  and o.occurrence_date between current_date and current_date + 180
+  and o.occurrence_date >= '2027-01-01';
+
+-- 2. Insert this cycle's row for every qualifying event that doesn't
+--    already have one (on conflict handles the case where it does).
 insert into action_items (event_id, occurrence_date)
 select e.id, o.occurrence_date
 from events e
@@ -710,21 +761,24 @@ clear something he already booked through some other path.
   `outreach_log` already) — filled in only if Greg already knows who he
   pitched; this list never pre-computes artist fit the way the crawl
   engine used to.
-- **Dismiss until next year** (recurring events only) — `status =
-  'dismissed'`. No date math; see the schema note above for why.
-- **Snooze to a date** — `hidden_until` set to whatever date Greg picks;
-  the item stays `open` and reappears in the active list on its own once
-  that date passes.
+- **Dismiss** — opens the duration picker (Next week / Next month / 90
+  days / 180 days / Next year / custom date), sets `hidden_until`
+  accordingly. `status` stays `open`; nothing about the event or its
+  occurrence is touched. The item reappears in the active list on its own
+  once `hidden_until` passes — same mechanism regardless of which preset
+  (or custom date) was picked, and regardless of whether the event
+  recurs.
 
 **UI.** New left-nav entry ("Action List" for now — easy to rename),
-count badge same convention as every other nav item (open, visible items
-only). New page, one row per item, sorted soonest-occurrence-first: event
-name (linking to the real `/events/[id]` page for full detail/edit),
-venue + city/state, contact email/phone (contact if one's on file,
-otherwise the venue company's), a link out to the event's own source page
-(falling back to the venue's website when the event has no `source_url`
-of its own — virtually every event has at least one of the two), and the
-three actions above.
+count badge same convention as every other nav item (`status = 'open'`
+and `hidden_until` null or in the past — `superseded`/`completed` rows
+never count, same as before). New page, one row per item, sorted
+soonest-occurrence-first: event name (linking to the real `/events/[id]`
+page for full detail/edit), venue + city/state, contact email/phone
+(contact if one's on file, otherwise the venue company's), a link out to
+the event's own source page (falling back to the venue's website when the
+event has no `source_url` of its own — virtually every event has at least
+one of the two), and the two actions above (Mark complete, Dismiss).
 
 **Decommissioned as part of this pivot:** the disabled "Ridge CRM —
 Catch-up crawl" scheduled task (`trig_01FvupzKcozyhnXpCvL2Nqos`) and its
