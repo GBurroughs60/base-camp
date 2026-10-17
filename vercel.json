@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/populate-action-items",
-      "schedule": "0 12 * * *"
+      "schedule": "0 10 * * *"
     }
   ]
 }
