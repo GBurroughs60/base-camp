@@ -13,8 +13,12 @@ const links = [
   { href: "/companies", label: "Venues" },
   { href: "/events", label: "Events" },
   { href: "/plays", label: "Plays" },
-  { href: "/candidates", label: "Candidates" },
 ];
+
+// Open to everyone for now -- no permission check yet. Once Base Camp has
+// real roles, gate this section (and its routes) behind an admin-only
+// permission set rather than just hiding the nav link.
+const adminLinks = [{ href: "/candidates", label: "Candidates" }];
 
 export default function Nav({
   counts,
@@ -29,6 +33,40 @@ export default function Nav({
     await supabase.auth.signOut();
     router.replace("/login");
     router.refresh();
+  }
+
+  function renderLink(link: { href: string; label: string }) {
+    const active = pathname === link.href;
+    return (
+      <Link
+        key={link.href}
+        href={link.href}
+        className={
+          "group relative flex items-center rounded-md px-3 py-2 text-sm transition-colors " +
+          (active
+            ? "bg-white/10 text-white font-medium"
+            : "text-white/55 hover:text-white hover:bg-white/5")
+        }
+      >
+        <span
+          className={
+            "absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-ridge-orange transition-opacity " +
+            (active ? "opacity-100" : "opacity-0 group-hover:opacity-40")
+          }
+        />
+        <span className="pl-2 flex-1">{link.label}</span>
+        {counts?.[link.href] !== undefined && (
+          <span
+            className={
+              "text-xs tabular-nums pr-1 " +
+              (active ? "text-white/70" : "text-white/35 group-hover:text-white/60")
+            }
+          >
+            {counts[link.href]}
+          </span>
+        )}
+      </Link>
+    );
   }
 
   return (
@@ -52,40 +90,18 @@ export default function Nav({
         </div>
       </div>
 
-      <nav className="flex-1 px-3 py-4 flex flex-col gap-0.5">
-        {links.map((link) => {
-          const active = pathname === link.href;
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={
-                "group relative flex items-center rounded-md px-3 py-2 text-sm transition-colors " +
-                (active
-                  ? "bg-white/10 text-white font-medium"
-                  : "text-white/55 hover:text-white hover:bg-white/5")
-              }
-            >
-              <span
-                className={
-                  "absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-ridge-orange transition-opacity " +
-                  (active ? "opacity-100" : "opacity-0 group-hover:opacity-40")
-                }
-              />
-              <span className="pl-2 flex-1">{link.label}</span>
-              {counts?.[link.href] !== undefined && (
-                <span
-                  className={
-                    "text-xs tabular-nums pr-1 " +
-                    (active ? "text-white/70" : "text-white/35 group-hover:text-white/60")
-                  }
-                >
-                  {counts[link.href]}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 px-3 py-4 flex flex-col overflow-y-auto">
+        <div className="flex flex-col gap-0.5">{links.map(renderLink)}</div>
+
+        {/* Admin area -- lower in the sidebar, visually separated. Open to
+            everyone for now; see the adminLinks comment above for the
+            planned permission gate. */}
+        <div className="mt-auto pt-4 flex flex-col gap-0.5">
+          <p className="px-3 pb-1 text-[10px] uppercase tracking-[0.14em] text-white/30">
+            Admin
+          </p>
+          {adminLinks.map(renderLink)}
+        </div>
       </nav>
 
       <div className="px-3 py-4 border-t border-white/10">
