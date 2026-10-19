@@ -579,8 +579,26 @@ one-off mention of a weekday (a fair's single Saturday-night rodeo slot,
 say) can read exactly like a real weekly series to the regex. Caught one
 real case this way (Caroline-Dorchester County Fair) and left it
 `unknown` rather than write a wrong frequency, not just a wrong date.
-[Status: code fix shipped; backfill in progress — update this note with
-final before/after counts once the full backlog pass is done.]
+**Status: done.** Backfilled the entire `recurrence_rule IS NULL` backlog
+against the live DB (422 events at the start). Ran the corrected resolver
+over every row's `notes`/name text in paginated batches, writing a
+`recurrence_rule` + a new `event_occurrences` row for anything it could
+resolve, and left the rest `unknown` rather than guess. Along the way,
+discovered that the first few batches had been paginated with `OFFSET`
+against a shrinking "still unresolved" set — each batch that fixed rows
+shifted every later `OFFSET`, silently skipping that many rows forward.
+Caught it by noticing a page's first id didn't follow the previous page's
+last id, reconstructed every gap this created (there were four, one of
+them stretching back to the very start of the id range), and swept all of
+them before concluding. Final numbers: 95 events given a real
+`recurrence_rule` and a dated occurrence (71 of those in this pass, after
+the broadened season-word + reorder fix; 24 from an earlier pass the same
+day), split roughly 38 `confirmed_date`, 2 `confirmed_pattern`, 31
+`estimated` in this pass alone. 327 events remain `unknown` on purpose —
+no date signal anywhere in their name or notes, or (one case,
+Caroline-Dorchester County Fair) a bare-weekday-only guess that the manual
+exclusion step caught and declined to write. `events_needing_attention`
+dropped from 499 to 404 rows as a result.
 
 **Date resolution is now a real, invokable script, not LLM re-derivation.**
 Discovery and Refresh's scheduled-task prompts previously told the agent
