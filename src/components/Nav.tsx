@@ -18,7 +18,10 @@ const links = [
 // Open to everyone for now -- no permission check yet. Once Base Camp has
 // real roles, gate this section (and its routes) behind an admin-only
 // permission set rather than just hiding the nav link.
-const adminLinks = [{ href: "/candidates", label: "Candidates" }];
+const adminLinks = [
+  { href: "/candidates", label: "Candidates" },
+  { href: "/revenue", label: "Revenue" },
+];
 
 export default function Nav({
   counts,

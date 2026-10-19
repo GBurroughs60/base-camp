@@ -1502,6 +1502,93 @@ the fact:
   still be captured, but as free text on the event until it earns a
   structured field of its own.
 
+## 13. Financial reporting — Ridge's revenue tracker
+
+A separate initiative from the outreach engines above, started when Greg
+asked (2026-10-17) to add an Admin area to the sidebar, move Candidates
+into it, and start tracking Ridge's own revenue and effectiveness. This
+section covers the financial-reporting half; effectiveness metrics are a
+later to-do once outreach volume (`outreach_log`, `action_items`) is high
+enough for a conversion rate to mean anything.
+
+**Scope, settled through conversation with Greg (2026-10-17 to
+2026-10-19):**
+
+- This tracks **Ridge's own commission revenue**, not the artist's gross
+  take, and only the plays actually created through Base Camp itself
+  (`plays.status != 'legacy'`). The 555 rows imported from the old
+  spreadsheet (all Cody Webb, see below) predate Ridge's own commission
+  tracking here and stay out of this number — but they're exactly what
+  feeds the separate historical-by-year trend (next section).
+- **Commission basis**: booking commission = `guarantee_amount` only,
+  merch excluded — a booking agent's cut is conventionally of the deal,
+  not the merch table. Management commission (only for artists flagged
+  `ridge_manages`) = `guarantee_amount + gross_merch_sales` — merch
+  included, since a manager's cut conventionally covers everything the
+  artist earns from the show, not just the guarantee.
+- **Rate resolution**: a play-level `management_commission_pct` /
+  `booking_agent_commission_pct` always overrides the artist's own
+  default when present. When neither is set and that commission type
+  applies to the artist (`ridge_manages`/`ridge_books`), the leg is
+  flagged missing and excluded from the totals — **never silently treated
+  as a zero commission.** Verbatim from Greg: "When no commission info is
+  present on the play record, always default to the artist profile. Never
+  assume that blank equals zero." Brittany Elise is flagged
+  `ridge_manages = true` with no `management_commission_pct` set, and
+  Greg confirmed (2026-10-19) to leave that as-is for now — her management
+  leg is correctly absent from the total, not zeroed out.
+- **Three-stage lifecycle, reusing the existing play pipeline** (see
+  `src/lib/playStatus.ts`) rather than a new status column:
+  - **Booked / Projected** — any play from `offer_submitted` through
+    `confirmed`.
+  - **Earned** — `played`. The show actually happened.
+  - **Settled** — `played` → `settled` is a manual Kanban-board move for
+    now (per Greg, 2026-10-19) and is the natural future home for an
+    invoice/collection flag — not built yet ("more to come" on that).
+  - `declined`/`cancelled` are excluded entirely — a deal that fell
+    through was never real revenue.
+- **Confirmed → Played auto-advances.** Originally scoped as a manual
+  board move, but Greg caught (2026-10-19) that waiting on a human defeats
+  the point — "Cody has a play on 11/1, I log in on 11/2, this should have
+  moved on its own." **Shipped**: Postgres function
+  `advance_confirmed_plays_to_played()` (`confirmed` → `played` where
+  `show_date < current_date`), called by a new daily cron
+  (`/api/cron/advance-plays-to-played`, `0 8 * * *` UTC, `vercel.json`).
+  Deliberately narrow: a play still stuck at an earlier stage when its
+  show_date passes never got a real confirmation, so it's left alone
+  for a human to look at rather than guessed into `played`.
+- **Historical by-year trend** (lower priority, per Greg): all 555 legacy
+  rows belong to Cody Webb (verified against the data, not assumed —
+  Greg asked "those are all Cody's right?"). Two running totals per
+  artist per year, off every play with a show (legacy included): annual
+  `guarantee_amount` total, and a separate annual
+  `guarantee_amount + gross_merch_sales` total — tracking growth both
+  ways, no commission math involved (this is gross artist earnings, not
+  Ridge's cut). ~6% of legacy plays (34 of 555) have no `show_date` and
+  land in an "Undated" bucket per artist rather than being silently
+  dropped.
+- **Dashboard** (`/revenue`, in the new Admin nav section): Ridge's
+  Booked/Earned/Settled totals with a show count, filterable by Current
+  YTD / Prior Year / All Time / custom range off `show_date` — defaults to
+  All Time rather than YTD, since real bookings are often dated months
+  out and a Jan-1-to-today window can look empty even with real booked
+  business on the calendar. A play missing a commission rate is excluded
+  from every total and called out in a banner instead of silently
+  undercounting; same treatment for a play missing a `show_date` (can't
+  be placed in any range, "All Time" included).
+
+**Open / not yet decided:**
+
+- Whether `settled` should gain its own automated trigger (e.g. a
+  deposit/final-payment field flipping it) or stay a manual call
+  indefinitely.
+- The actual invoice-sending step `settled` is meant to set up — not
+  designed yet, per Greg: "more to come though."
+- Effectiveness metrics (outreach conversion, pipeline velocity, Discovery
+  efficiency, Action List throughput) — deferred until there's enough
+  volume in `outreach_log`/`action_items` for a conversion rate to be
+  meaningful.
+
 ## Keeping this in sync
 
 As pieces of this get implemented, update this file in the same commits as

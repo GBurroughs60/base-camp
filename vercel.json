@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/populate-action-items",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/advance-plays-to-played",
+      "schedule": "0 8 * * *"
     }
   ]
 }
