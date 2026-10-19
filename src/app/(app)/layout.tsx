@@ -63,7 +63,11 @@ export default async function AppLayout({
     <div className="flex-1 flex min-h-screen bg-neutral-50 dark:bg-neutral-950">
       <Nav counts={counts} />
       <div className="flex-1 min-w-0">
-        <main className="max-w-6xl w-full mx-auto px-6 py-8 sm:px-8 lg:px-10">
+        {/* Extra top padding on mobile only, clearing the fixed nav
+            expand tab (Nav.tsx) that sits on the viewport's left edge
+            below md -- md:pt-8 restores the original spacing once the
+            sidebar is always visible and the tab no longer renders. */}
+        <main className="max-w-6xl w-full mx-auto px-6 pt-16 pb-8 sm:px-8 md:pt-8 lg:px-10">
           {children}
         </main>
       </div>

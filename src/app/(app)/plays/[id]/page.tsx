@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ContractUpload from "./ContractUpload";
 import InlineEditField from "@/components/inline/InlineEditField";
+import CopyButton from "@/components/inline/CopyButton";
 import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
 import InlineSelectField from "@/components/inline/InlineSelectField";
@@ -457,7 +458,10 @@ export default async function PlayDetailPage({
           {contact && (
             <>
               {contact.email && (
-                <div className="text-black/60 dark:text-white/60">{contact.email}</div>
+                <div className="text-black/60 dark:text-white/60 inline-flex items-center gap-1.5">
+                  {contact.email}
+                  <CopyButton value={contact.email} />
+                </div>
               )}
               {contact.phone && (
                 <div className="text-black/60 dark:text-white/60">{contact.phone}</div>

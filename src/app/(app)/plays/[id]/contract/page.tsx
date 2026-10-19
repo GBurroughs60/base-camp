@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { fetchContractContext, buildContractMergeData, SCHEDULE_PER_ADVANCE } from "@/lib/contractData";
 import { CONTRACT_TBD } from "@/lib/generateContract";
 import InlineEditField from "@/components/inline/InlineEditField";
+import CopyButton from "@/components/inline/CopyButton";
 import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineBooleanChip from "@/components/inline/InlineBooleanChip";
 import TicketTierField from "@/components/inline/TicketTierField";
@@ -324,7 +325,10 @@ export default async function ContractReviewPage({
           </Link>
         </FieldRow>
         <FieldRow label="Artist rep email" resolved={merged.artist_rep_email}>
-          <span className="text-black/70 dark:text-white/70">{signatory?.email ?? "—"}</span>
+          <span className="text-black/70 dark:text-white/70 inline-flex items-center gap-1.5">
+            {signatory?.email ?? "—"}
+            {signatory?.email && <CopyButton value={signatory.email} />}
+          </span>
         </FieldRow>
         <FieldRow label="Artist rep phone" resolved={merged.artist_rep_phone}>
           <span className="text-black/70 dark:text-white/70">{signatory?.phone ?? "—"}</span>
@@ -335,7 +339,7 @@ export default async function ContractReviewPage({
               <InlineEditField table="contacts" id={purchaserContact.id} field="full_name" value={purchaserContact.full_name} placeholder="Add name" />
             </FieldRow>
             <FieldRow label="Purchaser email" resolved={merged.purchaser_email}>
-              <InlineEditField table="contacts" id={purchaserContact.id} field="email" value={purchaserContact.email} placeholder="Add email" />
+              <InlineEditField table="contacts" id={purchaserContact.id} field="email" value={purchaserContact.email} placeholder="Add email" copyable />
             </FieldRow>
             <FieldRow label="Purchaser phone" resolved={merged.purchaser_phone}>
               <InlineEditField table="contacts" id={purchaserContact.id} field="phone" value={purchaserContact.phone} placeholder="Add phone" />

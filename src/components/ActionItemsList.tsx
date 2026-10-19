@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import ActionItemRowActions from "./inline/ActionItemRowActions";
 import NewTaskModal from "./NewTaskModal";
+import CopyButton from "./inline/CopyButton";
 import { SearchIcon } from "./inline/icons";
 
 export type ActionItemRow = {
@@ -84,7 +85,7 @@ export default function ActionItemsList({ rows }: { rows: ActionItemRow[] }) {
         </p>
       ) : (
         <div
-          className={`grid ${GRID_COLS} border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900 overflow-visible`}
+          className={`grid ${GRID_COLS} border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900 overflow-x-auto`}
         >
           {(["Event / Task", "Venue / Linked to", "Contact", "Date", ""] as const).map((label, i) => (
             <div
@@ -141,9 +142,15 @@ export default function ActionItemsList({ rows }: { rows: ActionItemRow[] }) {
                   {r.source === "auto" ? (
                     <>
                       {r.contactEmail && (
-                        <a href={`mailto:${r.contactEmail}`} className="block hover:underline underline-offset-4 truncate">
-                          {r.contactEmail}
-                        </a>
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <a
+                            href={`mailto:${r.contactEmail}`}
+                            className="hover:underline underline-offset-4 truncate"
+                          >
+                            {r.contactEmail}
+                          </a>
+                          <CopyButton value={r.contactEmail} />
+                        </span>
                       )}
                       {r.contactPhone && <span className="block text-black/50 dark:text-white/50">{r.contactPhone}</span>}
                       {!r.contactEmail && !r.contactPhone && "—"}

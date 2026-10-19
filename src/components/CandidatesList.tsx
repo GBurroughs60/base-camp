@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import InlineEditField from "./inline/InlineEditField";
 import InlineRelationField from "./inline/InlineRelationField";
 import CandidateRowActions from "./inline/CandidateRowActions";
+import CopyButton from "./inline/CopyButton";
 import { SearchIcon } from "./inline/icons";
 
 export type CandidateListRow = {
@@ -63,7 +64,7 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
         </p>
       ) : (
         <div
-          className={`grid ${GRID_COLS} border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900 overflow-visible`}
+          className={`grid ${GRID_COLS} border border-black/10 dark:border-white/10 rounded-lg bg-white dark:bg-neutral-900 overflow-x-auto`}
         >
           {(["Email", "Name", "Company / Venue", "Event", "Phone", ""] as const).map((label, i) => (
             <div
@@ -86,12 +87,15 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
             return (
               <div key={c.id} className="contents">
                 <div className={`min-w-0 px-4 py-3 ${rowBorder}`}>
-                  <a
-                    href={`mailto:${c.email}`}
-                    className="block truncate text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
-                  >
-                    {c.email}
-                  </a>
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <a
+                      href={`mailto:${c.email}`}
+                      className="truncate text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4"
+                    >
+                      {c.email}
+                    </a>
+                    <CopyButton value={c.email} />
+                  </span>
                   {c.subject && (
                     <p
                       title={context}

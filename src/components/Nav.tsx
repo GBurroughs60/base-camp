@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { ChevronIcon } from "./inline/icons";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -31,6 +33,15 @@ export default function Nav({
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+  // Mobile-only -- below the md breakpoint the sidebar is an off-canvas
+  // drawer (closed by default) with a small edge tab to open/close it,
+  // per Greg (2026-10-19): "include a hide/expand arrow... on the left
+  // side nav bar" after finding the always-visible w-64 sidebar unusable
+  // on his phone. At md and up, "md:translate-x-0" below always wins
+  // regardless of this state, so desktop's existing always-visible
+  // behavior is unchanged -- this toggle has no effect there, so its
+  // controls are hidden there too (md:hidden) rather than shown inert.
+  const [open, setOpen] = useState(false);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -44,6 +55,7 @@ export default function Nav({
       <Link
         key={link.href}
         href={link.href}
+        onClick={() => setOpen(false)}
         className={
           "group relative flex items-center rounded-md px-3 py-2 text-sm transition-colors " +
           (active
@@ -73,7 +85,36 @@ export default function Nav({
   }
 
   return (
-    <aside className="w-64 shrink-0 sticky top-0 h-screen bg-ridge-ink text-white flex flex-col">
+    <>
+      {/* Mobile-only expand tab -- sits on the viewport's left edge while
+          the drawer is closed. Hidden at md+, where the sidebar is always
+          visible and this control would have nothing to do. */}
+      {!open && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Open navigation"
+          className="md:hidden fixed top-4 left-0 z-50 flex items-center justify-center w-7 h-10 rounded-r-full bg-ridge-ink text-white/80 shadow-lg active:bg-ridge-ink/90"
+        >
+          <ChevronIcon className="w-3.5 h-3.5 -rotate-90" />
+        </button>
+      )}
+
+      {/* Backdrop -- tap outside the open drawer to close it. */}
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/50"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      <aside
+        className={
+          "w-64 shrink-0 fixed inset-y-0 left-0 z-50 h-screen bg-ridge-ink text-white flex flex-col transition-transform duration-200 " +
+          (open ? "translate-x-0" : "-translate-x-full") +
+          " md:translate-x-0 md:static md:sticky md:top-0"
+        }
+      >
       <div className="px-5 pt-6 pb-5 border-b border-white/10 flex items-center gap-3">
         <Image
           src="/brand/ridge-light-icon.png"
@@ -83,7 +124,7 @@ export default function Nav({
           className="shrink-0"
           priority
         />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="font-display text-lg font-medium tracking-tight leading-tight truncate">
             Base Camp
           </div>
@@ -91,6 +132,16 @@ export default function Nav({
             The Ridge Music Group
           </div>
         </div>
+        {/* Mobile-only collapse tab -- same control, opposite state, kept
+            inside the drawer's own header so it travels with it. */}
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label="Close navigation"
+          className="md:hidden shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+        >
+          <ChevronIcon className="w-3.5 h-3.5 rotate-90" />
+        </button>
       </div>
 
       <nav className="flex-1 px-3 py-4 flex flex-col overflow-y-auto">
@@ -115,6 +166,7 @@ export default function Nav({
           Sign out
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

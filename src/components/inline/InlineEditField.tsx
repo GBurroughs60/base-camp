@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateField, type TableName } from "@/app/actions/records";
 import { PencilIcon } from "./icons";
+import CopyButton from "./CopyButton";
 
 type FieldType = "text" | "textarea" | "number" | "date";
 
@@ -55,6 +56,7 @@ export default function InlineEditField({
   href,
   className,
   inputClassName,
+  copyable,
 }: {
   table: TableName;
   id: string;
@@ -70,6 +72,10 @@ export default function InlineEditField({
   href?: string;
   className?: string;
   inputClassName?: string;
+  /** Adds a copy-to-clipboard icon next to the pencil, for email fields
+   * (contacts.email, companies.email, etc.). Copies the raw current value,
+   * not the formatted display value. */
+  copyable?: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -262,6 +268,7 @@ export default function InlineEditField({
           {isEmpty ? placeholder : displayValue}
         </span>
       )}
+      {copyable && !isEmpty && <CopyButton value={String(current)} />}
       <button
         type="button"
         onClick={beginEdit}

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PlaysTable, { type PlaysTableRow } from "@/components/PlaysTable";
 import InlineEditField from "@/components/inline/InlineEditField";
+import CopyButton from "@/components/inline/CopyButton";
 import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineBooleanChip from "@/components/inline/InlineBooleanChip";
 import AdditionalContacts, {
@@ -163,6 +164,7 @@ export default async function VenueDetailPage({
                 value={venue.email}
                 placeholder="Add email"
                 href={venue.email ? `mailto:${venue.email}` : undefined}
+                copyable
               />
             </div>
             <div>
@@ -227,7 +229,10 @@ export default async function VenueDetailPage({
                       )}
                     </div>
                     {c.email && (
-                      <div className="text-black/60 dark:text-white/60">{c.email}</div>
+                      <div className="text-black/60 dark:text-white/60 inline-flex items-center gap-1.5">
+                        {c.email}
+                        <CopyButton value={c.email} />
+                      </div>
                     )}
                     {c.phone && (
                       <div className="text-black/60 dark:text-white/60">{c.phone}</div>

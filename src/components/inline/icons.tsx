@@ -104,6 +104,52 @@ export function MoreIcon({ className }: { className?: string }) {
   );
 }
 
+/** Two overlapping rounded rectangles -- "copy to clipboard" glyph, used
+ * next to every displayed email address throughout the app. */
+export function CopyIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true">
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.3" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M10.5 5.5V3.8a1.3 1.3 0 0 0-1.3-1.3H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Checkmark -- swapped in briefly for CopyIcon after a successful copy. */
+export function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M3.5 8.5 6.5 11.5 12.5 4.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Three stacked bars -- mobile nav menu toggle. */
+export function MenuIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function StarIcon({
   className,
   active,

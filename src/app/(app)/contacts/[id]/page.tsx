@@ -138,6 +138,7 @@ export default async function ContactDetailPage({
                 field="email"
                 value={contact.email}
                 placeholder="Add email"
+                copyable
               />
             </div>
             <div className="text-black/70 dark:text-white/70">

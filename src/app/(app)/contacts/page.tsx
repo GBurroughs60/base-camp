@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
+import CopyButton from "@/components/inline/CopyButton";
 import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
 
 type Company = { id: string; name: string; city: string | null; state: string | null };
@@ -47,7 +48,14 @@ function toRow(c: ContactRow): DataRow {
       ),
       city: c.companies?.city ?? "—",
       state: c.companies?.state ?? "—",
-      email: c.email ?? "—",
+      email: c.email ? (
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          <span className="truncate">{c.email}</span>
+          <CopyButton value={c.email} />
+        </span>
+      ) : (
+        "—"
+      ),
       phone: c.phone ?? "—",
       title: c.title ?? "—",
     },
