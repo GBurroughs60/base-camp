@@ -148,7 +148,10 @@ function buildHref(params: { year?: string; status?: string; view?: string }) {
   const qs = new URLSearchParams();
   if (params.year) qs.set("year", params.year);
   if (params.status && params.status !== "all") qs.set("status", params.status);
-  if (params.view && params.view !== "list") qs.set("view", params.view);
+  // Board (the active pipeline view) is the default now -- only stamp
+  // ?view= onto the URL when explicitly asking for list, so the nav
+  // link's bare "/plays" and a plain visit both land on board.
+  if (params.view && params.view !== "board") qs.set("view", params.view);
   const s = qs.toString();
   return s ? `/plays?${s}` : "/plays";
 }
@@ -159,7 +162,11 @@ export default async function PlaysPage({
   searchParams: Promise<{ year?: string; status?: string; view?: string }>;
 }) {
   const { year, status, view } = await searchParams;
-  const activeView = view === "board" ? "board" : "list";
+  // Board (the live/active pipeline) is the default landing view now --
+  // per Greg (2026-10-19), the left-nav Plays link should open straight
+  // into the kanban pipeline view rather than the flat list. "list" is
+  // the one explicit opt-out.
+  const activeView = view === "list" ? "list" : "board";
   const activeBucket =
     STATUS_FILTER_GROUPS.find((g) => g.key === status) ?? STATUS_FILTER_GROUPS[0];
 
