@@ -96,15 +96,27 @@ function resolveMonthWord(word: string): number | undefined {
 }
 const MONTH_PATTERN_ALL = [...Object.keys(MONTH_WORDS), ...Object.keys(MONTH_ABBR_WORDS)].join("|");
 
-// Meteorological seasons -- a plain, defensible default. Refresh corrects
-// the real window once the source's actual pattern is checked; this is
-// only ever a starting anchor, never presented as fact.
+// Meteorological seasons, plus synonyms/compounds that reliably name a
+// season even though they aren't the season's own word -- loosened per
+// Greg (2026-10-19) after reviewing a Needs Date batch and asking to
+// "open up the aperture" on season inference: a name carrying a clear
+// seasonal cue is real signal too, same reasoning as every other
+// name-cue step below. Kept deliberately narrow to words that name a
+// season unambiguously -- "holiday" was considered and left out since
+// it's too generic (doesn't reliably mean "winter" the way "harvest"
+// reliably means "fall"); flag for Greg if he wants it added anyway.
+// Refresh corrects the real window once the source's actual pattern is
+// checked; this is only ever a starting anchor, never presented as fact.
 const SEASON_WORDS: Record<string, { start: number; end: number }> = {
   spring: { start: 3, end: 5 },
   summer: { start: 6, end: 8 },
   fall: { start: 9, end: 11 },
   autumn: { start: 9, end: 11 },
   winter: { start: 12, end: 2 },
+  harvest: { start: 9, end: 11 },
+  oktoberfest: { start: 9, end: 11 },
+  bloom: { start: 3, end: 5 },
+  blossom: { start: 3, end: 5 },
 };
 
 // Fixed-date holidays common in community festival names, where the event
@@ -175,9 +187,16 @@ function findBareWeekday(text: string, allowAbbreviations = false): { weekday: n
   return { weekday, plural: !!m[2] };
 }
 
+// Allows an optional "fest" suffix directly glued onto the season word
+// with no separator ("SummerFest", "Winterfest", "Fallfest") -- compound
+// festival names are extremely common and a plain \bword\b boundary
+// check misses them entirely (there's no boundary between "Summer" and
+// "Fest" in "SummerFest", since both sides are word characters). Added
+// alongside the synonym broadening above, same "take more generally from
+// the name" ask.
 function findSeasonWindow(text: string): { start: number; end: number; word: string } | null {
   for (const [word, range] of Object.entries(SEASON_WORDS)) {
-    if (new RegExp(`\\b${word}\\b`, "i").test(text)) return { ...range, word };
+    if (new RegExp(`\\b${word}(?:fest)?\\b`, "i").test(text)) return { ...range, word };
   }
   return null;
 }
@@ -291,10 +310,12 @@ function findExplicitNumericDate(text: string): { month: number; day: number; ye
  * at all (the event genuinely needs manual review -- see
  * events_needing_attention).
  *
- * Deliberately does NOT attempt to extract a single explicit date here --
- * that's a separate, simpler regex pass callers should try first (see
- * parse_pilot.py's parse_explicit_date), since a stated date is always
- * confirmed_date and should win outright over any pattern.
+ * A single explicit date stated in the source text is checked first,
+ * right after the fixed-holiday rules, and always wins outright over any
+ * inferred pattern or season/month guess -- including the ordinal-weekday
+ * and bare-weekday pattern steps, which used to run ahead of it (fixed
+ * 2026-10-19; see that step's own comment for the real row that caught
+ * the gap).
  */
 export function resolveDateSignal(rawDateText: string | null, eventName: string): DateSignalResult | null {
   const text = rawDateText ?? "";
@@ -308,7 +329,42 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
     }
   }
 
-  // 2. An ordinal-weekday pattern actually stated in the source text
+  // 2. A literal explicit calendar date stated in the source text itself
+  //    -- a written month ("October 17, 2026", "July 4th") or a numeric
+  //    M/D/YYYY date, including one embedded in a longer timestamp string
+  //    ("Fri, 05/08/2026 - 18:00"). MOVED AHEAD of the ordinal-weekday and
+  //    bare-weekday pattern steps below (2026-10-19, after Greg asked to
+  //    broaden season-word inference and this surfaced a real false
+  //    positive while testing against the live Needs Date backlog): text
+  //    naming both a bare weekday AND an explicit date ("2026 edition
+  //    confirmed for Saturday, October 3") was matching the weekly-weekday
+  //    step first and inventing a fictitious "every Saturday,
+  //    September-November" recurring series out of what is actually one
+  //    single annual date -- "Brushy Mountain Apple Festival" is the row
+  //    that caught it. This section's own header always said a stated
+  //    date should "always win outright over a guessed pattern" (the
+  //    Discovery output contract says the same), and that was true
+  //    against the bare-month step further below, but was never actually
+  //    enforced against the pattern steps ahead of it until now. Checked
+  //    before those steps for exactly that reason -- a day number sitting
+  //    right next to a month name is a stronger, more literal signal than
+  //    a bare weekday word, and should win every time both are present.
+  //    The year, if the source gave one, is noted in the explanation but
+  //    not carried in the rule itself -- `annual-date` is deliberately
+  //    year-agnostic, same as the existing named-holiday dates below, so
+  //    this date projects forward correctly in future years too.
+  const explicitDate = findExplicitDate(text) ?? findExplicitNumericDate(text);
+  if (explicitDate) {
+    return {
+      rule: { frequency: "annual-date", month: explicitDate.month, day: explicitDate.day },
+      confidence: "confirmed_date",
+      explanation: explicitDate.year
+        ? `Source date text states a specific calendar date (month ${explicitDate.month}, day ${explicitDate.day}, ${explicitDate.year}) -- read directly, not inferred from a pattern or guessed at.`
+        : `Source date text states a specific calendar date (month ${explicitDate.month}, day ${explicitDate.day}) with no year given -- read directly, not inferred from a pattern or guessed at.`,
+    };
+  }
+
+  // 3. An ordinal-weekday pattern actually stated in the source text
   //    ("3rd Saturday monthly", "2nd Saturday, May-Sept", "First Friday
   //    each month"). Originally this only fired when the literal word
   //    "monthly" was also present, which missed very common real phrasings
@@ -349,7 +405,7 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
     };
   }
 
-  // 3. A weekly weekday pattern stated in the source text ("Friday nights",
+  // 4. A weekly weekday pattern stated in the source text ("Friday nights",
   //    "every Thursday"), with the season window resolved from whichever
   //    text states it. If the source only vaguely says "in season" with no
   //    explicit range, and the name supplies a season word, the frequency
@@ -389,31 +445,6 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
       rule: { frequency: "weekly", weekday: weekdayInText.weekday, seasonStartMonth: 1, seasonEndMonth: 12 },
       confidence: "estimated",
       explanation: "Source date text states a weekly weekday pattern with no season given anywhere -- defaulted to year-round.",
-    };
-  }
-
-  // 4. A literal explicit calendar date stated in the source text itself
-  //    -- a written month ("October 17, 2026", "July 4th") or a numeric
-  //    M/D/YYYY date, including one embedded in a longer timestamp string
-  //    ("Fri, 05/08/2026 - 18:00"). Checked before the bare-month fallback
-  //    below specifically because a bare-month match would otherwise
-  //    swallow the written form (it only looks for the month word and
-  //    never checks for a day number sitting right next to it) -- the gap
-  //    found during Alabama discovery (see this file's header comment).
-  //    Always wins outright over a guessed pattern, per the Discovery
-  //    output contract (section 12): a stated date beats any inferred
-  //    rule. The year, if the source gave one, is noted in the explanation
-  //    but not carried in the rule itself -- `annual-date` is deliberately
-  //    year-agnostic, same as the existing named-holiday dates below, so
-  //    this date projects forward correctly in future years too.
-  const explicitDate = findExplicitDate(text) ?? findExplicitNumericDate(text);
-  if (explicitDate) {
-    return {
-      rule: { frequency: "annual-date", month: explicitDate.month, day: explicitDate.day },
-      confidence: "confirmed_date",
-      explanation: explicitDate.year
-        ? `Source date text states a specific calendar date (month ${explicitDate.month}, day ${explicitDate.day}, ${explicitDate.year}) -- read directly, not inferred from a pattern or guessed at.`
-        : `Source date text states a specific calendar date (month ${explicitDate.month}, day ${explicitDate.day}) with no year given -- read directly, not inferred from a pattern or guessed at.`,
     };
   }
 

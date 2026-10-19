@@ -531,6 +531,57 @@ input, same treatment as the handful of clearly-private-sounding events
 ("Frat Party", "Theta Chi Party", etc.) found mislabeled `is_public =
 true` during this same pass.
 
+**Season-word aperture widened + a real ordering bug fixed
+(2026-10-19).** Greg reviewed a Needs Date digest and asked to "open up
+the aperture" on season inference: he was seeing events with "summer" or
+"fall" right in the name still landing in `unknown`, and asked for
+similar words (he named "harvest") to count too. Two real, independent
+causes, both in `src/lib/dateSignalExtraction.ts`:
+
+1. `SEASON_WORDS` only recognized the five literal season words
+   (spring/summer/fall/autumn/winter) via a strict `\bword\b` match, which
+   both missed clear synonyms (harvest, oktoberfest, bloom/blossom) and —
+   more consequentially — missed compound names glued directly onto a
+   season word with no separator ("Bessemer SummerFest"), since there's
+   no word boundary between "Summer" and "Fest". Fixed by adding the
+   synonyms to `SEASON_WORDS` and an optional `(?:fest)?` suffix to the
+   matching regex. Deliberately left out "holiday" — too generic to
+   reliably mean winter (unlike "harvest" for fall) — flag to Greg if he
+   wants it added anyway.
+2. While testing the above against the live Needs Date backlog, found
+   that `resolveDateSignal` checked the ordinal-weekday and bare-weekday
+   pattern steps *before* the explicit-stated-date step — so source text
+   naming both a weekday word and a literal date ("2026 edition confirmed
+   for Saturday, October 3" — the row that caught it, Brushy Mountain
+   Apple Festival) matched the weekly-weekday step first and invented a
+   fictitious "every Saturday, Sept–Nov" recurring series out of what is
+   actually one single annual date. This section's own documented intent
+   ("a stated date should always win outright over a guessed pattern")
+   was already true against the bare-month step further down, but was
+   never actually enforced against the two pattern steps ahead of it.
+   Fixed by moving the explicit-date check (both written-month and
+   numeric M/D/YYYY forms) to run immediately after the fixed-holiday
+   rules, before any pattern-guessing step.
+
+One-time backfill against the live `recurrence_rule IS NULL` backlog
+(422 rows in `events_needing_attention` at the time, across every state —
+not just a newly-discovered one) using the corrected script, same
+approach as the 2026-09-28 sharpening pass: run the real
+`scripts/resolve-date-signal.ts` against each row's `name` + `notes`, and
+for anything that now resolves, write `recurrence_rule` +
+an `event_occurrences` row at the returned confidence, with a `notes`
+suffix recording what was inferred and why. One manual exclusion rule
+applied during review, not (yet) built into the script itself: any
+`weekly`/`monthly` result at `estimated` confidence with no explicit
+season/range stated — i.e. inferred from a bare weekday word alone, no
+`confirmed_pattern` backing — gets a human glance before writing, since a
+one-off mention of a weekday (a fair's single Saturday-night rodeo slot,
+say) can read exactly like a real weekly series to the regex. Caught one
+real case this way (Caroline-Dorchester County Fair) and left it
+`unknown` rather than write a wrong frequency, not just a wrong date.
+[Status: code fix shipped; backfill in progress — update this note with
+final before/after counts once the full backlog pass is done.]
+
 **Date resolution is now a real, invokable script, not LLM re-derivation.**
 Discovery and Refresh's scheduled-task prompts previously told the agent
 to read `dateSignalExtraction.ts`/`recurrence.ts` and manually re-derive
