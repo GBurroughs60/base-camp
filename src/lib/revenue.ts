@@ -69,8 +69,16 @@ export type PlayRevenueResult = {
   // commission; see missingBookingRate/missingManagementRate.
   bookingCommission: number | null;
   managementCommission: number | null;
-  // Only a real number once neither applicable leg is missing a rate.
-  totalRidgeRevenue: number | null;
+  // The sum of whichever legs ARE known. A missing leg contributes
+  // nothing here (never guessed as zero), but it no longer blanks out a
+  // *different* leg that IS known -- see missingBookingRate/
+  // missingManagementRate below for which leg (if any) is still a gap.
+  // Per Greg (2026-10-20, re: Brittany Elise's booking commission being
+  // hidden by her still-unmodeled flat-fee management retainer): "add
+  // the booking commission... even though her management commission is
+  // different." A play with both legs missing simply totals $0 here,
+  // same as a play that doesn't apply to either leg at all.
+  totalRidgeRevenue: number;
   missingBookingRate: boolean;
   missingManagementRate: boolean;
   missingGuaranteeAmount: boolean;
@@ -86,8 +94,12 @@ export type PlayRevenueResult = {
  *
  * A play-level commission percentage always overrides the artist's
  * default when present; when neither is present and that commission type
- * applies to this artist, the leg is flagged missing rather than assumed
+ * applies to this artist, that leg is flagged missing rather than assumed
  * to be zero (per Greg, 2026-10-17: "never assume blank equals zero").
+ * A missing leg withholds only its OWN commission from the total, never a
+ * different leg that's already known (per Greg, 2026-10-20) -- callers
+ * should still surface missingBookingRate/missingManagementRate (e.g. a
+ * warning banner) so a partial total is never mistaken for a complete one.
  */
 export function computePlayRevenue(
   play: CommissionPlayInput,
@@ -121,10 +133,7 @@ export function computePlayRevenue(
     }
   }
 
-  const totalRidgeRevenue =
-    missingBookingRate || missingManagementRate
-      ? null
-      : (bookingCommission ?? 0) + (managementCommission ?? 0);
+  const totalRidgeRevenue = (bookingCommission ?? 0) + (managementCommission ?? 0);
 
   return {
     playId: play.id,
@@ -164,19 +173,21 @@ export function aggregateRevenue(results: PlayRevenueResult[]): RevenueTotals {
   };
 
   for (const r of results) {
+    // Informational only now -- a partial row's known leg still counts
+    // toward its stage total below (see computePlayRevenue); this tally
+    // just tracks how many rows/dollars have a gap worth flagging.
     if (r.missingBookingRate || r.missingManagementRate) {
       totals.missingRate.count += 1;
       totals.missingRate.guaranteeTotal += r.guaranteeAmount ?? 0;
-      continue; // excluded from stage totals until the rate gap is fixed
     }
     if (r.stage === "booked") {
-      totals.booked.total += r.totalRidgeRevenue ?? 0;
+      totals.booked.total += r.totalRidgeRevenue;
       totals.booked.count += 1;
     } else if (r.stage === "earned") {
-      totals.earned.total += r.totalRidgeRevenue ?? 0;
+      totals.earned.total += r.totalRidgeRevenue;
       totals.earned.count += 1;
     } else if (r.stage === "settled") {
-      totals.settled.total += r.totalRidgeRevenue ?? 0;
+      totals.settled.total += r.totalRidgeRevenue;
       totals.settled.count += 1;
     }
   }

@@ -1598,14 +1598,22 @@ enough for a conversion rate to mean anything.
 - **Rate resolution**: a play-level `management_commission_pct` /
   `booking_agent_commission_pct` always overrides the artist's own
   default when present. When neither is set and that commission type
-  applies to the artist (`ridge_manages`/`ridge_books`), the leg is
-  flagged missing and excluded from the totals — **never silently treated
+  applies to the artist (`ridge_manages`/`ridge_books`), that one leg is
+  flagged missing and excluded from the total — **never silently treated
   as a zero commission.** Verbatim from Greg: "When no commission info is
   present on the play record, always default to the artist profile. Never
   assume that blank equals zero." Brittany Elise is flagged
-  `ridge_manages = true` with no `management_commission_pct` set, and
-  Greg confirmed (2026-10-19) to leave that as-is for now — her management
-  leg is correctly absent from the total, not zeroed out.
+  `ridge_manages = true` with no `management_commission_pct` set. Through
+  2026-10-19 that meant her whole play was held out of every total (the
+  known 10% booking commission along with it) because either leg being
+  missing nulled the play's total outright. Greg corrected that
+  (2026-10-20): a missing leg should only withhold *that leg's own*
+  commission, never bury a different leg that IS known — so Brittany's
+  booking commission now counts normally; only her management leg stays
+  excluded and flagged, pending the flat-retainer model below. The
+  dashboard still visibly flags every partial row (amber banner + an
+  asterisk on its Ridge-total cell) so a partial number is never mistaken
+  for a complete one.
 - **Three-stage lifecycle, reusing the existing play pipeline** (see
   `src/lib/playStatus.ts`) rather than a new status column:
   - **Booked / Projected** — any play from `offer_submitted` through
@@ -1641,13 +1649,36 @@ enough for a conversion rate to mean anything.
   YTD / Prior Year / All Time / custom range off `show_date` — defaults to
   All Time rather than YTD, since real bookings are often dated months
   out and a Jan-1-to-today window can look empty even with real booked
-  business on the calendar. A play missing a commission rate is excluded
-  from every total and called out in a banner instead of silently
-  undercounting; same treatment for a play missing a `show_date` (can't
-  be placed in any range, "All Time" included).
+  business on the calendar. A play missing one commission leg still
+  counts whichever leg IS known toward every total (2026-10-20 — see the
+  rate-resolution bullet above); it's still called out in an amber banner
+  plus an asterisk on its Ridge-total cell, rather than silently reading
+  as complete. Same treatment for a play missing a `show_date` (can't be
+  placed in any range, "All Time" included) — a separate banner, since
+  that gap can't be partially resolved the way a commission leg can. Also
+  visualized, not just tabulated (2026-10-20, per Greg: "can we make it
+  all more visual?"): a horizontal bar per stage next to the
+  Booked/Earned/Settled tiles (one hue, light-to-dark ordinal ramp =
+  least-to-most complete), and a stacked guarantee/merch column chart per
+  artist above the by-year table (two-series categorical: brand orange
+  for guarantee, blue for merch). Colors validated with the dataviz
+  skill's `validate_palette.js --ordinal` / default checks in both light
+  and dark mode before shipping.
 
 **Open / not yet decided:**
 
+- **Flat-fee / retainer management commission.** The current model
+  assumes management commission is always a percentage of
+  `guarantee_amount + gross_merch_sales`. Brittany Elise doesn't fit it —
+  per Greg (2026-10-20), she pays Ridge a flat $150/month retainer
+  instead, which isn't a per-play percentage at all and isn't something
+  `management_commission_pct` can represent. Deliberately not solved now
+  ("ignore that piece for her for now... add to our list to solve for
+  that at a later time") — her management leg stays flagged/excluded
+  until this is designed. Will need its own basis (probably a monthly
+  recurring line independent of individual plays, not computed from any
+  single play's guarantee/merch) rather than forcing it through
+  `computePlayRevenue`'s per-play percentage math.
 - Whether `settled` should gain its own automated trigger (e.g. a
   deposit/final-payment field flipping it) or stay a manual call
   indefinitely.

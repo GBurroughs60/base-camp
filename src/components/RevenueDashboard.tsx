@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { PlayStatus } from "@/lib/playStatus";
 import { PLAY_STATUS_LABELS } from "@/lib/playStatus";
+import { StagesBarChart, YearlyRevenueChart } from "./RevenueCharts";
 
 export type RevenueStage = "booked" | "earned" | "settled";
 
@@ -16,7 +17,10 @@ export type LivePlayRow = {
   guaranteeAmount: number | null;
   bookingCommission: number | null;
   managementCommission: number | null;
-  totalRidgeRevenue: number | null;
+  // Always a real number -- the sum of whichever leg(s) are known. See
+  // missingBookingRate/missingManagementRate for which leg, if any, is
+  // still a gap (and so held out of this total).
+  totalRidgeRevenue: number;
   missingBookingRate: boolean;
   missingManagementRate: boolean;
   missingGuaranteeAmount: boolean;
@@ -98,21 +102,24 @@ export default function RevenueDashboard({
   };
 
   // Missing-rate banner is deliberately NOT range-filtered -- a data gap
-  // needs fixing regardless of which window you're looking at.
+  // needs fixing regardless of which window you're looking at. These rows
+  // are no longer excluded from the totals/table below (2026-10-20, per
+  // Greg re: Brittany Elise) -- a missing leg withholds only its own
+  // commission, never a different leg that's already known -- so this
+  // banner is now purely a "here's what's still incomplete" flag, not an
+  // "these dollars are missing from the numbers below" one.
   const missingRateRows = liveRows.filter((r) => r.missingBookingRate || r.missingManagementRate);
 
   // A live play with no show_date can't be placed in any range -- including
   // "All Time," which otherwise reads as "no date restriction." Rather than
   // let it silently vanish from every total (the exact "blank treated as
-  // zero" gap this tracker is built to avoid for missing commission rates),
-  // surface it the same way: called out, excluded until fixed.
-  const missingShowDateRows = liveRows.filter(
-    (r) => !r.missingBookingRate && !r.missingManagementRate && !r.showDate
-  );
+  // zero" gap this tracker is built to avoid), surface it the same way:
+  // called out, excluded until fixed. Unlike a missing commission rate,
+  // a missing date can't be partially resolved, so this one stays an
+  // outright exclusion.
+  const missingShowDateRows = liveRows.filter((r) => !r.showDate);
 
-  const filteredLiveRows = liveRows.filter(
-    (r) => !r.missingBookingRate && !r.missingManagementRate && inRange(r.showDate)
-  );
+  const filteredLiveRows = liveRows.filter((r) => inRange(r.showDate));
 
   const totals = useMemo(() => {
     const t = {
@@ -153,7 +160,8 @@ export default function RevenueDashboard({
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
           <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
             {missingRateRows.length} play{missingRateRows.length === 1 ? "" : "s"} missing a
-            commission rate — excluded from the totals below until fixed
+            commission rate — the known leg is still counted below (flagged with *); the
+            missing leg isn&apos;t, until it&apos;s added
           </p>
           <ul className="mt-2 space-y-1 text-xs text-amber-700/80 dark:text-amber-400/80">
             {missingRateRows.map((r) => (
@@ -161,10 +169,10 @@ export default function RevenueDashboard({
                 {r.artistName} — {PLAY_STATUS_LABELS[r.status]}
                 {r.showDate ? ` (${r.showDate})` : ""}: guarantee {formatMoney(r.guaranteeAmount)}.{" "}
                 {r.missingBookingRate && r.missingManagementRate
-                  ? "No booking or management rate on file, so neither commission is reflected above."
+                  ? "No booking or management rate on file, so this play currently contributes $0 below."
                   : r.missingBookingRate
-                    ? `No booking rate on file (known management commission: ${formatMoney(r.managementCommission)}) -- this play is held out of the totals above until that's fixed.`
-                    : `No management rate on file (known booking commission: ${formatMoney(r.bookingCommission)}) -- this play is held out of the totals above until that's fixed.`}
+                    ? `No booking rate on file -- only its management commission (${formatMoney(r.managementCommission)}) is counted below.`
+                    : `No management rate on file -- only its booking commission (${formatMoney(r.bookingCommission)}) is counted below.`}
               </li>
             ))}
           </ul>
@@ -246,6 +254,18 @@ export default function RevenueDashboard({
           <RevenueTile title="Settled" sub="Manually closed out" total={totals.settled.total} count={totals.settled.count} />
         </div>
 
+        {(totals.booked.count > 0 || totals.earned.count > 0 || totals.settled.count > 0) && (
+          <div className="mt-3">
+            <StagesBarChart
+              stages={[
+                { key: "booked", label: "Booked", total: totals.booked.total, count: totals.booked.count },
+                { key: "earned", label: "Earned", total: totals.earned.total, count: totals.earned.count },
+                { key: "settled", label: "Settled", total: totals.settled.total, count: totals.settled.count },
+              ]}
+            />
+          </div>
+        )}
+
         {filteredLiveRows.length > 0 && (
           <div className="mt-4 overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
             <table className="w-full text-sm">
@@ -261,20 +281,33 @@ export default function RevenueDashboard({
                 </tr>
               </thead>
               <tbody>
-                {filteredLiveRows.map((r, i) => (
-                  <tr
-                    key={r.playId}
-                    className={i > 0 ? "border-t border-black/10 dark:border-white/10" : ""}
-                  >
-                    <td className="px-3 py-2">{r.artistName}</td>
-                    <td className="px-3 py-2">{PLAY_STATUS_LABELS[r.status]}</td>
-                    <td className="px-3 py-2">{r.showDate ?? "—"}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.guaranteeAmount)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.bookingCommission)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.managementCommission)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium">{formatMoney(r.totalRidgeRevenue)}</td>
-                  </tr>
-                ))}
+                {filteredLiveRows.map((r, i) => {
+                  const isPartial = r.missingBookingRate || r.missingManagementRate;
+                  return (
+                    <tr
+                      key={r.playId}
+                      className={i > 0 ? "border-t border-black/10 dark:border-white/10" : ""}
+                    >
+                      <td className="px-3 py-2">{r.artistName}</td>
+                      <td className="px-3 py-2">{PLAY_STATUS_LABELS[r.status]}</td>
+                      <td className="px-3 py-2">{r.showDate ?? "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.guaranteeAmount)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.bookingCommission)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.managementCommission)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums font-medium">
+                        {formatMoney(r.totalRidgeRevenue)}
+                        {isPartial && (
+                          <span
+                            className="ml-1 text-amber-600 dark:text-amber-400"
+                            title="Partial -- a commission rate is still missing for this play; see the note above."
+                          >
+                            *
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -291,6 +324,17 @@ export default function RevenueDashboard({
         {historicalByArtist.map((group) => (
           <div key={group.artistName} className="mb-4">
             <p className="text-sm font-medium mb-2">{group.artistName}</p>
+            <YearlyRevenueChart
+              rows={group.rows.map((row) => ({
+                year: row.year,
+                guaranteeTotal: row.guaranteeTotal,
+                // guaranteeMerchTotal is guarantee + merch combined; the
+                // chart's top segment is merch alone, so back it out here
+                // rather than double-counting the guarantee portion.
+                merchOnlyTotal: Math.max(row.guaranteeMerchTotal - row.guaranteeTotal, 0),
+                playCount: row.playCount,
+              }))}
+            />
             <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
               <table className="w-full text-sm">
                 <thead>
