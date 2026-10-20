@@ -4,6 +4,26 @@ import { useMemo, useState } from "react";
 import type { PlayStatus } from "@/lib/playStatus";
 import { PLAY_STATUS_LABELS } from "@/lib/playStatus";
 import { StagesBarChart, YearlyRevenueChart } from "./RevenueCharts";
+import { SortIndicator } from "./DataTable";
+
+type LiveSortKey = "artist" | "date" | "guarantee" | "booking" | "management" | "total";
+
+function liveSortValue(r: LivePlayRow, key: LiveSortKey): string | number | null {
+  switch (key) {
+    case "artist":
+      return r.artistName;
+    case "date":
+      return r.showDate;
+    case "guarantee":
+      return r.guaranteeAmount;
+    case "booking":
+      return r.bookingCommission;
+    case "management":
+      return r.managementCommission;
+    case "total":
+      return r.totalRidgeRevenue;
+  }
+}
 
 export type RevenueStage = "booked" | "earned" | "settled";
 
@@ -63,6 +83,22 @@ export default function RevenueDashboard({
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
 
+  // Sortable live-plays table (Greg, 2026-10-20: "make this list of plays
+  // sortable by date, artist alphabetically and amounts"). Defaults to
+  // show date ascending, matching the date-first convention the rest of
+  // the app's list pages already use (e.g. /plays' defaultSortKey="date").
+  const [liveSortKey, setLiveSortKey] = useState<LiveSortKey>("date");
+  const [liveSortDir, setLiveSortDir] = useState<"asc" | "desc">("asc");
+
+  function toggleLiveSort(key: LiveSortKey) {
+    if (liveSortKey === key) {
+      setLiveSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setLiveSortKey(key);
+      setLiveSortDir("asc");
+    }
+  }
+
   const today = useMemo(() => new Date(), []);
   const currentYear = today.getUTCFullYear();
 
@@ -121,6 +157,21 @@ export default function RevenueDashboard({
 
   const filteredLiveRows = liveRows.filter((r) => inRange(r.showDate));
 
+  // Same null-last, numeric-aware comparator DataTable uses elsewhere in
+  // the app, so sorting behaves the same way here as it does on every
+  // other list page.
+  const sortedLiveRows = useMemo(() => {
+    const withKeys = filteredLiveRows.map((r) => ({ r, v: liveSortValue(r, liveSortKey) }));
+    withKeys.sort((a, b) => {
+      if (a.v === null || a.v === undefined) return 1;
+      if (b.v === null || b.v === undefined) return -1;
+      if (typeof a.v === "number" && typeof b.v === "number") return a.v - b.v;
+      return String(a.v).localeCompare(String(b.v), undefined, { numeric: true });
+    });
+    const ordered = withKeys.map((x) => x.r);
+    return liveSortDir === "desc" ? ordered.reverse() : ordered;
+  }, [filteredLiveRows, liveSortKey, liveSortDir]);
+
   const totals = useMemo(() => {
     const t = {
       booked: { total: 0, count: 0 },
@@ -145,6 +196,12 @@ export default function RevenueDashboard({
   const historicalByArtist = useMemo(() => {
     const map = new Map<string, { artistName: string; rows: HistoricalYearRow[] }>();
     for (const row of historicalRows) {
+      // Greg (2026-10-20): hide the "Undated" bucket from this view --
+      // it's a secondary historical trend (not Ridge's owed revenue), and
+      // a year-less row with nothing to anchor it to just reads as
+      // clutter here, both in the table and the by-year bar chart. The
+      // underlying data isn't touched, just this display.
+      if (row.year === null) continue;
       const existing = map.get(row.artistId) ?? { artistName: row.artistName, rows: [] };
       existing.rows.push(row);
       map.set(row.artistId, existing);
@@ -271,17 +328,71 @@ export default function RevenueDashboard({
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-black/[.03] dark:bg-white/[.06] text-xs text-black/50 dark:text-white/50">
-                  <th className="text-left px-3 py-2">Artist</th>
+                  <th className="text-left px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleLiveSort("artist")}
+                      className="inline-flex items-center gap-1 hover:text-black dark:hover:text-white transition-colors"
+                    >
+                      <span>Artist</span>
+                      <SortIndicator active={liveSortKey === "artist"} dir={liveSortDir} />
+                    </button>
+                  </th>
                   <th className="text-left px-3 py-2">Status</th>
-                  <th className="text-left px-3 py-2">Show date</th>
-                  <th className="text-right px-3 py-2">Guarantee</th>
-                  <th className="text-right px-3 py-2">Booking commission</th>
-                  <th className="text-right px-3 py-2">Management commission</th>
-                  <th className="text-right px-3 py-2">Ridge total</th>
+                  <th className="text-left px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleLiveSort("date")}
+                      className="inline-flex items-center gap-1 hover:text-black dark:hover:text-white transition-colors"
+                    >
+                      <span>Show date</span>
+                      <SortIndicator active={liveSortKey === "date"} dir={liveSortDir} />
+                    </button>
+                  </th>
+                  <th className="text-right px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleLiveSort("guarantee")}
+                      className="inline-flex items-center gap-1 hover:text-black dark:hover:text-white transition-colors"
+                    >
+                      <span>Guarantee</span>
+                      <SortIndicator active={liveSortKey === "guarantee"} dir={liveSortDir} />
+                    </button>
+                  </th>
+                  <th className="text-right px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleLiveSort("booking")}
+                      className="inline-flex items-center gap-1 hover:text-black dark:hover:text-white transition-colors"
+                    >
+                      <span>Booking commission</span>
+                      <SortIndicator active={liveSortKey === "booking"} dir={liveSortDir} />
+                    </button>
+                  </th>
+                  <th className="text-right px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleLiveSort("management")}
+                      className="inline-flex items-center gap-1 hover:text-black dark:hover:text-white transition-colors"
+                    >
+                      <span>Management commission</span>
+                      <SortIndicator active={liveSortKey === "management"} dir={liveSortDir} />
+                    </button>
+                  </th>
+                  <th className="text-right px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleLiveSort("total")}
+                      className="inline-flex items-center gap-1 hover:text-black dark:hover:text-white transition-colors"
+                    >
+                      <span>Ridge total</span>
+                      <SortIndicator active={liveSortKey === "total"} dir={liveSortDir} />
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {filteredLiveRows.map((r, i) => {
+                {sortedLiveRows.map((r, i) => {
                   const isPartial = r.missingBookingRate || r.missingManagementRate;
                   return (
                     <tr

@@ -39,7 +39,7 @@ export type DataRow = {
   searchText?: string;
 };
 
-function SortIndicator({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
+export function SortIndicator({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   return (
     <span
       className={
