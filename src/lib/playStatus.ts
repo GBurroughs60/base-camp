@@ -40,6 +40,11 @@ export const PLAY_STATUS_LABELS: Record<PlayStatus, string> = {
 // Pipeline filter) and from PLAY_STATUS_OPTIONS (so it can't be manually
 // picked from the status dropdown). Existing plays' status values were left
 // completely untouched -- this only changes where new plays start.
+//
+// The /book form's backend (submit_offer_inquiry, a SECURITY DEFINER
+// Postgres function) was updated to match, but that DB-side fix isn't in
+// tracked Supabase migration history -- see docs/db-schema-tracking-gaps.md
+// for why, and the SQL to re-apply if it's ever needed again.
 export const RETIRED_STATUSES: PlayStatus[] = ["offer_submitted"];
 
 export const PLAY_STATUS_OPTIONS: { value: PlayStatus; label: string }[] = (
