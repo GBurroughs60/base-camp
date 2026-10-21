@@ -28,15 +28,31 @@ export const PLAY_STATUS_LABELS: Record<PlayStatus, string> = {
   legacy: "Legacy",
 };
 
+// Retired 2026-10-21 per Greg: new plays now enter the pipeline directly at
+// pending_agent_approval, so Offer Submitted no longer has a live purpose as
+// an entry point. Kept in PlayStatus/PLAY_STATUS_LABELS/
+// PLAY_STATUS_BADGE_CLASSES (not removed) purely for defensive rendering --
+// no live play currently has this status, but if one ever does (an old
+// legacy row, a future data import, etc.) the badge/board code should still
+// know how to render it rather than crash on an unrecognized value. It's
+// just no longer offered as a place for anything NEW to land: excluded from
+// LIVE_PIPELINE_STATUSES (so it's off the Kanban board and the Active
+// Pipeline filter) and from PLAY_STATUS_OPTIONS (so it can't be manually
+// picked from the status dropdown). Existing plays' status values were left
+// completely untouched -- this only changes where new plays start.
+export const RETIRED_STATUSES: PlayStatus[] = ["offer_submitted"];
+
 export const PLAY_STATUS_OPTIONS: { value: PlayStatus; label: string }[] = (
   Object.keys(PLAY_STATUS_LABELS) as PlayStatus[]
-).map((value) => ({ value, label: PLAY_STATUS_LABELS[value] }));
+)
+  .filter((value) => !RETIRED_STATUSES.includes(value))
+  .map((value) => ({ value, label: PLAY_STATUS_LABELS[value] }));
 
 // Ordered left-to-right as the Kanban board's columns. Legacy, Declined,
 // and Cancelled are deliberately excluded -- they're historical or
-// terminal off-ramps, not stops an active offer moves through.
+// terminal off-ramps, not stops an active offer moves through. Offer
+// Submitted is also excluded -- see RETIRED_STATUSES above.
 export const LIVE_PIPELINE_STATUSES: PlayStatus[] = [
-  "offer_submitted",
   "pending_agent_approval",
   "pending_approval",
   "contract_sent",
