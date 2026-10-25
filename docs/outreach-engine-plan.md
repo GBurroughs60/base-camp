@@ -20,6 +20,14 @@ Greg's voice, for him to edit and send by hand. Nothing goes out on its own,
 ever. Built from day one to scale toward a small team of booking agents
 working the same roster, even though it's one person today.
 
+**Superseded (2026-10-17).** The "batch of Gmail drafts... edit and send by
+hand" mechanism above was replaced by an in-app Action List — see section
+2a. The database-building goal (Discovery, Engine 1) is completely
+unchanged; what changed is the daily rhythm on the outreach side, from
+pre-written drafts waiting in Gmail to events waiting in Basecamp for Greg
+to work and pitch himself, by hand, with no Gmail, Drive, or LLM involved
+in the daily mechanics.
+
 ## 2. The three engines
 
 Discovery runs on its own independent, credit-bounded clock. Catch-up and
@@ -1183,6 +1191,16 @@ in others.
 
 ## 5. Artist fit & availability
 
+**Superseded (2026-10-17).** This whole section described how the retired
+Gmail-draft engines (2/3) would pick an artist and check their availability
+before auto-generating a pitch — see section 2a, "No more per-artist
+availability scoring against each artist's Drive sheet... Greg decides the
+artist and does the actual outreach himself." None of it applies to the
+Action List, which makes no artist-fit or availability decision at all;
+Greg makes that call personally, the same judgment call he already makes
+reviewing Discovery's output. Kept below as history, same as section 2's
+note above.
+
 - **Genre matching** — Deprioritized. Stays a human/agent judgment call for
   this build; no structured genre field yet.
 - **Availability** — Locked in. Checked against *both* `plays.show_date`
@@ -1202,6 +1220,18 @@ in others.
   drive volume; quality over quantity always.
 
 ## 6. Outreach mechanics
+
+**Superseded (2026-10-17), partially.** The bullets below described the
+retired Gmail-draft engines — see section 2a. Draft-only behavior, volume,
+and voice modeling are all moot now: the Action List generates no drafts
+and does no voice modeling at all, since Greg writes and sends every email
+himself, outside this system, the same way he always has. The one piece
+that's genuinely still live is **Minimum recontact spacing** — the 30-day
+`outreach_log` floor described below still exists and still governs, it's
+just triggered differently now: a `manual`/`auto` Action List item's Mark
+complete writes the `outreach_log` row instead of an auto-created draft
+doing it (see section 2a's "Item actions"). Everything else below is kept
+as history.
 
 - **Draft-only, always** — no auto-send, no exception, even for an
   imminent Tier 1 catch-up event.
