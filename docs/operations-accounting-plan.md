@@ -44,7 +44,7 @@ plan; see section 2.
   historical plays; nothing here requires migrating or cleaning them.
 - **First build target: Ridge invoices the artist for Ridge's booking
   commission.** Not the buyer, not management commission -- both are
-  explicitly deferred (see section 6). Confirmed business model: the
+  explicitly deferred (see section 8). Confirmed business model: the
   buyer pays the artist the guarantee directly (today's norm) or
   increasingly pays a deposit to Ridge's own account, which Ridge later
   settles with the artist -- either way, Ridge's own cut (booking
@@ -53,6 +53,17 @@ plan; see section 2.
   how the buyer's money moves. Building the invoice-the-artist piece
   first means the design doesn't have to wait on settling the buyer-side
   question.
+- **Commission formula, updated to include Walkout (2026-10-26).**
+  `computePlayRevenue` already does the right thing with merch -- booking
+  commission is `guarantee_amount × booking%` only, management commission
+  is `(guarantee_amount + gross_merch_sales) × management%` -- merch was
+  already excluded from booking, included only in management, confirmed
+  by reading the function rather than assumed. The new post-show actual,
+  **Walkout** (see section 4 -- the artist's real bonus/overage beyond
+  guarantee, a field that doesn't exist in the schema yet), gets added to
+  *both* bases per Greg: booking becomes
+  `(guarantee_amount + walkout_amount) × booking%`, management becomes
+  `(guarantee_amount + walkout_amount + gross_merch_sales) × management%`.
 - **Invoice generation/sending goes through QuickBooks Online, not
   built natively.** Same reasoning as the e-signature decision
   (SignWell): invoicing an external party, collecting payment, and
@@ -99,9 +110,117 @@ Neither precondition exists yet, confirmed with Greg:
   companies/contacts already get auto-created from fuzzy-matched
   fallbacks elsewhere in this codebase -- see `submit_offer_inquiry` in
   `docs/db-schema-tracking-gaps.md` for the established pattern), but not
-  decided -- see section 7.
+  decided -- see section 9.
 
-## 4. Data model (draft)
+## 4. Settlement data collection (2026-10-26)
+
+**Trigger: the existing `played` auto-advance, nothing new.** A play
+already flips from `confirmed` to `played` the day after `show_date`
+passes, via the daily `advance_confirmed_plays_to_played` cron -- no new
+pipeline stage needed for "the show happened." Settlement data
+collection hangs off that existing event.
+
+**What's needed, and what already exists.** Checked the schema before
+assuming anything was missing:
+
+- `attendance` (integer) and `tickets_sold`/`gross_revenue` (the latter
+  two auto-computed from `actual_ticket_tiers` by an existing DB trigger,
+  `sync_actual_ticket_tiers_totals`) already exist and are already live,
+  editable fields on the Play detail page. `gross_revenue` is box-office
+  ticket revenue specifically, not artist payout -- a venue-side number.
+  `gross_merch_sales` also already exists and is already live-editable.
+  So most of the venue-side and some of the artist-side data this plan
+  needs is *already* real, wired-up schema -- not new.
+- **Genuinely new: `walkout_amount`.** No field anywhere today captures
+  the artist's actual bonus/overage beyond the guarantee -- what Greg
+  calls **Walkout**. New column on `plays`, artist-reported, post-show.
+  Commissioned on both booking and management (see section 2's formula
+  update).
+- **Deferred, noted for later: "Walkout Potential."** A future,
+  pre-show, offer-stage projected-upside field for pitching deals to
+  management -- explicitly a different thing from the post-show actual
+  Walkout above, not designed or built as part of this plan.
+- **Retiring `amount_due_to_agency`.** An existing live-editable field
+  that was the spreadsheet-era manual way of recording what Ridge was
+  owed -- redundant once a real computed total and a real invoice amount
+  exist. Per Greg: quietly retire it for new plays going forward (stop
+  surfacing it on the Play detail page for anything created after this
+  ships); leave the column and its historical data alone, same
+  active-pipeline-only convention as section 2.
+
+**Manual entry UI.** A new "Settlement" section on the Play detail page,
+same pattern as the existing Deposit section, but structured fields from
+the start rather than the free-text mess `deposit_status`/
+`final_payment_received` turned into: `walkout_amount`, plus the
+already-existing `attendance`/`gross_merch_sales`/ticket-tier actuals
+surfaced in the same place rather than scattered. No OCR/auto-extraction
+of the artist's or venue's paperwork -- Greg types in whatever the
+paperwork says, same as every other manually-entered field in this app.
+
+**Venue-side collection: a `/book`-style form, with manual entry always
+accepted too.** Per Greg: attempt to collect venue-reported numbers
+(final ticket counts, payout confirmation -- most relevant for ticketed
+shows) through a structured intake form, same spirit as the public
+`/book` offer form, sent to/used by the venue contact after the show. But
+explicitly not the only path -- venues vary too much in practice (some
+will never use a form, especially non-ticketed bookings), so manual entry
+by Greg is always an accepted fallback into the same fields. Not designed
+yet -- see section 9.
+
+**The invoice trigger is gated on the artist's data only, never the
+venue's.** Per Greg: "build a culture of trust and have more leverage" to
+get real numbers from the artist reliably; venue data may simply never
+arrive for a non-ticketed booking, and making the invoice wait on it
+would block real revenue on something outside Ridge's control. Venue-
+reported numbers still get stored when they do come in (useful as a
+cross-check against what the artist reports), but never block anything.
+Exactly how a discrepancy between artist- and venue-reported numbers gets
+surfaced, if at all, isn't designed yet -- see section 9.
+
+**Reuses the Action List, no second reminder system.** The moment a play
+hits `played`, an auto Action List item appears ("Collect settlement --
+[Artist] at [Venue]"). It clears once the Settlement section is filled
+in, which is the same event that triggers the auto-invoice -- one
+mechanism doing both the nudge and the unblock, not two parallel systems.
+
+## 5. Revenue dashboard: Forecasted / Earned / Collected (2026-10-26)
+
+Replaces the Booked/Earned/Settled model documented in
+`docs/outreach-engine-plan.md` section 13 -- **that section needs
+updating once this ships**, per this doc's own sync rule below.
+
+- **Forecasted** -- no `commission_invoices` row yet for this play. Still
+  the guarantee-based estimate (today's existing formula, now including
+  merch/walkout once known). Covers every pre-`played` status plus
+  `played` itself until settlement data comes in.
+- **Earned** -- a `commission_invoices` row exists and has been sent
+  (`sent_at` populated). The real number, computed from actual
+  guarantee + walkout + merch, not the estimate.
+- **Collected** -- that invoice has actually been paid (`paid_at`
+  populated, confirmed via the QBO webhook). The real paid amount, which
+  is allowed to differ from the invoiced amount (see `paid_amount` in
+  section 6) even though in the ordinary case they'll match.
+
+**Deliberately not a new pipeline stage.** Earlier draft of this
+conversation proposed an `invoiced` status between `played` and
+`settled`; Greg pushed back, and the better answer is to let
+`commission_invoices` carry its own lifecycle the same way
+`contract_signatures` already does, rather than growing `plays.status`
+for every financial nuance. The Kanban pipeline stays exactly as simple
+as Greg's original ask: `played` -> `settled`, with `settled` triggered
+automatically the moment QBO confirms the invoice paid -- the dashboard
+reads Forecasted/Earned/Collected off the invoice table's state, not off
+the Kanban column.
+
+**"Invoice sent" badge on the Play card/record (approved by Greg).** The
+one real gap the no-new-stage approach leaves: the board itself can't
+visually tell "played, nothing collected yet" apart from "played,
+invoice's out, waiting on payment" -- both just sit in the `played`
+column. Fixed with a small badge on the card (e.g. "Invoice sent"),
+sourced from `commission_invoices.sent_at` being set with no `paid_at`
+yet -- purely cosmetic, no new column, no new filter/grouping logic.
+
+## 6. Data model (draft)
 
 One new table, `commission_invoices`, modeled directly on
 `contract_signatures` (same provider-integration shape: a provider name,
@@ -114,9 +233,10 @@ lifecycles, even though the integration pattern is identical):
 |---|---|
 | `id` | PK. |
 | `play_id` | The play this commission was earned on. |
-| `kind` | `'booking'` (built first) or `'management'` (deferred, see section 6) -- so the table doesn't need a second one later when management invoicing gets designed. |
+| `kind` | `'booking'` (built first) or `'management'` (deferred, see section 8) -- so the table doesn't need a second one later when management invoicing gets designed. |
 | `artist_id` | Who's being invoiced -- denormalized off the play for easy querying, same reasoning `outreach_log.artist_id` already uses. |
-| `amount` | The commission amount at invoice time (`plays.booking_agent_commission_amount` as of creation -- captured, not re-read live, same reasoning `action_items.occurrence_date` is captured rather than live-joined). |
+| `amount` | The real commission amount at invoice time, computed from the actual post-show Walkout/merch/guarantee (section 2's updated formula) once settlement data exists -- captured, not re-read live, same reasoning `action_items.occurrence_date` is captured rather than live-joined. This is the dashboard's **Earned** number (section 5). |
+| `paid_amount` | The real amount QBO reports as actually paid, set once the webhook confirms payment. Deliberately a separate column from `amount` rather than assumed equal -- this is the dashboard's **Collected** number (section 5), and the two are allowed to genuinely differ (partial payment, an adjustment, etc.) even though they'll match in the ordinary case. |
 | `provider` | `'quickbooks'` today; exists so a future provider swap doesn't need a schema change, same as `contract_signatures.provider`. |
 | `provider_invoice_id` | QBO's invoice id. |
 | `provider_customer_id` | QBO's Customer id for the artist (see section 3 on how that gets created/matched). |
@@ -125,11 +245,15 @@ lifecycles, even though the integration pattern is identical):
 | `provider_events` | jsonb, raw webhook payloads, same audit-trail reasoning as `contract_signatures.provider_events`. |
 | `created_at` / `updated_at` | Standard. |
 
-Not yet decided: whether `plays.status` gets any automatic tie-in to this
-(e.g. does a paid booking-commission invoice do anything to the play's
-Kanban stage, the way `signwell`'s webhook already can) -- see section 7.
+**Resolved (see section 5): `plays.status` does get an automatic
+tie-in, but only one.** `settled` is triggered automatically the moment
+`paid_at` gets set -- the one Kanban change in this whole plan, matching
+Greg's original ask exactly. Nothing else about `plays.status` changes;
+Forecasted/Earned/Collected read off this table's own lifecycle, not off
+a new Kanban stage (an earlier draft of this conversation proposed one;
+rejected -- see section 5 for why).
 
-## 5. Provider interface (draft)
+## 7. Provider interface (draft)
 
 A `QuickBooksProvider` (or similarly named) interface in a new
 `src/lib/invoicing/` directory, deliberately narrow, same spirit as
@@ -151,7 +275,7 @@ directly -- confined to one file, so swapping providers later (unlikely,
 but the SignWell precedent is exactly why this seam exists) means writing
 a new file and flipping a config value, not touching call sites.
 
-## 6. Explicitly deferred
+## 8. Explicitly deferred
 
 - **Management-commission invoicing.** Same mechanism should work (the
   `kind` column above is there for this), but Greg wants booking proven
@@ -164,6 +288,10 @@ a new file and flipping a config value, not touching call sites.
   of a future state" -- today it can still go either way (buyer pays
   artist directly, or pays Ridge a deposit). Not designing this until the
   booking-commission piece is proven and the real pattern has stabilized.
+- **"Walkout Potential."** A pre-show, offer-stage projected-upside
+  field, for use when pitching a deal to management -- see section 4.
+  Explicitly a different, later thing from the post-show actual Walkout
+  this plan does build.
 - **Expenses, payroll, P&L, taxes.** Out of Base Camp entirely -- see
   section 2. QBO (once set up) is assumed to handle this side natively;
   no Base Camp feature is planned to feed it, though a future bridge
@@ -172,24 +300,24 @@ a new file and flipping a config value, not touching call sites.
   `final_payment_received` free text.** See section 2 -- new/active plays
   only, for now.
 
-## 7. Still open, to resolve during build
+## 9. Still open, to resolve during build
 
 - Does creating a QBO Customer for an artist happen automatically (first
   invoice triggers it) or does Greg set artists up in QBO by hand first?
-- Does a paid booking-commission invoice do anything automatically to the
-  play's status/Kanban stage, or is it purely a parallel, informational
-  record for now?
-- Who/what triggers `createInvoice` -- a manual action Greg takes on the
-  Play detail page (a "Send commission invoice" button, matching how
-  contract sending already works), or something automatic tied to a
-  status change (e.g. the play reaching `played` or `settled`)? Leaning
-  toward manual-first, matching how e-signature sending itself started,
-  but not decided.
+- The exact venue-side settlement form -- a `/book`-style structured
+  intake is the direction (section 4), but not designed: what fields,
+  how it's delivered to the venue contact (emailed link? included in the
+  original booking correspondence?), and whether it's scoped to ticketed
+  shows only or offered for every booking.
+- Whether/how a discrepancy between artist-reported and venue-reported
+  settlement numbers gets surfaced, if venue data ever comes in and
+  disagrees with what the artist reported (section 4) -- silently stored
+  for reference, or actively flagged somewhere?
 - QBO subscription tier/account setup itself -- Greg's call, outside this
   plan's scope to pick.
-- Whether `amount` should be able to differ from
-  `plays.booking_agent_commission_amount` at invoice time (e.g. a
-  manually adjusted figure) or should always exactly mirror it.
+- Whether `commission_invoices.amount` should be editable/adjustable
+  after creation (e.g. Greg catches an error before the invoice is sent)
+  or should always exactly mirror the formula's output once computed.
 
 ## Keeping this in sync
 
