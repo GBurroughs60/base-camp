@@ -112,6 +112,22 @@ Neither precondition exists yet, confirmed with Greg:
   `docs/db-schema-tracking-gaps.md` for the established pattern), but not
   decided -- see section 9.
 
+**Sequencing, clarified (2026-10-27).** The two preconditions above block
+only the *QBO integration code* -- `createInvoice`/`getInvoice`, the
+webhook route, actually calling out to QBO. They don't block starting
+section 4 (settlement data collection): the `walkout_amount` column, the
+new Settlement section on the Play detail page, retiring
+`amount_due_to_agency`, and the Action List nudge are all pure Base Camp
+schema/UI work with zero QBO dependency. In practice, settlement data
+collection is the truer near-term build priority -- it's where the real
+open design questions live (section 9: the venue-form shape, discrepancy
+handling), it delivers value on its own (real settlement numbers visible
+on the Play record, independent of invoicing), and it can start whenever
+Greg's ready regardless of where the QBO account stands. QBO account
+setup is comparatively small and can happen in parallel at Greg's own
+pace; the two threads only need to converge once it's time to actually
+wire up `createInvoice`.
+
 ## 4. Settlement data collection (2026-10-26)
 
 **Trigger: the existing `played` auto-advance, nothing new.** A play
@@ -183,16 +199,31 @@ hits `played`, an auto Action List item appears ("Collect settlement --
 in, which is the same event that triggers the auto-invoice -- one
 mechanism doing both the nudge and the unblock, not two parallel systems.
 
-## 5. Revenue dashboard: Forecasted / Earned / Collected (2026-10-26)
+**Near-term home only (2026-10-27, per Greg).** The Action List is today's
+right answer because it already exists and Greg is the only one working
+it -- but he flagged that this is a near-term choice, not a permanent
+architectural one. As Ridge grows and takes on roles beyond Greg himself
+(a dedicated ops/accounting function, say), "collect settlement" nudges
+may belong in a different place entirely -- their own queue, scoped to
+whoever actually owns that job, rather than mixed into the same list as
+outreach-pitch nudges and one-off tasks. Not designed, and nothing to
+build now; flagged here so the Action List reuse is understood as "good
+enough for today" rather than quietly assumed permanent.
+
+## 5. Revenue dashboard: Booked / Earned / Collected (2026-10-26, renamed 2026-10-27)
 
 Replaces the Booked/Earned/Settled model documented in
 `docs/outreach-engine-plan.md` section 13 -- **that section needs
 updating once this ships**, per this doc's own sync rule below.
 
-- **Forecasted** -- no `commission_invoices` row yet for this play. Still
+- **Booked** -- no `commission_invoices` row yet for this play. Still
   the guarantee-based estimate (today's existing formula, now including
   merch/walkout once known). Covers every pre-`played` status plus
-  `played` itself until settlement data comes in.
+  `played` itself until settlement data comes in. (Named "Forecasted" in
+  the original 2026-10-26 draft of this section; Greg preferred "Booked"
+  -- same tier, same definition, just the word already used for this
+  exact stage in the live `revenue.ts`/today's dashboard, so this also
+  removes a naming mismatch rather than creating one.)
 - **Earned** -- a `commission_invoices` row exists and has been sent
   (`sent_at` populated). The real number, computed from actual
   guarantee + walkout + merch, not the estimate.
@@ -200,6 +231,29 @@ updating once this ships**, per this doc's own sync rule below.
   populated, confirmed via the QBO webhook). The real paid amount, which
   is allowed to differ from the invoiced amount (see `paid_amount` in
   section 6) even though in the ordinary case they'll match.
+
+**Trend analytics (new, 2026-10-27, per Greg) -- a different use of
+"forecast," kept deliberately distinct from the Booked stage above.**
+Two additional data points for the finance dashboard, both read-only
+derived numbers, not new `commission_invoices` states:
+
+- **Rolling 90-day revenue.** A trailing actual: sum of Collected
+  dollars (section 6's `paid_amount`, by `paid_at`) over the most recent
+  90 days. A real, already-happened number -- the closest thing this
+  dashboard has to "how is the business doing right now."
+- **Forecasted 12-month revenue.** A simple trend projection, not a
+  deal-by-deal estimate: take the rolling 90-day figure above, treat it
+  as a quarterly run rate, and project it forward across a 12-month span
+  (i.e. roughly 4x the rolling 90-day number, naively -- no seasonality
+  adjustment, no pipeline-specific detail). Deliberately the simplest
+  version of this that's still useful; a more sophisticated model (e.g.
+  blending in Booked-stage guarantees for deals already on the books) is
+  a future refinement, not required for v1.
+
+Both are presentation-layer additions to the existing dashboard -- no
+new table, no new `plays`/`commission_invoices` column. Computed from
+`commission_invoices.paid_at`/`paid_amount` once that table exists;
+until then (today, pre-build) there's nothing to roll up yet.
 
 **Deliberately not a new pipeline stage.** Earlier draft of this
 conversation proposed an `invoiced` status between `played` and
@@ -209,7 +263,7 @@ conversation proposed an `invoiced` status between `played` and
 for every financial nuance. The Kanban pipeline stays exactly as simple
 as Greg's original ask: `played` -> `settled`, with `settled` triggered
 automatically the moment QBO confirms the invoice paid -- the dashboard
-reads Forecasted/Earned/Collected off the invoice table's state, not off
+reads Booked/Earned/Collected off the invoice table's state, not off
 the Kanban column.
 
 **"Invoice sent" badge on the Play card/record (approved by Greg).** The
@@ -249,7 +303,7 @@ lifecycles, even though the integration pattern is identical):
 tie-in, but only one.** `settled` is triggered automatically the moment
 `paid_at` gets set -- the one Kanban change in this whole plan, matching
 Greg's original ask exactly. Nothing else about `plays.status` changes;
-Forecasted/Earned/Collected read off this table's own lifecycle, not off
+Booked/Earned/Collected read off this table's own lifecycle, not off
 a new Kanban stage (an earlier draft of this conversation proposed one;
 rejected -- see section 5 for why).
 
