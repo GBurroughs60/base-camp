@@ -17,8 +17,14 @@ const DISMISS_PRESETS: { label: string; days: number }[] = [
 // (event-linked) and "manual" (freeform task) rows alike, per
 // docs/outreach-engine-plan.md section 2a. The only behavioral difference
 // is the optional artist picker next to Mark complete, which only makes
-// sense for an auto row (it feeds the outreach_log write that row's
+// sense for an auto row (it feeds the outreach_log write(s) that row's
 // completion triggers -- a manual task never writes to outreach_log).
+//
+// Multi-select (2026-10-27, per Greg): more than one artist can genuinely
+// be pitched for the same event, so this is a checkbox list over the full
+// active roster rather than a single dropdown -- see completeActionItem's
+// own comment in actionItems.ts for why writing one outreach_log row per
+// selected artist is safe.
 export default function ActionItemRowActions({ id, isAuto }: { id: string; isAuto: boolean }) {
   const router = useRouter();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -27,7 +33,7 @@ export default function ActionItemRowActions({ id, isAuto }: { id: string; isAut
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [showArtistPick, setShowArtistPick] = useState(false);
   const [artists, setArtists] = useState<{ id: string; name: string }[]>([]);
-  const [artistId, setArtistId] = useState<string>("");
+  const [artistIds, setArtistIds] = useState<string[]>([]);
 
   const [dismissOpen, setDismissOpen] = useState(false);
   const [dismissing, setDismissing] = useState(false);
@@ -47,10 +53,10 @@ export default function ActionItemRowActions({ id, isAuto }: { id: string; isAut
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [dismissOpen, showArtistPick]);
 
-  async function runComplete(withArtistId: string | null) {
+  async function runComplete(withArtistIds: string[]) {
     setCompleting(true);
     setCompleteError(null);
-    const res = await completeActionItem(id, withArtistId);
+    const res = await completeActionItem(id, withArtistIds);
     setCompleting(false);
     if (!res.ok) {
       setCompleteError(res.error);
@@ -59,9 +65,17 @@ export default function ActionItemRowActions({ id, isAuto }: { id: string; isAut
     router.refresh();
   }
 
+  function toggleArtist(artistIdToToggle: string) {
+    setArtistIds((prev) =>
+      prev.includes(artistIdToToggle)
+        ? prev.filter((a) => a !== artistIdToToggle)
+        : [...prev, artistIdToToggle]
+    );
+  }
+
   async function openArtistPick() {
     if (!isAuto) {
-      runComplete(null);
+      runComplete([]);
       return;
     }
     if (artists.length === 0) {
@@ -116,26 +130,37 @@ export default function ActionItemRowActions({ id, isAuto }: { id: string; isAut
       {showArtistPick && (
         <div className="absolute left-0 top-full z-30 mt-1 w-64 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2">
           <p className="text-xs text-black/60 dark:text-white/60">
-            Who did you pitch? Optional — leave blank if you haven&apos;t settled on an artist yet.
+            Who did you pitch? Optional, and pick as many as actually got
+            pitched — leave all unchecked if you haven&apos;t settled on an
+            artist yet.
           </p>
-          <select
-            value={artistId}
-            onChange={(e) => setArtistId(e.target.value)}
-            className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1 text-sm outline-none focus:border-ridge-orange"
-          >
-            <option value="">No artist yet</option>
+          <div className="max-h-48 overflow-y-auto rounded border border-black/15 dark:border-white/15 divide-y divide-black/5 dark:divide-white/5">
+            {artists.length === 0 && (
+              <p className="px-2 py-2 text-xs text-black/40 dark:text-white/40">
+                No active artists found.
+              </p>
+            )}
             {artists.map((a) => (
-              <option key={a.id} value={a.id}>
+              <label
+                key={a.id}
+                className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-black/5 dark:hover:bg-white/5"
+              >
+                <input
+                  type="checkbox"
+                  checked={artistIds.includes(a.id)}
+                  onChange={() => toggleArtist(a.id)}
+                  className="accent-ridge-orange"
+                />
                 {a.name}
-              </option>
+              </label>
             ))}
-          </select>
+          </div>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => {
                 setShowArtistPick(false);
-                runComplete(artistId || null);
+                runComplete(artistIds);
               }}
               className="flex-1 rounded bg-ridge-orange text-white text-sm py-1"
             >

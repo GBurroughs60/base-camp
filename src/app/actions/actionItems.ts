@@ -37,11 +37,23 @@ function toDateOnly(iso: string): Date {
 // exactly as they do for every other source. For a "manual" task,
 // completing it is just that -- a finished to-do, not a claim that
 // outreach happened -- so no outreach_log row gets written even if the
-// task happens to be linked to an event. artistId is optional either way:
-// filled in only if Greg already knows who he pitched.
+// task happens to be linked to an event. artistIds is optional either
+// way: filled in only if Greg already knows who he pitched.
+//
+// Multi-artist (2026-10-27, per Greg): more than one artist is sometimes
+// genuinely pitched for the same event/venue in one sitting, so this
+// writes one outreach_log row per artist in artistIds rather than a
+// single row with one artist_id. Safe to do because the 30-day recontact
+// floor (checkRecontactEligibility, outreach.ts) keys only on
+// company_id/contact_id, never artist_id -- writing several rows for the
+// same touch never creates multiple separate floors. Zero artists still
+// writes exactly one row with artist_id null, same as the original
+// single-artist design. action_items.outreach_log_id keeps pointing at
+// just the first row written, not all of them -- full per-artist
+// traceability lives in outreach_log itself, queryable by event_id.
 export async function completeActionItem(
   id: string,
-  artistId?: string | null
+  artistIds?: (string | null)[] | null
 ): Promise<ActionResult> {
   const supabase = await createClient();
 
@@ -73,22 +85,26 @@ export async function completeActionItem(
       return { ok: false, error: "Could not load the event for this item." };
     }
 
-    const { data: logRow, error: logError } = await supabase
-      .from("outreach_log")
-      .insert({
-        company_id: event?.venue_id ?? null,
-        contact_id: event?.primary_contact_id ?? null,
-        artist_id: artistId ?? null,
-        event_id: item.event_id,
-        status: "sent",
-      })
-      .select("id")
-      .single();
+    const cleanedArtistIds = (artistIds ?? []).filter((a): a is string => Boolean(a));
+    const idsToLog: (string | null)[] = cleanedArtistIds.length > 0 ? cleanedArtistIds : [null];
 
-    if (logError || !logRow) {
+    const { data: logRows, error: logError } = await supabase
+      .from("outreach_log")
+      .insert(
+        idsToLog.map((artistId) => ({
+          company_id: event?.venue_id ?? null,
+          contact_id: event?.primary_contact_id ?? null,
+          artist_id: artistId,
+          event_id: item.event_id,
+          status: "sent",
+        }))
+      )
+      .select("id");
+
+    if (logError || !logRows || logRows.length === 0) {
       return { ok: false, error: "Could not log this outreach touch." };
     }
-    outreachLogId = logRow.id as string;
+    outreachLogId = logRows[0].id as string;
   }
 
   const { error: updateError } = await supabase

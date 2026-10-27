@@ -871,17 +871,31 @@ clear something he already booked through some other path.
 **Item actions.**
 
 - **Mark complete** — `status = 'completed'`, `completed_at = now()`. For
-  an `auto` (event-linked) row, also writes a real `outreach_log` row
-  (`company_id`/`contact_id` from the event, `event_id`, `sent_at =
-  now()`) so the existing 30-day recontact floor and outreach history
-  both keep working exactly as they do for every other source. `artist_id`
-  is optional at this step (nullable on `outreach_log` already) — filled
-  in only if Greg already knows who he pitched; this list never
-  pre-computes artist fit the way the crawl engine used to. For a
-  `manual` task, completing it is just that — a finished to-do, not a
-  claim that outreach happened, so no `outreach_log` row gets written even
-  if the task happens to be linked to an event (see "Custom tasks" below
-  for why that distinction matters).
+  an `auto` (event-linked) row, also writes one `outreach_log` row per
+  artist actually pitched (`company_id`/`contact_id` from the event,
+  `event_id`, `sent_at = now()`) so the existing 30-day recontact floor
+  and outreach history both keep working exactly as they do for every
+  other source — the floor is keyed on `company_id`/`contact_id` only,
+  never `artist_id` (see `outreach.ts`'s `checkRecontactEligibility`), so
+  writing more than one row for the same touch never creates separate
+  floors. Picking artists is optional and multi-select
+  (**2026-10-27, widened from a single optional artist** — Greg flagged
+  that more than one artist is sometimes genuinely pitched for the same
+  event/venue in one sitting): the picker lists the full active roster
+  with checkboxes, not a single dropdown. Picking none still writes
+  exactly one `outreach_log` row with `artist_id` null, same as the
+  original design; picking several writes one row per artist, each
+  otherwise identical. This list never pre-computes artist fit the way
+  the crawl engine used to — Greg is always the one deciding who got
+  pitched. `action_items.outreach_log_id` continues to point at only one
+  of the rows written (the first) when several artists are selected, not
+  all of them — full traceability for every artist pitched still lives
+  in `outreach_log` itself, queryable by `event_id`, it's just not all
+  reachable through that single FK. For a `manual` task, completing it is
+  just that — a finished to-do, not a claim that outreach happened, so no
+  `outreach_log` row gets written even if the task happens to be linked
+  to an event (see "Custom tasks" below for why that distinction
+  matters).
 - **Dismiss** — opens the duration picker (Next week / Next month / 90
   days / 180 days / Next year / custom date), sets `hidden_until`
   accordingly (capped by the multi-occurrence check above, for `auto`
