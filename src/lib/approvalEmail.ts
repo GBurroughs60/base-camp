@@ -15,7 +15,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 // never throw -- a failed log write is still just console.error'd, same as
 // the email failure it was trying to record.
 async function logEmailFailure(
-  emailKind: "approval_request" | "approval_response" | "new_offer",
+  emailKind: "approval_request" | "approval_response" | "new_offer" | "settlement_request" | "settlement_received",
   recipient: string,
   context: Record<string, unknown>,
   errorDetail: string
@@ -394,6 +394,211 @@ export async function sendNewOfferEmail(details: NewOfferEmailDetails): Promise<
       "new_offer",
       details.to,
       { artistName: details.artistName, venueLabel: details.venueLabel, buyerName: details.buyerName },
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+}
+
+export type SettlementRequestEmailDetails = {
+  // Flipped from ApprovalEmailDetails's convention on purpose -- Greg's
+  // instruction was explicit: "the artist on the play should be the one
+  // filling out the form," with management cc'd rather than primary, since
+  // management already approved the offer and just needs visibility into
+  // what actually happened at the show.
+  to: string[];
+  cc?: string[];
+  artistName: string;
+  venueLabel: string;
+  location: string | null;
+  showDate: string | null;
+  guaranteeAmount: number | null;
+  // Public, token-scoped link to the /settle/[token] page -- no Base Camp
+  // login involved, same reasoning as approveUrl on ApprovalEmailDetails.
+  settleUrl: string;
+  fallbackNote?: string;
+};
+
+// Fires once per play, the moment it's advanced to "played" with no
+// settlement report requested yet (see the settlement-email step in
+// api/cron/advance-plays-to-played/route.ts -- deliberately not wired into
+// updateField/sendApprovalEmailIfNeeded, since a play can reach "played" in
+// bulk via that cron rather than through a single UI-initiated status edit).
+export async function sendSettlementRequestEmail(details: SettlementRequestEmailDetails): Promise<void> {
+  if (!resend) {
+    console.warn(
+      "RESEND_API_KEY is not set -- skipping settlement-request email (would have gone to: " +
+        details.to.join(", ") +
+        ")"
+    );
+    return;
+  }
+
+  const rows: [string, string][] = [
+    ["Venue", details.venueLabel],
+    ...(details.location ? ([["Location", details.location]] as [string, string][]) : []),
+    ...(details.showDate ? ([["Date", details.showDate]] as [string, string][]) : []),
+    ...(formatMoney(details.guaranteeAmount)
+      ? ([["Guarantee", formatMoney(details.guaranteeAmount) as string]] as [string, string][])
+      : []),
+  ];
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
+      ${details.fallbackNote ? fallbackBanner(details.fallbackNote) : ""}
+      <h2 style="margin-bottom: 4px;">How did it go? ${escapeHtml(details.artistName)} at ${escapeHtml(details.venueLabel)}</h2>
+      <p style="color: #555;">Now that the show's played, we'd love a quick post-show report -- walkout, merch, any expenses, and whether you'd play this room again.</p>
+      <table style="border-collapse: collapse; margin: 16px 0;">
+        ${rows
+          .map(
+            ([label, value]) => `
+          <tr>
+            <td style="padding: 4px 16px 4px 0; color: #777; vertical-align: top;">${escapeHtml(label)}</td>
+            <td style="padding: 4px 0; font-weight: 600;">${escapeHtml(value)}</td>
+          </tr>`
+          )
+          .join("")}
+      </table>
+      <a href="${details.settleUrl}" style="display: inline-block; background: #f05a2b; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600;">
+        Submit post-show report
+      </a>
+      <p style="color: #999; font-size: 12px; margin-top: 24px;">
+        Sent automatically by Base Camp, The Ridge Music Group.
+      </p>
+    </div>
+  `;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
+      to: details.to,
+      ...(details.cc && details.cc.length > 0 ? { cc: details.cc } : {}),
+      subject: `How did it go? ${details.artistName} at ${details.venueLabel}`,
+      html,
+    });
+
+    if (error) {
+      console.error("Settlement-request email failed to send:", error);
+      await logEmailFailure(
+        "settlement_request",
+        details.to.join(", "),
+        { artistName: details.artistName, venueLabel: details.venueLabel, settleUrl: details.settleUrl },
+        JSON.stringify(error)
+      );
+    }
+  } catch (err) {
+    console.error("Settlement-request email threw while sending:", err);
+    await logEmailFailure(
+      "settlement_request",
+      details.to.join(", "),
+      { artistName: details.artistName, venueLabel: details.venueLabel, settleUrl: details.settleUrl },
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+}
+
+export type SettlementReceivedEmailDetails = {
+  // Booking agent, same as ApprovalResponseEmailDetails -- closes the loop
+  // back to the agent, who otherwise has no way to know a report came in
+  // without checking the board. Falls back to Greg when no agent is on
+  // file, same convention as the other three automated notifications.
+  to: string;
+  artistName: string;
+  venueLabel: string;
+  showDate: string | null;
+  walkoutAmount: number | null;
+  grossMerchSales: number | null;
+  wouldPlayAgain: string | null;
+  // Recipient has a Base Camp login, so this links straight to the play
+  // (same reasoning as playUrl on ApprovalResponseEmailDetails).
+  playUrl: string;
+  fallbackNote?: string;
+};
+
+function wouldPlayAgainLabel(v: string | null): string | null {
+  if (v === "yes") return "Yes";
+  if (v === "no") return "No";
+  if (v === "with_reservations") return "With reservations";
+  return null;
+}
+
+// Fires once, right after the artist (or their manager/rep) submits the
+// public /settle/[token] form (see submitSettlement in
+// app/actions/settlement.ts) -- mirrors sendApprovalResponseEmail's
+// "close the loop back to the agent" role exactly, just for the settlement
+// report instead of the approve/decline decision. Expenses and the
+// promoter-notes/other-events text aren't repeated here -- those are
+// informational detail best read in context on the play page itself,
+// not reconstructed as a second copy in an email body.
+export async function sendSettlementReceivedEmail(details: SettlementReceivedEmailDetails): Promise<void> {
+  if (!resend) {
+    console.warn(
+      `RESEND_API_KEY is not set -- skipping settlement-received email (would have gone to: ${details.to})`
+    );
+    return;
+  }
+
+  const rows: [string, string][] = [
+    ["Venue", details.venueLabel],
+    ...(details.showDate ? ([["Date", details.showDate]] as [string, string][]) : []),
+    ...(formatMoney(details.walkoutAmount)
+      ? ([["Walkout", formatMoney(details.walkoutAmount) as string]] as [string, string][])
+      : []),
+    ...(formatMoney(details.grossMerchSales)
+      ? ([["Gross merch sales", formatMoney(details.grossMerchSales) as string]] as [string, string][])
+      : []),
+    ...(wouldPlayAgainLabel(details.wouldPlayAgain)
+      ? ([["Would play again", wouldPlayAgainLabel(details.wouldPlayAgain) as string]] as [string, string][])
+      : []),
+  ];
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
+      ${details.fallbackNote ? fallbackBanner(details.fallbackNote) : ""}
+      <h2 style="margin-bottom: 4px;">Settlement report in: ${escapeHtml(details.artistName)} at ${escapeHtml(details.venueLabel)}</h2>
+      <p style="color: #555;">The post-show report came back. Headline numbers below -- full detail (expenses, notes) is on the play in Base Camp.</p>
+      <table style="border-collapse: collapse; margin: 16px 0;">
+        ${rows
+          .map(
+            ([label, value]) => `
+          <tr>
+            <td style="padding: 4px 16px 4px 0; color: #777; vertical-align: top;">${escapeHtml(label)}</td>
+            <td style="padding: 4px 0; font-weight: 600;">${escapeHtml(value)}</td>
+          </tr>`
+          )
+          .join("")}
+      </table>
+      <a href="${details.playUrl}" style="display: inline-block; background: #f05a2b; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600;">
+        View full report in Base Camp
+      </a>
+      <p style="color: #999; font-size: 12px; margin-top: 24px;">
+        Sent automatically by Base Camp, The Ridge Music Group.
+      </p>
+    </div>
+  `;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
+      to: [details.to],
+      subject: `Settlement report in: ${details.artistName} at ${details.venueLabel}`,
+      html,
+    });
+
+    if (error) {
+      console.error("Settlement-received email failed to send:", error);
+      await logEmailFailure(
+        "settlement_received",
+        details.to,
+        { artistName: details.artistName, venueLabel: details.venueLabel },
+        JSON.stringify(error)
+      );
+    }
+  } catch (err) {
+    console.error("Settlement-received email threw while sending:", err);
+    await logEmailFailure(
+      "settlement_received",
+      details.to,
+      { artistName: details.artistName, venueLabel: details.venueLabel },
       err instanceof Error ? err.message : String(err)
     );
   }

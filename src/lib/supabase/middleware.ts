@@ -35,7 +35,10 @@ export async function updateSession(request: NextRequest) {
   // Base Camp account, so this route must stay reachable logged-out. /book
   // is the public offer-intake form (venues/promoters submitting a new
   // offer) -- same reasoning, no Base Camp login on that side either.
-  // /api/webhooks is server-to-server: SignWell (and any future provider)
+  // /settle/[token] is the public post-show settlement-report form reached
+  // from the settlement-request email -- the artist (or their manager/rep)
+  // filling it out has no Base Camp account either, same reasoning as
+  // /approve. /api/webhooks is server-to-server: SignWell (and any future provider)
   // calls these with no Base Camp session/cookie at all, so without this
   // exemption every callback got 307-redirected to /login instead of
   // reaching the route handler -- discovered when contract_signatures
@@ -49,12 +52,13 @@ export async function updateSession(request: NextRequest) {
   // -- found this one live, via the exact same symptom as the webhooks
   // bug above (a 307 to /login instead of reaching the handler), while
   // testing the scan-contacts route directly against production.
-  // None of these four are an auth route themselves (a logged-in user
+  // None of these five are an auth route themselves (a logged-in user
   // hitting them isn't bounced anywhere), just exempt from the login
   // redirect below.
   const isPublicRoute =
     isAuthRoute ||
     request.nextUrl.pathname.startsWith("/approve/") ||
+    request.nextUrl.pathname.startsWith("/settle/") ||
     request.nextUrl.pathname.startsWith("/book") ||
     request.nextUrl.pathname.startsWith("/api/webhooks") ||
     request.nextUrl.pathname.startsWith("/api/cron");

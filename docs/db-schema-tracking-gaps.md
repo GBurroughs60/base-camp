@@ -260,3 +260,198 @@ the Supabase CLI (`supabase migration new add_settlement_report_fields_to_plays`
 from a machine with it set up, rather than the dashboard's SQL editor.
 Since the live columns already exist, this is a no-op against the running
 database -- purely bookkeeping.
+
+---
+
+## `get_settlement_summary` / `submit_settlement_report` -- token-scoped settlement-report RPCs (2026-10-31)
+
+**What's untracked:** two new columns on `public.plays` --
+`settlement_submitted_by_contact_id` (uuid, references `contacts(id)`) and
+`settlement_submitted_by_other_name` (text), mirroring
+`approved_by_contact_id`/`approved_by_other_name` -- plus two new
+`SECURITY DEFINER` functions, `get_settlement_summary(p_token uuid)` and
+`submit_settlement_report(p_token uuid, ...)`. These are the exact
+mirror of `get_play_approval_summary`/`respond_to_play_approval` (see the
+entry pattern in `add_play_approval_response_flow`), scoped to
+`plays.settlement_token` instead of `plays.approval_token`. See
+`docs/operations-accounting-plan.md` section 4 ("Resolving 'public'...")
+for the full access-control design, and `/settle/[token]` (page +
+`app/actions/settlement.ts`) for how they're called.
+
+**Why it's untracked:** blocked by the same auto-mode safety tooling as
+every prior `SECURITY DEFINER` function change in this project (flagged
+independent of how small the actual diff is) -- see the
+`submit_offer_inquiry` entry above for the first time this class of block
+was hit. Greg needs to apply the SQL below directly via the Supabase SQL
+editor.
+
+**Symptom if this regresses:** `/settle/[token]` 500s outright (missing
+columns), or shows "This link is invalid" for every real token (missing
+functions, since `get_settlement_summary` returning zero rows is how the
+page tells a bad token apart from a real one).
+
+**The fix, if ever needed again** -- additive and idempotent (`create or
+replace function` is always safe to re-run; the two `ADD COLUMN`s would
+need `IF NOT EXISTS` added if they already exist from a partial prior
+run):
+
+```sql
+alter table public.plays
+  add column settlement_submitted_by_contact_id uuid references public.contacts(id),
+  add column settlement_submitted_by_other_name text;
+
+create or replace function public.get_settlement_summary(p_token uuid)
+returns table(
+  play_id uuid,
+  artist_name text,
+  venue_label text,
+  location text,
+  show_date date,
+  guarantee_amount numeric,
+  settlement_submitted_at timestamptz,
+  responder_options jsonb,
+  submitted_by_name text,
+  walkout_amount numeric,
+  gross_merch_sales numeric,
+  settlement_expenses jsonb,
+  other_events_in_town text,
+  promoter_notes text,
+  would_play_again text
+)
+language sql
+stable security definer
+set search_path to 'public'
+as $function$
+  select
+    p.id,
+    a.name,
+    coalesce(v.name, p.venue_name, 'Venue TBD'),
+    nullif(concat_ws(', ', coalesce(v.city, p.city), coalesce(v.state, p.state)), ''),
+    p.show_date,
+    p.guarantee_amount,
+    p.settlement_submitted_at,
+    coalesce(
+      (
+        select jsonb_agg(jsonb_build_object('id', c.id, 'full_name', c.full_name))
+        from public.contact_artists ca
+        join public.contacts c on c.id = ca.contact_id
+        where ca.artist_id = p.artist_id
+          and ca.role in ('manager', 'artist')
+          and c.email is not null
+      ),
+      (
+        select jsonb_agg(jsonb_build_object('id', f.id, 'full_name', f.full_name))
+        from public.contacts f
+        where f.email = 'gburroughs@theridgemusicgroup.com'
+        limit 1
+      ),
+      '[]'::jsonb
+    ),
+    coalesce(rc.full_name, p.settlement_submitted_by_other_name),
+    p.walkout_amount,
+    p.gross_merch_sales,
+    p.settlement_expenses,
+    p.other_events_in_town,
+    p.promoter_notes,
+    p.would_play_again
+  from public.plays p
+  join public.artists a on a.id = p.artist_id
+  left join public.companies v on v.id = p.venue_id
+  left join public.contacts rc on rc.id = p.settlement_submitted_by_contact_id
+  where p.settlement_token = p_token;
+$function$;
+
+create or replace function public.submit_settlement_report(
+  p_token uuid,
+  p_walkout_amount numeric default null,
+  p_gross_merch_sales numeric default null,
+  p_settlement_expenses jsonb default '[]'::jsonb,
+  p_other_events_in_town text default null,
+  p_promoter_notes text default null,
+  p_would_play_again text default null,
+  p_contact_id uuid default null,
+  p_other_name text default null
+)
+returns table(
+  result text,
+  play_id uuid,
+  artist_name text,
+  venue_label text,
+  show_date date,
+  walkout_amount numeric,
+  gross_merch_sales numeric,
+  would_play_again text,
+  agent_name text,
+  agent_email text
+)
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_play record;
+  v_agent_name text;
+  v_agent_email text;
+begin
+  if p_would_play_again is not null and p_would_play_again not in ('yes', 'no', 'with_reservations') then
+    raise exception 'invalid would_play_again: %', p_would_play_again;
+  end if;
+
+  if p_settlement_expenses is not null and jsonb_typeof(p_settlement_expenses) <> 'array' then
+    raise exception 'settlement_expenses must be a json array';
+  end if;
+
+  select
+    p.id, p.settlement_submitted_at, p.artist_id,
+    a.name as artist_name,
+    coalesce(v.name, p.venue_name, 'Venue TBD') as venue_label,
+    p.show_date
+    into v_play
+    from public.plays p
+    join public.artists a on a.id = p.artist_id
+    left join public.companies v on v.id = p.venue_id
+    where p.settlement_token = p_token
+    for update of p;
+
+  if not found then
+    return query select 'not_found', null::uuid, null::text, null::text, null::date, null::numeric, null::numeric, null::text, null::text, null::text;
+    return;
+  end if;
+
+  if v_play.settlement_submitted_at is not null then
+    return query select 'already_submitted', v_play.id, v_play.artist_name, v_play.venue_label, v_play.show_date, null::numeric, null::numeric, null::text, null::text, null::text;
+    return;
+  end if;
+
+  update public.plays
+    set
+      walkout_amount = p_walkout_amount,
+      gross_merch_sales = p_gross_merch_sales,
+      settlement_expenses = coalesce(p_settlement_expenses, '[]'::jsonb),
+      other_events_in_town = nullif(trim(coalesce(p_other_events_in_town, '')), ''),
+      promoter_notes = nullif(trim(coalesce(p_promoter_notes, '')), ''),
+      would_play_again = p_would_play_again,
+      settlement_submitted_at = now(),
+      settlement_submitted_by_contact_id = p_contact_id,
+      settlement_submitted_by_other_name = nullif(trim(coalesce(p_other_name, '')), '')
+    where id = v_play.id;
+
+  select c.full_name, c.email into v_agent_name, v_agent_email
+    from public.contact_artists ca
+    join public.contacts c on c.id = ca.contact_id
+    where ca.artist_id = v_play.artist_id and ca.role = 'agent'
+    limit 1;
+
+  return query select
+    'ok', v_play.id, v_play.artist_name, v_play.venue_label, v_play.show_date,
+    p_walkout_amount, p_gross_merch_sales, p_would_play_again,
+    v_agent_name, v_agent_email;
+end;
+$function$;
+```
+
+**To close the gap properly:** same approach as the entries above -- run
+it through the Supabase CLI (`supabase migration new add_settlement_report_flow`)
+from a machine with it set up, rather than the dashboard's SQL editor.
+Once applied, this is purely bookkeeping -- the live functions/columns
+will already match.

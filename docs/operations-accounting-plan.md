@@ -279,11 +279,15 @@ three of Greg's requirements (2026-10-31):
   data today, extended to settlement data at the same trust level, not a
   new or weaker one.
 - **Exactly once, never duplicate.** `settlement_submitted_at` is the
-  single source of truth, mirroring `approval_responded_at`. The RPC's
-  write is guarded by `WHERE settlement_submitted_at IS NULL` -- a
-  database-level compare-and-swap, not just a UI check, so even the
-  artist and manager both submitting at the same moment only ever
-  accepts the first. Once set, the page shows an "Already submitted"
+  single source of truth, mirroring `approval_responded_at`. The RPC
+  locks the row (`select ... for update of p`) before checking it, then
+  branches -- not found / already submitted / write -- exactly the shape
+  `respond_to_play_approval` already uses, rather than a bare `UPDATE ...
+  WHERE settlement_submitted_at IS NULL`. Same guarantee either way (a
+  second write never lands), but this is the actual mechanism built, and
+  it's the established convention in this codebase, so even the artist
+  and manager both submitting at the same moment only ever accepts the
+  first. Once set, the page shows an "Already submitted"
   state instead of the form (mirrors `AlreadyResponded`) -- there's no
   second write path in the UI, and the RPC itself refuses a second write
   even on a direct replay of the POST. There's also only ever one token
@@ -297,12 +301,37 @@ three of Greg's requirements (2026-10-31):
   call only fires from a real POST on button-press, same as
   `approveOffer`/`declineOffer`.
 
-**Build note:** the new `SECURITY DEFINER` functions are very likely to
-hit the same auto-mode block the `submit_offer_inquiry` redefinition and
-the `plays` columns migration both hit (see
-`docs/db-schema-tracking-gaps.md`) -- that tooling treats any
-`SECURITY DEFINER` function change as sensitive regardless of size, so
-plan on Greg applying this one directly too.
+**Build status (2026-10-31).** Built end to end: the two new
+`SECURITY DEFINER` functions (`get_settlement_summary`,
+`submit_settlement_report`) and the two supporting columns
+(`settlement_submitted_by_contact_id`, `settlement_submitted_by_other_name`,
+mirroring `approved_by_contact_id`/`approved_by_other_name`); the public
+`/settle/[token]` page (`InvalidLink`/`AlreadySubmitted`/the live form,
+mirroring `/approve/[token]` exactly, including the "who's reporting?"
+picker and the never-write-on-GET discipline); `app/actions/settlement.ts`
+(mirroring `approval.ts`); `sendSettlementRequestEmail` and
+`sendSettlementReceivedEmail` in `approvalEmail.ts` (artist primary
+`to`/manager `cc` on the request, closing the loop back to the booking
+agent on receipt -- same fallback-to-Greg convention as every other
+automated notification); the `/settle/` exemption in
+`lib/supabase/middleware.ts`; and the settlement-email step in
+`api/cron/advance-plays-to-played/route.ts`, which is the actual trigger
+point (see the comment there for why this had to be the cron and not a
+`records.ts` field-update hook -- a play reaches "played" in bulk, not
+through a single UI-initiated status edit). It queries `plays` directly
+for `status = 'played' and settlement_email_sent_at is null` after the
+advance RPC runs, rather than threading play ids out of
+`advance_confirmed_plays_to_played()`'s return value, so it also catches
+a play that reached "played" some other way (e.g. a manual board drag).
+
+As anticipated, the new `SECURITY DEFINER` functions hit the same
+auto-mode block `submit_offer_inquiry` and the `plays` columns migration
+both hit -- see the new entry in `docs/db-schema-tracking-gaps.md` for the
+exact SQL Greg needs to run directly via the Supabase SQL editor
+(`get_settlement_summary`/`submit_settlement_report` plus the two
+supporting columns). Everything else above is already committed and
+passes `tsc`/`eslint`/`next build`; `/settle/[token]` won't resolve a real
+token until that SQL is applied.
 
 Manual entry by Greg on the Play detail page's Settlement section remains
 the fallback either way -- same fields, same UI, whether the artist's
