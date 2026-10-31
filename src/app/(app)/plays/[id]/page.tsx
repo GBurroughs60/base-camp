@@ -14,12 +14,24 @@ import AdditionalContacts, {
 import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 import InlineBooleanChip from "@/components/inline/InlineBooleanChip";
 import TicketTierField from "@/components/inline/TicketTierField";
+import ExpenseField from "@/components/inline/ExpenseField";
 import {
   type PlayStatus,
   PLAY_STATUS_OPTIONS,
   PLAY_STATUS_BADGE_CLASSES,
 } from "@/lib/playStatus";
 import type { SavedPriceTier, SavedActualTier } from "@/lib/ticketTiers";
+import type { SavedExpense } from "@/lib/settlementExpenses";
+
+// Settlement report (docs/operations-accounting-plan.md section 4) --
+// structured three-way rebook recommendation, not yes/no. The *why* behind
+// "with reservations" or "no" lives in promoter_notes/notes right next to
+// this field, not in the value itself -- see the doc for the reasoning.
+const WOULD_PLAY_AGAIN_OPTIONS = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+  { value: "with_reservations", label: "With reservations" },
+];
 
 export default async function PlayDetailPage({
   params,
@@ -41,6 +53,8 @@ export default async function PlayDetailPage({
        deposit_instructions,
        final_payment_received, capacity, age_limit, deal_terms, bill_position,
        other_artists_on_bill, notes, details, venue_name, city, state, address, show_type,
+       walkout_amount, settlement_expenses, weather_summary, other_events_in_town,
+       promoter_notes, would_play_again,
        show_time, show_length, radius_clause,
        production_contact_name, production_contact_info, production_provided,
        food_provided, drinks_provided, hotel_provided, travel_provided,
@@ -292,9 +306,13 @@ export default async function PlayDetailPage({
 
         <div className="border border-black/10 dark:border-white/10 rounded-lg p-5 bg-white dark:bg-neutral-900">
           <h2 className="text-sm font-medium text-black/60 dark:text-white/60 mb-3">
-            Box Office
+            Settlement
           </h2>
           <dl className="text-sm grid grid-cols-2 gap-y-2">
+            <dt className="text-black/50 dark:text-white/50">Walkout (back end)</dt>
+            <dd>
+              <InlineEditField table="plays" id={play.id} field="walkout_amount" value={play.walkout_amount} type="number" format="money" placeholder="Add" />
+            </dd>
             <dt className="text-black/50 dark:text-white/50">Attendance</dt>
             <dd>
               <InlineEditField table="plays" id={play.id} field="attendance" value={play.attendance} type="number" placeholder="Add" />
@@ -328,6 +346,11 @@ export default async function PlayDetailPage({
               <InlineEditField table="plays" id={play.id} field="band_percentage" value={play.band_percentage} type="number" format="percent" placeholder="Add" />
             </dd>
           </dl>
+          <p className="text-xs text-black/40 dark:text-white/40 mt-2">
+            Walkout is the artist&apos;s reported overage beyond the Guarantee
+            (set on the Deal card above) -- commissioned on both legs
+            together, per the formula in the operations plan.
+          </p>
           <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
             <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">
               Actual ticket tiers
@@ -348,6 +371,58 @@ export default async function PlayDetailPage({
                   : play.ticket_price != null
                     ? "Seeded from this play's earlier single ticket price -- edit any row to start tracking actuals here instead."
                     : "Optional -- add a row per price point (e.g. ADV/DOS/VIP) to track actual sales; not required."}
+            </p>
+          </div>
+          <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
+            <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">
+              Expenses
+            </div>
+            <ExpenseField
+              table="plays"
+              id={play.id}
+              field="settlement_expenses"
+              expenses={(play.settlement_expenses as unknown as SavedExpense[] | null) ?? []}
+            />
+            <p className="text-xs text-black/40 dark:text-white/40 mt-2">
+              Day-of costs the artist paid out of pocket (sound engineer tips,
+              etc.) -- optional, informational only, never part of the
+              commission math above.
+            </p>
+          </div>
+          <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
+            <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">
+              Post-show report
+            </div>
+            <dl className="text-sm grid grid-cols-2 gap-y-2">
+              <dt className="text-black/50 dark:text-white/50">Weather</dt>
+              <dd>
+                <InlineEditField table="plays" id={play.id} field="weather_summary" value={play.weather_summary} placeholder="Add" />
+              </dd>
+              <dt className="text-black/50 dark:text-white/50">Other events in town</dt>
+              <dd>
+                <InlineEditField table="plays" id={play.id} field="other_events_in_town" value={play.other_events_in_town} placeholder="Add" />
+              </dd>
+              <dt className="text-black/50 dark:text-white/50">Promoter notes</dt>
+              <dd>
+                <InlineEditField table="plays" id={play.id} field="promoter_notes" value={play.promoter_notes} placeholder="Add" />
+              </dd>
+              <dt className="text-black/50 dark:text-white/50">Would play again?</dt>
+              <dd>
+                <InlineSelectField
+                  table="plays"
+                  id={play.id}
+                  field="would_play_again"
+                  value={play.would_play_again}
+                  options={WOULD_PLAY_AGAIN_OPTIONS}
+                />
+              </dd>
+            </dl>
+            <p className="text-xs text-black/40 dark:text-white/40 mt-2">
+              Weather is manually entered for now -- a future build pass
+              auto-fetches it from the show date and location. The rebook
+              answer is deliberately decisive (Yes / No / With reservations);
+              put the &quot;why&quot; in Promoter notes or the general Notes
+              field below.
             </p>
           </div>
         </div>

@@ -96,6 +96,19 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "show_time",
     "show_length",
     "radius_clause",
+    // Settlement report (docs/operations-accounting-plan.md section 4).
+    // settlement_expenses is deliberately NOT here -- it's a jsonb array,
+    // gated through EXPENSE_FIELDS/updateExpenseField instead, same split
+    // as ticket_price_tiers/actual_ticket_tiers vs. the scalar fields
+    // above. settlement_token/settlement_email_sent_at/
+    // settlement_submitted_at are also deliberately not here -- those are
+    // set by server-side logic (the future /settle/[token] form and cron
+    // hook), never by a person editing a field in the UI.
+    "walkout_amount",
+    "weather_summary",
+    "other_events_in_town",
+    "promoter_notes",
+    "would_play_again",
   ]),
   artists: new Set([
     "name",
@@ -383,12 +396,6 @@ export async function updateTierField(
 // updateTierField, since the row shape and required field genuinely differ
 // (label/amount/note here vs. label/price/quantity there) -- same reasoning
 // TierRow itself isn't shared with anything else.
-//
-// NOTE (2026-10-31): plays.settlement_expenses doesn't exist in the
-// database yet -- the migration adding it is drafted but not applied (see
-// "Build status" in operations-accounting-plan.md section 6). This
-// whitelist entry and action are inert until something actually calls them
-// with a real play id; nothing in the UI does that yet on purpose.
 const EXPENSE_FIELDS: Record<TableName, Set<string>> = {
   contacts: new Set(),
   companies: new Set(),

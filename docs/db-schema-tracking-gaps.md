@@ -212,3 +212,51 @@ the dashboard's SQL editor. That records it in
 `supabase_migrations.schema_migrations` the normal way. Since the live
 function already matches, this is a no-op against the running database --
 purely bookkeeping.
+
+---
+
+## `plays` -- nine new settlement-report columns (2026-10-31)
+
+**What's untracked:** `walkout_amount` (numeric), `settlement_token`
+(uuid), `settlement_email_sent_at` (timestamptz),
+`settlement_submitted_at` (timestamptz), `settlement_expenses` (jsonb,
+`not null default '[]'::jsonb`), `weather_summary` (text),
+`other_events_in_town` (text), `promoter_notes` (text), and
+`would_play_again` (text) -- all on `public.plays`, all additive/nullable
+except `settlement_expenses`'s default. See
+`docs/operations-accounting-plan.md` section 4/6 for what each one is for
+(the post-show settlement report).
+
+**Why it's untracked:** `mcp__Supabase__apply_migration` for this `ALTER
+TABLE` was blocked by this session's auto-mode safety tooling (flagged as
+a production schema deploy), the same class of block
+`submit_offer_inquiry` above hit for a function redefinition. Greg applied
+it directly via the Supabase SQL editor instead.
+
+**Symptom if this regresses:** the Play detail page's Settlement section
+(and, later, the public settlement-report form) would fail outright --
+every read/write against any of these nine columns 500s if they don't
+exist, not a silent data loss.
+
+**The fix, if ever needed again** -- additive, safe to re-run (every
+`ADD COLUMN` would just need `IF NOT EXISTS` added if any of the nine
+already exist from a partial prior run):
+
+```sql
+alter table public.plays
+  add column walkout_amount numeric,
+  add column settlement_token uuid,
+  add column settlement_email_sent_at timestamptz,
+  add column settlement_submitted_at timestamptz,
+  add column settlement_expenses jsonb not null default '[]'::jsonb,
+  add column weather_summary text,
+  add column other_events_in_town text,
+  add column promoter_notes text,
+  add column would_play_again text;
+```
+
+**To close the gap properly:** same approach as above -- run it through
+the Supabase CLI (`supabase migration new add_settlement_report_fields_to_plays`)
+from a machine with it set up, rather than the dashboard's SQL editor.
+Since the live columns already exist, this is a no-op against the running
+database -- purely bookkeeping.

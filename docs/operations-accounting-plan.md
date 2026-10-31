@@ -404,28 +404,32 @@ the full data model is in one place; the exact migration still needs its
 own separate approval before anything gets built, same as every schema
 change in this plan.
 
-**Build status (2026-10-31).** First build pass started: `settlementExpenses.ts`
-(the draft/save types for the Expenses tracker, mirroring `ticketTiers.ts`),
-the `ExpenseEditor`/`ExpenseField` components (mirroring
-`TicketTierEditor`/`TicketTierField`), and the matching
-`updateExpenseField` server action + whitelist entry in `records.ts` are
-written and type-check/lint clean. All of this is inert dead code for now
-by design -- nothing in the UI calls any of it yet. The migration above
-(all nine columns, additive/nullable) is drafted but not yet applied --
-Supabase's auto-mode classifier flagged it as a production schema deploy
-and blocked it outright rather than letting it through on this session's
-standing approval, so it needs Greg's direct action (approve a retry, or
-run the SQL himself). The Play detail page itself hasn't been touched --
-adding the new columns to its `select` or rendering fields for them before
-the migration lands would 500 every play in production, so that's queued
-right behind the migration, not before it. Once the migration is in, the
-remaining work is: whitelist the five new scalar fields in `records.ts`
-(`walkout_amount`, `weather_summary`, `other_events_in_town`,
-`promoter_notes`, `would_play_again`), rename the "Box Office" card on the
-Play detail page to "Settlement" and add all the new fields to it
-(including wiring in `ExpenseField`, already built), then separately the
-public `/settle/[token]` form, the Resend email, and the cron hook
-(section 4 above) as their own next pass.
+**Build status (2026-10-31).** Manual-entry UI shipped. The migration
+above (all nine columns) hit the same auto-mode production-deploy block
+`submit_offer_inquiry` hit earlier (see
+`docs/db-schema-tracking-gaps.md`) -- Greg applied it directly via the
+Supabase SQL editor, so it's live but untracked (logged there, with the
+replay SQL, same as that earlier gap). With the columns confirmed live:
+`records.ts` now whitelists the five scalar fields
+(`walkout_amount`/`weather_summary`/`other_events_in_town`/
+`promoter_notes`/`would_play_again`) plus the already-built
+`updateExpenseField`/`settlement_expenses` plumbing from the first pass.
+The Play detail page's "Box Office" card is renamed **Settlement** and now
+holds: Walkout (with a note pointing back at Guarantee on the Deal card),
+the existing attendance/tickets/revenue/merch/band% fields and actual
+ticket tiers unchanged, the new Expenses tracker (`ExpenseField`, wired
+in), and a "Post-show report" block (Weather, Other events in town,
+Promoter notes, Would play again -- the Yes/No/With-reservations select).
+Type-checks, lints, and a full `next build` all clean (one unrelated
+prerender failure on `/login` from missing Supabase env vars in this
+sandbox, nothing to do with this change).
+
+Weather is manual-entry only for now, noted as such in the UI -- the
+auto-fetch from Open-Meteo is still a later pass. Still queued after this:
+the public `/settle/[token]` form, the Resend email
+(`sendSettlementRequestEmail`), and the cron hook into
+`advance-plays-to-played` (all of section 4 above under "Collection
+mechanism" / "Delivery" / "Trigger point").
 
 | Column | Purpose |
 |---|---|
