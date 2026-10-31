@@ -455,3 +455,45 @@ it through the Supabase CLI (`supabase migration new add_settlement_report_flow`
 from a machine with it set up, rather than the dashboard's SQL editor.
 Once applied, this is purely bookkeeping -- the live functions/columns
 will already match.
+
+---
+
+## `plays` -- three settlement-reminder tracking columns (2026-10-31)
+
+**What's untracked:** `settlement_reminder_count` (integer, `not null
+default 0`), `settlement_last_reminder_sent_at` (timestamptz),
+`settlement_escalated_at` (timestamptz) -- all on `public.plays`. These
+back the `send-settlement-reminders` cron (see
+`docs/operations-accounting-plan.md` section 4): a 3-day-cadence,
+3-reminder-cap follow-up on the settlement-request email, escalating to
+Greg once the cap is hit with still no report.
+
+**Why it's untracked:** blocked by the same auto-mode safety tooling as
+the original nine-column settlement migration above -- a plain, additive
+`ALTER TABLE` still gets flagged as a production schema deploy regardless
+of how small it is. No `SECURITY DEFINER` function is involved this time
+(the reminder cron reads/writes `plays` directly via the service-role
+client, the same way `advance_confirmed_plays_to_played` already does),
+but that didn't change the outcome.
+
+**Symptom if this regresses:** `send-settlement-reminders` 500s on every
+run (missing columns) -- no reminders go out, and nothing escalates to
+Greg either. Not silent data loss, but a silently-stalled feature; nothing
+in the UI currently surfaces whether this cron is succeeding, only Vercel's
+own cron/function logs.
+
+**The fix, if ever needed again** -- additive, safe to re-run (`ADD COLUMN
+IF NOT EXISTS` if any already exist from a partial prior run):
+
+```sql
+alter table public.plays
+  add column settlement_reminder_count integer not null default 0,
+  add column settlement_last_reminder_sent_at timestamptz,
+  add column settlement_escalated_at timestamptz;
+```
+
+**To close the gap properly:** same approach as the entries above -- run
+it through the Supabase CLI (`supabase migration new add_settlement_reminder_tracking`)
+from a machine with it set up, rather than the dashboard's SQL editor.
+Once applied, this is purely bookkeeping -- the live columns will already
+match.

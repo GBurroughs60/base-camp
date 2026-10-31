@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { createClient } from "@/lib/supabase/server";
+import { FALLBACK_NOTIFY_EMAIL } from "@/lib/constants";
 
 // Lazily constructed so a missing key doesn't crash module load (e.g. in
 // local dev before RESEND_API_KEY is set) -- sendApprovalEmail below checks
@@ -8,14 +9,68 @@ import { createClient } from "@/lib/supabase/server";
 // configured yet.
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
+// Direct, synchronous backup notification to Greg every time any automated
+// email fails to send (not just settlement -- logEmailFailure is the one
+// place every notification kind in this app already funnels through, so
+// this is a single change that covers all of them). Previously a failure
+// only ever reached email_notification_failures, a table nothing reads
+// automatically yet ("daily health check" was aspirational, not built --
+// see the comment on logEmailFailure below) -- so a failed send could sit
+// there unnoticed indefinitely. This is a *best-effort* second attempt
+// over the same provider, not a second channel: if Resend itself is down
+// or misconfigured, this alert can fail right alongside the email it's
+// reporting on, same as the fundamental limit on the "no contact on file"
+// fallback elsewhere in this file. Deliberately never calls logEmailFailure
+// on its own failure -- that would recurse.
+async function alertGregOfEmailFailure(
+  emailKind: string,
+  recipient: string,
+  errorDetail: string
+): Promise<void> {
+  if (!resend) return;
+  try {
+    await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
+      to: [FALLBACK_NOTIFY_EMAIL],
+      subject: `Base Camp: an automated email failed to send (${emailKind})`,
+      html: `
+        <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
+          <p>A <strong>${escapeHtml(emailKind)}</strong> notification failed to send to
+          <strong>${escapeHtml(recipient)}</strong>.</p>
+          <p style="color: #777; font-size: 13px;">${escapeHtml(errorDetail)}</p>
+          <p style="color: #999; font-size: 12px; margin-top: 16px;">
+            Logged in email_notification_failures. Sent automatically by Base Camp.
+          </p>
+        </div>
+      `,
+    });
+  } catch (err) {
+    console.error("alertGregOfEmailFailure itself failed to send:", err);
+  }
+}
+
 // Best-effort safety net, same spirit as offer_inquiry_attempts (see
 // offerIntake.ts): every real notification failure below is saved here
-// before anything else, so it shows up in the daily health check instead of
-// only ever reaching a server log nobody's watching. Logging itself must
-// never throw -- a failed log write is still just console.error'd, same as
-// the email failure it was trying to record.
-async function logEmailFailure(
-  emailKind: "approval_request" | "approval_response" | "new_offer" | "settlement_request" | "settlement_received",
+// before anything else, so it shows up in a daily health check instead of
+// only ever reaching a server log nobody's watching -- though that health
+// check doesn't exist yet as its own job; alertGregOfEmailFailure above is
+// what currently gets a failure in front of a person right away rather
+// than waiting on one to be built. Logging itself must never throw -- a
+// failed log write is still just console.error'd, same as the email
+// failure it was trying to record.
+// Exported (unlike every other helper in this file) so the Resend bounce
+// webhook (api/webhooks/resend/route.ts) can log through the exact same
+// path -- same table, same best-effort direct alert to Greg via
+// alertGregOfEmailFailure above -- rather than duplicating either piece.
+export async function logEmailFailure(
+  emailKind:
+    | "approval_request"
+    | "approval_response"
+    | "new_offer"
+    | "settlement_request"
+    | "settlement_received"
+    | "settlement_escalation"
+    | "email_bounce",
   recipient: string,
   context: Record<string, unknown>,
   errorDetail: string
@@ -31,6 +86,7 @@ async function logEmailFailure(
   } catch (err) {
     console.error("email-notification-failure log itself failed:", err);
   }
+  await alertGregOfEmailFailure(emailKind, recipient, errorDetail);
 }
 
 function escapeHtml(s: string): string {
@@ -416,6 +472,10 @@ export type SettlementRequestEmailDetails = {
   // login involved, same reasoning as approveUrl on ApprovalEmailDetails.
   settleUrl: string;
   fallbackNote?: string;
+  // Set on every re-send after the first -- see send-settlement-reminders
+  // cron -- so the subject/copy reads as a follow-up rather than repeating
+  // the original "how did it go?" verbatim every 3 days.
+  reminder?: boolean;
 };
 
 // Fires once per play, the moment it's advanced to "played" with no
@@ -423,6 +483,8 @@ export type SettlementRequestEmailDetails = {
 // api/cron/advance-plays-to-played/route.ts -- deliberately not wired into
 // updateField/sendApprovalEmailIfNeeded, since a play can reach "played" in
 // bulk via that cron rather than through a single UI-initiated status edit).
+// Also re-sent on a 3-day cadence by send-settlement-reminders (reminder:
+// true) for any play whose report hasn't come in yet.
 export async function sendSettlementRequestEmail(details: SettlementRequestEmailDetails): Promise<void> {
   if (!resend) {
     console.warn(
@@ -442,11 +504,18 @@ export async function sendSettlementRequestEmail(details: SettlementRequestEmail
       : []),
   ];
 
+  const heading = details.reminder
+    ? `Reminder: how did it go? ${escapeHtml(details.artistName)} at ${escapeHtml(details.venueLabel)}`
+    : `How did it go? ${escapeHtml(details.artistName)} at ${escapeHtml(details.venueLabel)}`;
+  const intro = details.reminder
+    ? "Just following up -- we haven't seen a post-show report for this one yet. Walkout, merch, any expenses, and whether you'd play this room again:"
+    : "Now that the show's played, we'd love a quick post-show report -- walkout, merch, any expenses, and whether you'd play this room again.";
+
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
       ${details.fallbackNote ? fallbackBanner(details.fallbackNote) : ""}
-      <h2 style="margin-bottom: 4px;">How did it go? ${escapeHtml(details.artistName)} at ${escapeHtml(details.venueLabel)}</h2>
-      <p style="color: #555;">Now that the show's played, we'd love a quick post-show report -- walkout, merch, any expenses, and whether you'd play this room again.</p>
+      <h2 style="margin-bottom: 4px;">${heading}</h2>
+      <p style="color: #555;">${intro}</p>
       <table style="border-collapse: collapse; margin: 16px 0;">
         ${rows
           .map(
@@ -467,12 +536,16 @@ export async function sendSettlementRequestEmail(details: SettlementRequestEmail
     </div>
   `;
 
+  const subject = details.reminder
+    ? `Reminder: how did it go? ${details.artistName} at ${details.venueLabel}`
+    : `How did it go? ${details.artistName} at ${details.venueLabel}`;
+
   try {
     const { error } = await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
       to: details.to,
       ...(details.cc && details.cc.length > 0 ? { cc: details.cc } : {}),
-      subject: `How did it go? ${details.artistName} at ${details.venueLabel}`,
+      subject,
       html,
     });
 
@@ -481,7 +554,7 @@ export async function sendSettlementRequestEmail(details: SettlementRequestEmail
       await logEmailFailure(
         "settlement_request",
         details.to.join(", "),
-        { artistName: details.artistName, venueLabel: details.venueLabel, settleUrl: details.settleUrl },
+        { artistName: details.artistName, venueLabel: details.venueLabel, settleUrl: details.settleUrl, reminder: !!details.reminder },
         JSON.stringify(error)
       );
     }
@@ -490,7 +563,78 @@ export async function sendSettlementRequestEmail(details: SettlementRequestEmail
     await logEmailFailure(
       "settlement_request",
       details.to.join(", "),
-      { artistName: details.artistName, venueLabel: details.venueLabel, settleUrl: details.settleUrl },
+      { artistName: details.artistName, venueLabel: details.venueLabel, settleUrl: details.settleUrl, reminder: !!details.reminder },
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+}
+
+export type SettlementEscalationEmailDetails = {
+  // Always Greg -- this isn't a fallback for a missing contact, it's a
+  // "nobody's responded after repeated reminders" notice, so it goes
+  // straight to him regardless of whether the artist has a contact on
+  // file. See send-settlement-reminders.
+  artistName: string;
+  venueLabel: string;
+  showDate: string | null;
+  reminderCount: number;
+  // Recipient has a Base Camp login, so this links straight to the play
+  // rather than the public token page.
+  playUrl: string;
+};
+
+// Fires once per play, the moment its reminder count crosses the cap with
+// still no report in hand (see send-settlement-reminders) -- stops the
+// automated nudging at that point and hands it to Greg to follow up
+// manually instead of emailing the artist indefinitely forever.
+export async function sendSettlementEscalationEmail(details: SettlementEscalationEmailDetails): Promise<void> {
+  if (!resend) {
+    console.warn(
+      `RESEND_API_KEY is not set -- skipping settlement-escalation email for ${details.artistName} at ${details.venueLabel}`
+    );
+    return;
+  }
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
+      <h2 style="margin-bottom: 4px;">No settlement report yet: ${escapeHtml(details.artistName)} at ${escapeHtml(details.venueLabel)}</h2>
+      <p style="color: #555;">
+        ${details.reminderCount} reminder${details.reminderCount === 1 ? "" : "s"} went out and this one still hasn't
+        reported back. Automated reminders have stopped for this play -- might be worth a direct follow-up, or just
+        fill it in yourself from what you know.
+      </p>
+      <a href="${details.playUrl}" style="display: inline-block; background: #f05a2b; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600;">
+        View in Base Camp
+      </a>
+      <p style="color: #999; font-size: 12px; margin-top: 24px;">
+        Sent automatically by Base Camp, The Ridge Music Group.
+      </p>
+    </div>
+  `;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
+      to: [FALLBACK_NOTIFY_EMAIL],
+      subject: `No settlement report yet: ${details.artistName} at ${details.venueLabel}`,
+      html,
+    });
+
+    if (error) {
+      console.error("Settlement-escalation email failed to send:", error);
+      await logEmailFailure(
+        "settlement_escalation",
+        FALLBACK_NOTIFY_EMAIL,
+        { artistName: details.artistName, venueLabel: details.venueLabel, reminderCount: details.reminderCount },
+        JSON.stringify(error)
+      );
+    }
+  } catch (err) {
+    console.error("Settlement-escalation email threw while sending:", err);
+    await logEmailFailure(
+      "settlement_escalation",
+      FALLBACK_NOTIFY_EMAIL,
+      { artistName: details.artistName, venueLabel: details.venueLabel, reminderCount: details.reminderCount },
       err instanceof Error ? err.message : String(err)
     );
   }

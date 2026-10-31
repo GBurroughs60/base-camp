@@ -333,6 +333,82 @@ supporting columns). Everything else above is already committed and
 passes `tsc`/`eslint`/`next build`; `/settle/[token]` won't resolve a real
 token until that SQL is applied.
 
+**Where the data lives.** There's no separate settlement table -- every
+field the artist submits (`walkout_amount`, `gross_merch_sales`,
+`settlement_expenses`, `other_events_in_town`, `promoter_notes`,
+`would_play_again`) writes straight onto the `plays` row itself, the exact
+same columns the Play detail page's Settlement/Post-show report card
+already reads and edits. A submission through `/settle/[token]` and a
+manual edit by Greg on the play page are two different front doors to the
+same columns -- nothing to sync, no second copy to reconcile.
+
+**Reminders and escalation (2026-10-31).** Built: `send-settlement-reminders`,
+a new daily cron (separate from `advance-plays-to-played` -- different
+concern, different cadence, a failure in one shouldn't block the other).
+For every play sitting in `played` with a settlement request sent and no
+report back yet, it checks the time since the last email (the original
+request, or the last reminder) against a 3-day interval and, past that,
+re-sends `sendSettlementRequestEmail` with `reminder: true` (same
+recipients, "Reminder:" subject/copy, same token/link -- nothing new is
+minted). After 3 reminders with still nothing back, it stops nudging the
+artist and sends Greg a one-time `sendSettlementEscalationEmail` instead
+(`settlement_escalated_at` guards against re-escalating every day
+forever) -- a play in that state needs a person to intervene, not more
+automated emails. The three tracking columns this needs
+(`settlement_reminder_count`, `settlement_last_reminder_sent_at`,
+`settlement_escalated_at`) hit the same auto-mode production-deploy block
+the very first settlement columns migration did -- see the new entry in
+`db-schema-tracking-gaps.md` for the exact SQL. Added to `vercel.json`
+(`0 9 * * *`, an hour after `advance-plays-to-played`); won't actually do
+anything until both that SQL and the `get_settlement_summary`/
+`submit_settlement_report` SQL above are applied, since this reads
+`settlement_token`/`settlement_email_sent_at`, which already exist, but
+also the three new columns, which don't yet.
+
+**Backup notification on email failure (2026-10-31).** Previously, a
+failed send (Resend error, or the call throwing) only ever reached
+`email_notification_failures` -- a table nothing reads automatically; the
+"daily health check" mentioned in that code's own comments was aspirational
+framing, not a built job. Fixed by adding `alertGregOfEmailFailure` inside
+`logEmailFailure` in `approvalEmail.ts` -- since every notification kind in
+this app already funnels through that one function, this one change covers
+all of them (approval request/response, new offer, settlement
+request/received), not just settlement. It's a direct, synchronous email to
+Greg over the same Resend account, sent right alongside the existing DB log
+-- best-effort, not a second channel: if Resend itself is down, this alert
+can fail for the same reason the original email did, same fundamental limit
+as the existing "no contact on file" fallback elsewhere in this file.
+"No contact on file at all" was already covered before today -- every
+automated notification in this app already falls back to Greg directly
+when there's no real recipient to send to, settlement included.
+
+**Bounce/complaint detection (2026-10-31).** The gap "an email isn't on
+file" didn't originally cover is: Resend can *accept* a send and report
+success, then the message bounces or gets marked spam asynchronously,
+after `sendXEmail` has already returned. Added `api/webhooks/resend/route.ts`,
+a new webhook (Svix-signature verified via the `svix` package, same
+reasoning as using a real library for anything signature-shaped) that logs
+`email.bounced`/`email.complained`/`email.delivery_delayed` through the
+same `logEmailFailure` path -- same table, same direct alert to Greg.
+**This needs one thing from Greg that only he can do:** in the Resend
+dashboard, add a webhook endpoint pointed at
+`https://base-camp-lovat.vercel.app/api/webhooks/resend`, subscribed to at
+least `email.bounced`, then set the signing secret it gives him as
+`RESEND_WEBHOOK_SECRET` on Vercel. Without that, the route exists but
+nothing calls it -- not a blocked migration, just a dashboard step outside
+this repo entirely.
+
+**Still open / known gaps, not built today:** no manual "send now" button
+on the Play detail page to nudge a play outside the 3-day cycle, or to
+retry after it's been escalated -- right now a play that's been escalated
+just sits there until Greg follows up by hand (by design -- see above --
+but worth a button eventually); no staff-facing view of
+`email_notification_failures` inside Base Camp itself (it's a
+database-only table today, surfaced only via the direct email alert); and
+`settlement_token`/`approval_token` both still never expire, same accepted
+tradeoff as the rest of this app's token-link flows, not something this
+pass changed either way.
+
 Manual entry by Greg on the Play detail page's Settlement section remains
 the fallback either way -- same fields, same UI, whether the artist's
 form submission fills them or Greg types them in directly, matching the
