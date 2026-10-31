@@ -377,6 +377,57 @@ export async function updateTierField(
   return { ok: true, data: undefined };
 }
 
+// Sibling of TIER_FIELDS/updateTierField for the post-show Expenses tracker
+// (plays.settlement_expenses -- docs/operations-accounting-plan.md section
+// 4). Kept as its own whitelist/row shape/action rather than generalizing
+// updateTierField, since the row shape and required field genuinely differ
+// (label/amount/note here vs. label/price/quantity there) -- same reasoning
+// TierRow itself isn't shared with anything else.
+//
+// NOTE (2026-10-31): plays.settlement_expenses doesn't exist in the
+// database yet -- the migration adding it is drafted but not applied (see
+// "Build status" in operations-accounting-plan.md section 6). This
+// whitelist entry and action are inert until something actually calls them
+// with a real play id; nothing in the UI does that yet on purpose.
+const EXPENSE_FIELDS: Record<TableName, Set<string>> = {
+  contacts: new Set(),
+  companies: new Set(),
+  events: new Set(),
+  plays: new Set(["settlement_expenses"]),
+  artists: new Set(),
+  candidates: new Set(),
+};
+
+export type ExpenseRow = { label: string; amount: number; note: string };
+
+export async function updateExpenseField(
+  table: TableName,
+  id: string,
+  field: string,
+  expenses: ExpenseRow[]
+): Promise<ActionResult> {
+  if (!EXPENSE_FIELDS[table]?.has(field)) {
+    return { ok: false, error: `"${field}" is not an expense field on ${table}` };
+  }
+  if (
+    !Array.isArray(expenses) ||
+    expenses.some(
+      (e) =>
+        typeof e?.label !== "string" ||
+        typeof e?.amount !== "number" ||
+        !Number.isFinite(e.amount) ||
+        typeof e?.note !== "string"
+    )
+  ) {
+    return { ok: false, error: "Invalid expense data." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from(table).update({ [field]: expenses }).eq("id", id);
+  if (error) return { ok: false, error: friendlyDbError(error) };
+  return { ok: true, data: undefined };
+}
+
 function pickAllowed(table: TableName, data: Record<string, unknown>) {
   const allowed = EDITABLE_FIELDS[table];
   const out: Record<string, unknown> = {};

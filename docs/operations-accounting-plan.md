@@ -204,7 +204,19 @@ specific comments (distinct from general show notes, which already have
 a home in `plays.notes`), and "would you play this venue again?" ("Other
 acts on the bill" already has a home too -- `plays.other_artists_on_bill`,
 existing field, nothing new needed there.) See section 2's amendment for
-why this is in scope here. Reasoning: realistically one shot at the
+why this is in scope here.
+
+**"Would you play this venue again?" is a structured three-way choice,
+not yes/no (2026-10-31, per Greg).** Yes / No / With reservations --
+decisive and still trivially filterable, but wide enough to hold the
+honest answer for the extremely common real case ("great room, bad
+money," "good money, terrible sound") without forcing a false binary or
+getting skipped. The *why* behind a "with reservations" or a "no" isn't
+this field's job -- that's what `promoter_notes`/`notes` right next to it
+are for, same split as everywhere else on this form: the verdict stays
+dry and queryable, the reasoning stays in prose. This is the artist's own
+per-show answer, not an automatic rollup to anything persistent on the
+venue/company record -- see section 9. Reasoning: realistically one shot at the
 artist's attention right after a show -- asking twice (once for Ridge's
 money, once for Ridge's own judgment) means asking twice for something
 naturally answered once.
@@ -392,6 +404,29 @@ the full data model is in one place; the exact migration still needs its
 own separate approval before anything gets built, same as every schema
 change in this plan.
 
+**Build status (2026-10-31).** First build pass started: `settlementExpenses.ts`
+(the draft/save types for the Expenses tracker, mirroring `ticketTiers.ts`),
+the `ExpenseEditor`/`ExpenseField` components (mirroring
+`TicketTierEditor`/`TicketTierField`), and the matching
+`updateExpenseField` server action + whitelist entry in `records.ts` are
+written and type-check/lint clean. All of this is inert dead code for now
+by design -- nothing in the UI calls any of it yet. The migration above
+(all nine columns, additive/nullable) is drafted but not yet applied --
+Supabase's auto-mode classifier flagged it as a production schema deploy
+and blocked it outright rather than letting it through on this session's
+standing approval, so it needs Greg's direct action (approve a retry, or
+run the SQL himself). The Play detail page itself hasn't been touched --
+adding the new columns to its `select` or rendering fields for them before
+the migration lands would 500 every play in production, so that's queued
+right behind the migration, not before it. Once the migration is in, the
+remaining work is: whitelist the five new scalar fields in `records.ts`
+(`walkout_amount`, `weather_summary`, `other_events_in_town`,
+`promoter_notes`, `would_play_again`), rename the "Box Office" card on the
+Play detail page to "Settlement" and add all the new fields to it
+(including wiring in `ExpenseField`, already built), then separately the
+public `/settle/[token]` form, the Resend email, and the cron hook
+(section 4 above) as their own next pass.
+
 | Column | Purpose |
 |---|---|
 | `walkout_amount` | Already named in section 4 -- artist-reported overage beyond the guarantee. |
@@ -402,7 +437,7 @@ change in this plan.
 | `weather_summary` | Auto-fetched, no manual entry -- see section 4. |
 | `other_events_in_town` | Booking-intelligence field from the unified post-show report. |
 | `promoter_notes` | Distinct from general `plays.notes` -- see section 4. |
-| `would_play_again` | Rebook recommendation -- see section 9 for where this should actually live. |
+| `would_play_again` | Rebook recommendation -- `'yes'` / `'no'` / `'with_reservations'`, structured, not free text (see section 4). See section 9 for where this should actually live long-term. |
 
 **Resolved (see section 5): `plays.status` does get an automatic
 tie-in, but only one.** `settled` is triggered automatically the moment
