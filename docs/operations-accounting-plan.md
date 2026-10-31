@@ -107,6 +107,49 @@ Neither precondition exists yet, confirmed with Greg:
   subscription tier -- that's Greg's call, informed by whatever he
   decides for the expenses/taxes side too, since it'll be the same
   account either way.
+
+  **Checked (2026-10-31): the QBO subscription tier doesn't gate any of
+  this.** Greg asked directly whether any tier would block the API/webhook
+  features this plan needs. Researched rather than assumed (two
+  independent, mutually-consistent 2026 sources -- Intuit's own developer
+  help-center articles wouldn't render for a fetch, so this isn't a
+  first-party quote, but both secondary sources agree in specific,
+  matching detail: [Truto, "How Much Does the QuickBooks API Cost?"](https://truto.one/blog/how-much-does-the-quickbooks-api-cost-2026-pricing-rate-limits/),
+  [Apideck, "QuickBooks API Pricing and the Intuit App Partner Program"](https://www.apideck.com/blog/quickbooks-api-pricing-and-the-intuit-app-partner-program)).
+  Two separate axes, neither of which blocks this plan:
+  - **QBO's own subscription tier** (Simple Start / Essentials / Plus /
+    Advanced -- what Ridge pays Intuit for the company file) gates
+    in-product accounting features (Classes/Locations on Plus+ only,
+    custom-field counts, user counts, inventory, budgeting) -- not API or
+    webhook access. The Accounting API's core entities (Invoice, Customer,
+    Payment -- everything `createInvoice`/`getInvoice`/the webhook route
+    need) and webhook subscriptions work identically on every tier,
+    including Simple Start. One real implication for Greg's choice,
+    unrelated to this plan: if he ever wants revenue broken out by artist
+    or venue *inside QBO itself* (Classes/Locations), that needs Plus or
+    Advanced -- otherwise the tier choice can be made purely on
+    bookkeeping needs.
+  - **Intuit's separate App Partner Program** (what *Base Camp's own
+    registered developer app* is enrolled in, independent of Ridge's QBO
+    plan) splits API calls into "Core" (writes -- creating/updating an
+    invoice) and "CorePlus" (reads -- fetching an invoice to check if it's
+    paid, which the webhook handler needs as its follow-up call, same
+    shape as the SignWell webhook). Core calls are free and unmetered on
+    every partner tier. The free "Builder" tier ($0/mo) includes 500,000
+    CorePlus credits/month -- at Ridge's actual volume (a handful to a few
+    dozen invoices a month) this isn't remotely close to that cap, so no
+    paid partner tier is needed to run this. The paid tiers (Silver/Gold/
+    Platinum) exist for apps selling to many other companies at volume
+    and gate a few things this plan has no use for anyway (Projects,
+    Sales Tax, Time w/ Payroll "Premium APIs").
+
+  Net: Greg can pick whichever QBO subscription tier suits Ridge's actual
+  bookkeeping (Classes/Locations if he wants that, otherwise Simple Start
+  is plenty), entirely independent of this integration -- it's unblocked
+  either way. Worth a quick double-check against Intuit's own docs or
+  support chat before finalizing a purchase, since the first-party pages
+  wouldn't render here, but nothing in two independent current sources
+  contradicts this.
 - **Artists aren't tracked as billable entities anywhere today.** No
   QBO customer/vendor records, no accounting-system presence at all.
   Part of getting this running is deciding how each artist becomes a QBO
