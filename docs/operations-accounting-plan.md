@@ -238,15 +238,77 @@ key required -- confirmed current as of this conversation) using the
 play's own `show_date`/`city`/`state`, no artist or Greg involvement at
 all. New column, `weather_summary`.
 
-**Collection mechanism: a public token-scoped form, modeled directly on
-`/approve/[token]`.** New route, `/settle/[token]` -- same pattern as the
-existing offer-approval page: public, no Base Camp login, pre-filled with
-everything Base Camp already knows (venue, date, Guarantee) so the artist
-only fills in what's new. Manual entry by Greg on the Play detail page's
-Settlement section remains the fallback either way -- same fields, same
-UI, whether the artist's form submission fills them or Greg types them in
-directly, matching the "never block on something outside Ridge's
-control" principle already established for the venue side below.
+**Collection mechanism: a token-scoped form, modeled directly on
+`/approve/[token]` -- "public" means no login wall, not open access
+(2026-10-31, clarified per Greg).** New route, `/settle/[token]`. Worth
+being precise about what "public" means here, since the word is
+misleading: this route needs no Base Camp login (the artist/manager have
+none), but it is not reachable by guessing a URL or browsing anything --
+access is gated entirely by possessing the token itself, a
+server-generated `crypto.randomUUID()` (122 bits of randomness, same as
+`plays.approval_token` already is), sent only inside the settlement
+email. Calling it "the public form" going forward undersells that; in
+writing and in conversation, call it the token-scoped settlement link.
+
+The actual access-control mechanism, mirrored exactly from
+`/approve/[token]`'s already-proven design (`get_play_approval_summary`
+/ `respond_to_play_approval`, see `app/actions/approval.ts`), answers all
+three of Greg's requirements (2026-10-31):
+
+- **No stray access from outside the intended group.** RLS on `plays`
+  (and every related table) stays authenticated-only -- the anon role
+  gets zero direct table access, full stop. Two new `SECURITY DEFINER`
+  functions, `get_settlement_summary(p_token)` and
+  `submit_settlement_report(p_token, ...)`, are the *only* crack the anon
+  role gets, and each is scoped to a single play by the token, never by
+  an attacker-suppliable id. Even someone who obtained the anon key
+  directly (it's not secret -- it ships to the browser) couldn't browse
+  or enumerate plays through it; they could only call these two
+  functions, and only ever learn anything by already possessing a valid
+  token. The token itself only ever reaches two inboxes: the artist-role
+  and manager-role contacts on that play, via the Resend email -- never
+  logged anywhere a third party could find it, never derivable from the
+  play id.
+- **From the artist or their rep, nobody else, without pretending to
+  verify identity.** The page shows a "who's submitting?" picker scoped
+  to exactly the contacts the email went to (mirrors
+  `responderOptions`/`ResponderFields` on the approve page precisely),
+  plus a free-text fallback for the forwarded-email case. This isn't an
+  identity check -- anyone with the link could type any name -- it's the
+  same tradeoff the approval flow already makes for Guarantee/deal-terms
+  data today, extended to settlement data at the same trust level, not a
+  new or weaker one.
+- **Exactly once, never duplicate.** `settlement_submitted_at` is the
+  single source of truth, mirroring `approval_responded_at`. The RPC's
+  write is guarded by `WHERE settlement_submitted_at IS NULL` -- a
+  database-level compare-and-swap, not just a UI check, so even the
+  artist and manager both submitting at the same moment only ever
+  accepts the first. Once set, the page shows an "Already submitted"
+  state instead of the form (mirrors `AlreadyResponded`) -- there's no
+  second write path in the UI, and the RPC itself refuses a second write
+  even on a direct replay of the POST. There's also only ever one token
+  per play, sent in one email to both recipients together, not a
+  separate link per person -- nothing to desync in the first place.
+- **One more hardening detail carried over from the approve page's own
+  comment:** the page itself must never write on a GET -- some corporate
+  email/security tools pre-fetch every link in an inbound email to scan
+  it, which would falsely "submit" an empty report if the link itself
+  did the writing. Render-only on load; the actual `submit_settlement_report`
+  call only fires from a real POST on button-press, same as
+  `approveOffer`/`declineOffer`.
+
+**Build note:** the new `SECURITY DEFINER` functions are very likely to
+hit the same auto-mode block the `submit_offer_inquiry` redefinition and
+the `plays` columns migration both hit (see
+`docs/db-schema-tracking-gaps.md`) -- that tooling treats any
+`SECURITY DEFINER` function change as sensitive regardless of size, so
+plan on Greg applying this one directly too.
+
+Manual entry by Greg on the Play detail page's Settlement section remains
+the fallback either way -- same fields, same UI, whether the artist's
+form submission fills them or Greg types them in directly, matching the
+"never block on something outside Ridge's control" principle already
+established for the venue side below.
 
 **Delivery: automatic email via Resend, modeled on `sendApprovalEmail`
 (2026-10-31, per Greg).** Same provider and conventions already in
@@ -276,9 +338,9 @@ haven't had a settlement email sent yet, and send one per play. Needs its
 own guard column, `settlement_email_sent_at`, mirroring
 `approval_email_sent_at` exactly, so the cron never re-sends on a later
 run. A new `settlement_token` column mirrors `approval_token`;
-`settlement_submitted_at` (set the moment the public form is submitted)
-is the same event this section already names as the auto-invoice
-trigger.
+`settlement_submitted_at` (set the moment the settlement link is
+submitted) is the same event this section already names as the
+auto-invoice trigger.
 
 **No Action List item for this (2026-10-31, supersedes the earlier draft
 of this section).** The original draft proposed an auto Action List
@@ -426,7 +488,7 @@ sandbox, nothing to do with this change).
 
 Weather is manual-entry only for now, noted as such in the UI -- the
 auto-fetch from Open-Meteo is still a later pass. Still queued after this:
-the public `/settle/[token]` form, the Resend email
+the token-scoped `/settle/[token]` settlement link, the Resend email
 (`sendSettlementRequestEmail`), and the cron hook into
 `advance-plays-to-played` (all of section 4 above under "Collection
 mechanism" / "Delivery" / "Trigger point").
@@ -434,9 +496,9 @@ mechanism" / "Delivery" / "Trigger point").
 | Column | Purpose |
 |---|---|
 | `walkout_amount` | Already named in section 4 -- artist-reported overage beyond the guarantee. |
-| `settlement_token` | Public token for the `/settle/[token]` form, mirrors `plays.approval_token`. |
+| `settlement_token` | Unguessable `crypto.randomUUID()` for the `/settle/[token]` link, mirrors `plays.approval_token`. Not a "public" credential -- see the access-control note above. |
 | `settlement_email_sent_at` | Guards the settlement-email cron hook against re-sending, mirrors `approval_email_sent_at`. |
-| `settlement_submitted_at` | Set when the public form is submitted (or Greg finishes manual entry) -- the auto-invoice trigger event. |
+| `settlement_submitted_at` | Set when the settlement link is submitted (or Greg finishes manual entry) -- the auto-invoice trigger event. |
 | `settlement_expenses` | jsonb, repeatable label/amount/note rows, same shape convention as `actual_ticket_tiers`. |
 | `weather_summary` | Auto-fetched, no manual entry -- see section 4. |
 | `other_events_in_town` | Booking-intelligence field from the unified post-show report. |
