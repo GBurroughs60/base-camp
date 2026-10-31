@@ -29,6 +29,12 @@ plan; see section 2.
   reinventing. If this plan ever needs to hand data to that side (e.g. an
   income category for a paid invoice), that's a future bridge, not
   something this plan builds.
+  **Amended 2026-10-31:** the settlement-collection form (section 4) also
+  captures a small set of non-financial, booking-intelligence fields
+  (other events in town, promoter notes, a rebook recommendation)
+  alongside the money-in data -- a deliberate, scoped exception to keep
+  post-show data collection to one touchpoint, not a broadening of this
+  plan's financial scope.
 - **Active pipeline only, not the historical backlog.** `plays` already
   has `deposit_amount`, `deposit_due_date`, `deposit_status`, and
   `final_payment_received` -- live, editable fields on the Play detail
@@ -128,7 +134,7 @@ setup is comparatively small and can happen in parallel at Greg's own
 pace; the two threads only need to converge once it's time to actually
 wire up `createInvoice`.
 
-## 4. Settlement data collection (2026-10-26)
+## 4. Settlement data collection (2026-10-26, mechanism settled 2026-10-31)
 
 **Trigger: the existing `played` auto-advance, nothing new.** A play
 already flips from `confirmed` to `played` the day after `show_date`
@@ -164,6 +170,18 @@ assuming anything was missing:
   ships); leave the column and its historical data alone, same
   active-pipeline-only convention as section 2.
 
+**Naming, settled against a real example (2026-10-31).** A real historical
+artist show report (a PDF Greg has used for years) surfaced a naming
+collision worth recording: that report's "Net Walkaway" field is gross
+pay *minus* day-of expenses (a deduction), not the same concept as
+Walkout at all (overage *above* the guarantee). The new intake form
+(below) avoids that ambiguity by never asking for one combined number: it
+shows the artist their **Guarantee** back (Base Camp already knows it,
+read-only) and asks only for the delta, framed to the artist as
+"Guarantee plus back end" -- which writes directly and unambiguously into
+`walkout_amount`. `gross_merch_sales` stays a single total; per Greg, no
+hard/soft split, not worth the added structure.
+
 **Manual entry UI.** A new "Settlement" section on the Play detail page,
 same pattern as the existing Deposit section, but structured fields from
 the start rather than the free-text mess `deposit_status`/
@@ -172,6 +190,93 @@ already-existing `attendance`/`gross_merch_sales`/ticket-tier actuals
 surfaced in the same place rather than scattered. No OCR/auto-extraction
 of the artist's or venue's paperwork -- Greg types in whatever the
 paperwork says, same as every other manually-entered field in this app.
+This section is also where a manual submission lands when the artist
+doesn't use the form below (see "Collection mechanism").
+
+**One unified post-show report, not split by concern (2026-10-31, per
+Greg).** Collected in a single form, single moment, single touchpoint --
+not a separate financial ask and a separate qualitative one. Alongside
+the settlement fields that feed the invoice (`walkout_amount`,
+`gross_merch_sales`, `attendance`, `tickets_sold`), the same form also
+collects booking-intelligence fields that don't feed any financial number
+but matter for rebooking decisions: "other events in town," promoter-
+specific comments (distinct from general show notes, which already have
+a home in `plays.notes`), and "would you play this venue again?" ("Other
+acts on the bill" already has a home too -- `plays.other_artists_on_bill`,
+existing field, nothing new needed there.) See section 2's amendment for
+why this is in scope here. Reasoning: realistically one shot at the
+artist's attention right after a show -- asking twice (once for Ridge's
+money, once for Ridge's own judgment) means asking twice for something
+naturally answered once.
+
+**New: an optional, structured Expenses tracker.** Day-of expenses the
+artist paid out of pocket (sound engineer tips, etc. -- what the old
+PDF's "Net Walkaway" was actually capturing) get their own repeatable
+list, same interaction pattern as the existing ticket-tier editor
+(`src/lib/ticketTiers.ts` / `TicketTierEditor.tsx`): a "+" to add a row,
+each row an expense label, an amount, and an optional note. New jsonb
+column, `settlement_expenses`, same shape convention as
+`actual_ticket_tiers` (there: label/price/quantity; here:
+label/amount/note). Purely informational -- never feeds the commission
+formula (section 2), which only ever adds guarantee + walkout + merch.
+
+**New: weather, fully automated, zero data entry.** Fetched from
+[Open-Meteo](https://open-meteo.com/)'s free historical-weather API (no
+key required -- confirmed current as of this conversation) using the
+play's own `show_date`/`city`/`state`, no artist or Greg involvement at
+all. New column, `weather_summary`.
+
+**Collection mechanism: a public token-scoped form, modeled directly on
+`/approve/[token]`.** New route, `/settle/[token]` -- same pattern as the
+existing offer-approval page: public, no Base Camp login, pre-filled with
+everything Base Camp already knows (venue, date, Guarantee) so the artist
+only fills in what's new. Manual entry by Greg on the Play detail page's
+Settlement section remains the fallback either way -- same fields, same
+UI, whether the artist's form submission fills them or Greg types them in
+directly, matching the "never block on something outside Ridge's
+control" principle already established for the venue side below.
+
+**Delivery: automatic email via Resend, modeled on `sendApprovalEmail`
+(2026-10-31, per Greg).** Same provider and conventions already in
+`src/lib/approvalEmail.ts` (escapeHtml/formatMoney helpers, try/catch-
+and-log-never-throw via `email_notification_failures`, a graceful no-op
+if `RESEND_API_KEY` isn't set). New function, e.g.
+`sendSettlementRequestEmail`. Recipients deliberately flip the approval
+email's convention: there, manager and artist are equal primary
+recipients and the agent is cc'd; here, per Greg, **the artist is who's
+expected to actually fill this out** (they were at the show), so
+artist-role contacts (`contact_artists.role = 'artist'`) are the primary
+`to`, with manager-role contacts (`role = 'manager'`) cc'd. Same
+fallback-to-Greg convention as the approval email when no artist contact
+with an email is on file.
+
+**Trigger point is the cron, not a UI field edit -- different from the
+approval email (2026-10-31, confirmed by reading the code).** The
+approval email fires from a generic field-update handler in
+`src/app/actions/records.ts`, triggered the moment someone changes
+`plays.status` to `pending_approval` through the UI. `played` doesn't
+work that way -- it's set in bulk, daily, by the deterministic
+`advance_confirmed_plays_to_played()` Postgres function via the
+`/api/cron/advance-plays-to-played` route, with no per-play UI action
+involved. So the settlement email has to hook into that same cron route:
+after the RPC runs, look up which plays just landed in `played` and
+haven't had a settlement email sent yet, and send one per play. Needs its
+own guard column, `settlement_email_sent_at`, mirroring
+`approval_email_sent_at` exactly, so the cron never re-sends on a later
+run. A new `settlement_token` column mirrors `approval_token`;
+`settlement_submitted_at` (set the moment the public form is submitted)
+is the same event this section already names as the auto-invoice
+trigger.
+
+**No Action List item for this (2026-10-31, supersedes the earlier draft
+of this section).** The original draft proposed an auto Action List
+nudge ("Collect settlement -- [Artist] at [Venue]") the moment a play hit
+`played`. Per Greg, skip it -- the automatic email above *is* the
+mechanism now, so there's nothing left for Greg to be nudged to go do.
+(The near-term-vs-permanent caution from the original 2026-10-27 draft
+doesn't apply to this specific nudge anymore, since there isn't one --
+though the same caution would still hold for any *other* future
+ops/accounting follow-up work that might want its own queue someday.)
 
 **Venue-side collection: a `/book`-style form, with manual entry always
 accepted too.** Per Greg: attempt to collect venue-reported numbers
@@ -192,23 +297,6 @@ reported numbers still get stored when they do come in (useful as a
 cross-check against what the artist reports), but never block anything.
 Exactly how a discrepancy between artist- and venue-reported numbers gets
 surfaced, if at all, isn't designed yet -- see section 9.
-
-**Reuses the Action List, no second reminder system.** The moment a play
-hits `played`, an auto Action List item appears ("Collect settlement --
-[Artist] at [Venue]"). It clears once the Settlement section is filled
-in, which is the same event that triggers the auto-invoice -- one
-mechanism doing both the nudge and the unblock, not two parallel systems.
-
-**Near-term home only (2026-10-27, per Greg).** The Action List is today's
-right answer because it already exists and Greg is the only one working
-it -- but he flagged that this is a near-term choice, not a permanent
-architectural one. As Ridge grows and takes on roles beyond Greg himself
-(a dedicated ops/accounting function, say), "collect settlement" nudges
-may belong in a different place entirely -- their own queue, scoped to
-whoever actually owns that job, rather than mixed into the same list as
-outreach-pitch nudges and one-off tasks. Not designed, and nothing to
-build now; flagged here so the Action List reuse is understood as "good
-enough for today" rather than quietly assumed permanent.
 
 ## 5. Revenue dashboard: Booked / Earned / Collected (2026-10-26, renamed 2026-10-27)
 
@@ -299,6 +387,23 @@ lifecycles, even though the integration pattern is identical):
 | `provider_events` | jsonb, raw webhook payloads, same audit-trail reasoning as `contract_signatures.provider_events`. |
 | `created_at` / `updated_at` | Standard. |
 
+**New `plays` columns for section 4 (draft, 2026-10-31).** Listed here so
+the full data model is in one place; the exact migration still needs its
+own separate approval before anything gets built, same as every schema
+change in this plan.
+
+| Column | Purpose |
+|---|---|
+| `walkout_amount` | Already named in section 4 -- artist-reported overage beyond the guarantee. |
+| `settlement_token` | Public token for the `/settle/[token]` form, mirrors `plays.approval_token`. |
+| `settlement_email_sent_at` | Guards the settlement-email cron hook against re-sending, mirrors `approval_email_sent_at`. |
+| `settlement_submitted_at` | Set when the public form is submitted (or Greg finishes manual entry) -- the auto-invoice trigger event. |
+| `settlement_expenses` | jsonb, repeatable label/amount/note rows, same shape convention as `actual_ticket_tiers`. |
+| `weather_summary` | Auto-fetched, no manual entry -- see section 4. |
+| `other_events_in_town` | Booking-intelligence field from the unified post-show report. |
+| `promoter_notes` | Distinct from general `plays.notes` -- see section 4. |
+| `would_play_again` | Rebook recommendation -- see section 9 for where this should actually live. |
+
 **Resolved (see section 5): `plays.status` does get an automatic
 tie-in, but only one.** `settled` is triggered automatically the moment
 `paid_at` gets set -- the one Kanban change in this whole plan, matching
@@ -372,6 +477,12 @@ a new file and flipping a config value, not touching call sites.
 - Whether `commission_invoices.amount` should be editable/adjustable
   after creation (e.g. Greg catches an error before the invoice is sent)
   or should always exactly mirror the formula's output once computed.
+- Where "would you play this venue again?" actually lives (2026-10-31).
+  It's captured per-play on the settlement form (section 4), but is a
+  per-play answer the right home for it, or should a "yes"/"no" also
+  update something persistent on the venue/company record -- which is
+  presumably where an actual future rebooking decision gets made, not by
+  paging back through past plays? Not designed.
 
 ## Keeping this in sync
 
