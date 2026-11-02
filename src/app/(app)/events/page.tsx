@@ -163,10 +163,7 @@ export default async function EventsPage({
   if (activeVisibility === "public") query = query.eq("is_public", true);
   if (activeVisibility === "private") query = query.eq("is_public", false);
   if (activeStatus === "archived") query = query.eq("archived", true);
-  else if (activeStatus === "active" || activeStatus === "needs-date") {
-    // "needs-date" is scoped to the live set too. Discovery-sourced rows
-    // still pending their state's sample review stay hidden here, same
-    // treatment as archived -- see events.pending_state_review.
+  else if (activeStatus === "active") {
     query = query.eq("archived", false).eq("pending_state_review", false);
   } else if (activeStatus === "dedup-check") {
     // Surfaces flagged near-misses regardless of review state, so nothing
@@ -184,32 +181,101 @@ export default async function EventsPage({
 
   // "Needs Date" -- events with nothing live for the catch-up/standing-
   // cadence engines to act on: no occurrence row at all, or every one on
-  // file is null or already in the past. Same definition as the
-  // events_needing_attention view (see docs/outreach-engine-plan.md) --
-  // expressed here as a plain NOT IN against a small id list rather than
-  // querying the view directly, since PostgREST's relationship embedding
-  // (companies(...), contacts(...)) isn't guaranteed to follow through a
-  // view the way it does the base table. Private events are excluded --
-  // verified every private "needs date" row is a historical one-off
-  // booking that already has a play on file and will never need a
-  // projected future date (see the view's own migration).
-  if (activeStatus === "needs-date") {
-    query = query.eq("is_public", true);
-    const { data: liveOccurrences } = await supabase
-      .from("event_occurrences")
-      .select("event_id")
-      .not("occurrence_date", "is", null)
-      .gte("occurrence_date", new Date().toISOString().slice(0, 10));
-    const liveEventIds = Array.from(
-      new Set((liveOccurrences ?? []).map((o) => o.event_id as string))
-    );
-    if (liveEventIds.length > 0) {
-      query = query.not("id", "in", `(${liveEventIds.join(",")})`);
-    }
-  }
+  // file is null or already in the past. Queries events_needing_attention
+  // directly (see docs/outreach-engine-plan.md) instead of re-deriving the
+  // same definition against the base `events` table with a NOT IN list of
+  // every future-dated occurrence's event_id. That list used to run
+  // ~1,000 UUIDs long -- ~37KB of raw text, comfortably past the
+  // URL-length ceiling PostgREST's own edge sits behind -- and the old
+  // code swallowed that failure outright (`const { data } = await query`
+  // with no error check), silently rendering "No events yet." even though
+  // the real backlog was ~824 rows. Fixed 2026-11-02 after Greg reported
+  // the symptom; see docs/db-schema-tracking-gaps.md's sibling notes for
+  // the general pattern of this class of bug.
+  //
+  // The view already guarantees is_public = true, archived = false, and
+  // pending_state_review = false for every row it returns (see its own
+  // definition), so this status ignores the visibility pill entirely --
+  // same effective behavior as the old `.eq("is_public", true)` override,
+  // just now structural rather than an extra filter. A "Private" + "Needs
+  // Date" combination still shows nothing, which is correct: no private
+  // event has ever actually needed this (every private "needs date" row
+  // is a historical one-off booking that already has a play on file and
+  // will never need a projected future date -- see the view's own
+  // migration).
+  //
+  // PostgREST relationship embedding (companies(...), contacts(...)) isn't
+  // guaranteed to follow through a view the way it does the base table, so
+  // venue/contact names are resolved the same two-hop way the weekly
+  // events-needing-attention digest cron already does it (see
+  // src/app/api/cron/events-needing-attention/route.ts). dedup_uncertain/
+  // refresh_flagged/catchup_drafted badges are deliberately not carried
+  // through here either, same simplification that digest cron already
+  // made for this same view (it only ever shows id/name/city/state/venue)
+  // -- those are a different lens with their own pills (Needs Dedup Check,
+  // Needs Refresh Check, Catch-Up Drafted), not this one.
+  let events: EventRow[];
+  let queryError: string | null = null;
 
-  const { data } = await query;
-  const events = (data ?? []) as unknown as EventRow[];
+  if (activeStatus === "needs-date") {
+    const { data: needsAttention, error } = await supabase
+      .from("events_needing_attention")
+      .select("id, name, city, state, country, venue_id, primary_contact_id")
+      .order("name");
+
+    if (error) {
+      console.error("events/page: events_needing_attention query failed", error);
+      queryError = error.message;
+      events = [];
+    } else {
+      const rows = needsAttention ?? [];
+      const venueIds = Array.from(
+        new Set(rows.map((r) => r.venue_id as string | null).filter((v): v is string => !!v))
+      );
+      const contactIds = Array.from(
+        new Set(rows.map((r) => r.primary_contact_id as string | null).filter((v): v is string => !!v))
+      );
+
+      const [{ data: venues }, { data: contacts }] = await Promise.all([
+        venueIds.length
+          ? supabase.from("companies").select("id, name").in("id", venueIds)
+          : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+        contactIds.length
+          ? supabase.from("contacts").select("id, full_name").in("id", contactIds)
+          : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+      ]);
+      const venueNameById = new Map((venues ?? []).map((v) => [v.id as string, v.name as string]));
+      const contactNameById = new Map((contacts ?? []).map((c) => [c.id as string, c.full_name as string]));
+
+      events = rows.map((r) => {
+        const venueId = r.venue_id as string | null;
+        const contactId = r.primary_contact_id as string | null;
+        return {
+          id: r.id as string,
+          name: r.name as string,
+          is_public: true,
+          city: r.city as string | null,
+          state: r.state as string | null,
+          country: r.country as string | null,
+          archived: false,
+          pending_state_review: false,
+          dedup_uncertain: false,
+          dedup_match_id: null,
+          refresh_flagged: false,
+          catchup_drafted: false,
+          companies: venueId ? { id: venueId, name: venueNameById.get(venueId) ?? "Unknown venue" } : null,
+          contacts: contactId ? { id: contactId, full_name: contactNameById.get(contactId) ?? "Unknown contact" } : null,
+        };
+      });
+    }
+  } else {
+    const { data, error } = await query;
+    if (error) {
+      console.error("events/page: events query failed", error);
+      queryError = error.message;
+    }
+    events = (data ?? []) as unknown as EventRow[];
+  }
 
   // Matched events aren't a declared FK the DataRow embed can follow
   // (dedup_match_id is a plain uuid, same reasoning as candidates.
@@ -286,6 +352,13 @@ export default async function EventsPage({
       <p className="text-black/60 dark:text-white/60 mb-4">
         {events.length} records
       </p>
+
+      {queryError && (
+        <div className="mb-4 rounded-lg border border-red-600/20 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-800 dark:text-red-300">
+          Couldn&apos;t load this list ({queryError}) -- this is a real error, not an empty backlog.
+          Reload, or check the server logs if it persists.
+        </div>
+      )}
 
       <DataTable
         rows={events.map((e) => toRow(e, dedupMatchName))}

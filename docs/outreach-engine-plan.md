@@ -685,6 +685,76 @@ address but no actual person — that's organizer-level information, not a
 contact, and previously had nowhere structured to live. Optional; a
 company can be created and fully populated without one.
 
+**Needs Date pill bug, and a third resolver pass (2026-11-02).** The
+backlog had grown back to 824 (digest-reported), and the Events page's
+"Needs Date" pill was rendering "No events yet." despite that — a real
+regression, not an empty backlog. Root cause: the pill's query built a
+`NOT IN (...)` filter out of every future-dated `event_occurrences.event_id`
+(968 distinct ids at the time, ~37KB of raw UUID text) against the base
+`events` table, instead of querying `events_needing_attention` directly —
+comfortably past the URL-length ceiling PostgREST's own edge sits behind
+— and the page read the result as `const { data } = await query` with no
+`error` check, so the failure rendered as an empty list rather than an
+error. Fixed by querying the view directly (fixed-size query regardless
+of backlog size, so this class of bug can't recur the same way) and
+resolving venue/contact names the same two-hop way the weekly
+events-needing-attention digest cron already did it; added a real error
+banner so a future failure is visibly a failure, not indistinguishable
+from zero backlog. See `src/app/(app)/events/page.tsx`.
+
+While rebuilding the pill, re-ran the real resolver (`npx tsx
+scripts/resolve-date-signal.ts`) against the live 824-row backlog as a
+dry run before changing anything: 318 matched (92 confirmed_date, 100
+confirmed_pattern, 126 estimated) — an exact match to Greg's own dry run,
+confirming no drift in the resolver itself since the Oct 19 pass.
+
+Three more changes to `dateSignalExtraction.ts`'s name-cue step, all
+estimated-confidence, all per Greg (2026-11-02):
+
+1. **Widened the "summer" season word** from meteorological Jun-Aug to
+   May-Oct. Deliberate — a community event literally named "summer" more
+   realistically runs the full outdoor season. Left every other season
+   word (spring/fall/winter/harvest/etc.) at its ordinary meteorological
+   range; not a general "widen everything" pass.
+2. **Ordinal-weekday-in-name's season default** ("3rd Friday", "First
+   Friday") changed from year-round to the same assumed May-Oct window.
+   This cue already existed (added in the Sept 28 pass above) and had
+   already resolved 3 backlog events before this change — not new
+   coverage, just a tighter default on events already being resolved.
+3. **New: a standing community concert-series name cue** ("Music on
+   Main", "Concerts in the Park", "Front Porch Concerts", "<Venue>
+   Concert Series") with no month/season/day stated anywhere — anchored
+   to May 1st as an estimated placeholder, same "assume May-Oct unless
+   stated otherwise" steer as #1 and #2. Deliberately broad (any
+   "concert"/"music" mention in the name) rather than a fixed phrase
+   list, gated behind four exclusions: venue-programming phrasing ("Live
+   Music at <venue>", "Live Concerts"/"Live Performances"), private/
+   one-off life events (party, wedding, fundraiser, etc.), one-off
+   `"...Festival"`-named events (a festival is a single date, not a
+   standing series), and award shows/charity-benefit concerts (added
+   after "Carolina Country Music Award" and "Lake Wylie Children's
+   Charity Concert" false-positived during the dry run). Indoor/
+   year-round-sounding venues that still read as a "concert series" by
+   name (The Kate, District Music Hall, Palace Danbury, Godfrey Daniels,
+   Candlelight at Bijou) are deliberately *not* excluded — Greg's call,
+   May-Oct is kept as the estimate and these are flagged for a Refresh
+   glance rather than hand-filtered out of the cue. "3rd on Third" (an
+   ordinal tied to a street name, not a weekday) deliberately got no
+   bespoke rule — on the hand-resolution list instead.
+
+Re-running the resolver against the same 824-row backlog with all three
+changes: 391 matched (up from 318) — 73 newly resolved, all via the new
+concert-series cue (all `estimated`), plus 84 of the original 318 keeping
+their match but gaining a wider season window (81 from the "summer"
+widening, 3 from the ordinal-weekday-in-name default). Every one of the
+391 is reviewable before anything is written — see the backfill-write
+pass below, which is gated on a separate go-ahead.
+
+No test runner existed anywhere in this codebase before this pass;
+`vitest` was added (scoped to covering these name cues, not a general
+test-suite rollout) — `src/lib/dateSignalExtraction.test.ts`, run via
+`npm test`.
+
 ## 2a. Pivot (2026-10-17): Catch-up & Standing Cadence replaced by an in-app Action List
 
 **Why.** The Gmail-draft design above worked (the crawl-stage build did

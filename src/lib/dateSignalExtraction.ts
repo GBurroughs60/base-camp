@@ -107,9 +107,17 @@ const MONTH_PATTERN_ALL = [...Object.keys(MONTH_WORDS), ...Object.keys(MONTH_ABB
 // reliably means "fall"); flag for Greg if he wants it added anyway.
 // Refresh corrects the real window once the source's actual pattern is
 // checked; this is only ever a starting anchor, never presented as fact.
+//
+// "summer" widened from meteorological Jun-Aug to May-Oct per Greg
+// (2026-11-02), a deliberate decision matching the May-Oct assumption the
+// new estimated name cues below use (findSeriesName, and the
+// ordinal-weekday-in-name fallback) -- a community event genuinely named
+// "summer" is realistically more likely to run the full outdoor season
+// than to stop dead at the end of August. Every other season word is
+// left at its ordinary meteorological range.
 const SEASON_WORDS: Record<string, { start: number; end: number }> = {
   spring: { start: 3, end: 5 },
-  summer: { start: 6, end: 8 },
+  summer: { start: 5, end: 10 },
   fall: { start: 9, end: 11 },
   autumn: { start: 9, end: 11 },
   winter: { start: 12, end: 2 },
@@ -118,6 +126,69 @@ const SEASON_WORDS: Record<string, { start: number; end: number }> = {
   bloom: { start: 3, end: 5 },
   blossom: { start: 3, end: 5 },
 };
+
+// The two new estimated-tier name cues added 2026-11-02 (ordinal-weekday-
+// in-name's season default, and the community concert-series placeholder
+// below) both assume this same window when nothing else states a season --
+// named once so both stay in sync if it's ever revisited.
+const ASSUMED_SEASON_START_MONTH = 5;
+const ASSUMED_SEASON_END_MONTH = 10;
+
+// Names that describe ongoing programming AT a venue rather than a real
+// standing community series -- "Live Music at The Brass Rail" (or "Live
+// Concerts"/"Live Performances" phrased the same way) describes a venue's
+// general booking calendar, not a dateable recurring event in its own
+// right, and never gets a date from name cues no matter how it's phrased.
+const VENUE_PROGRAMMING_NAME_RE = /\blive\s+music\s+at\b|\blive\s+(concerts?|performances?)\b/i;
+
+// Private/one-off life-event names -- never a public recurring series,
+// regardless of how festival-like the rest of the name sounds.
+const PRIVATE_EVENT_NAME_RE =
+  /\b(party|wedding|reception|shower|quincea\w*|funeral|reunion|anniversary|birthday|retirement|graduation|bachelor(?:ette)?|fundraiser)\b/i;
+
+// A name containing "Festival" is a single multi-day annual event, not a
+// standing May-Oct weekly/monthly series -- excluded from the
+// concert-series cue below for that reason (it may still resolve via an
+// earlier, more specific cue -- a named holiday, a stated month -- just
+// not this one).
+const ONE_OFF_FESTIVAL_NAME_RE = /\bfestival\b/i;
+
+// Award shows and charity/benefit concerts are real events, but neither
+// is a standing community concert series either -- an award show is
+// (usually) a single annual ceremony, and a charity benefit concert's
+// actual date is set by the organizing cause each year, not by a season
+// window. Added per Greg (2026-11-02) after "Carolina Country Music
+// Award" and "Lake Wylie Children's Charity Concert" surfaced as
+// false-positive matches during the Phase 1 dry run of this cue.
+const AWARD_OR_CHARITY_NAME_RE = /\baward(?:s)?\b|\bcharity\b|\bbenefit\b/i;
+
+function isExcludedFromNameCues(name: string): boolean {
+  return (
+    VENUE_PROGRAMMING_NAME_RE.test(name) ||
+    PRIVATE_EVENT_NAME_RE.test(name) ||
+    ONE_OFF_FESTIVAL_NAME_RE.test(name) ||
+    AWARD_OR_CHARITY_NAME_RE.test(name)
+  );
+}
+
+// A standing community concert series named with no month/season/day cue
+// at all ("Music on Main", "Concerts in the Park", "Front Porch Concerts",
+// "Music Under the Stars", "<Venue> Concert Series", "<Town> Music
+// Series") -- genuinely common small-town event naming, and distinct from
+// an award show, a one-off festival, or a venue's general live-music
+// booking calendar (all excluded above). Deliberately broad (any mention
+// of "concert(s)"/"music" once the exclusions above are cleared) rather
+// than a fixed list of exact phrasings -- real names vary too much to
+// enumerate, and every match this produces is estimated, month-only, and
+// lands on the Needs Date reviewer's desk before a backfill ever writes
+// it (see docs/outreach-engine-plan.md and scripts/resolve-date-signal.ts
+// callers), so a loose net here is corrected by a human, not silently
+// trusted.
+const SERIES_NAME_RE = /\b(concert|concerts|music)\b/i;
+
+function isSeriesName(name: string): boolean {
+  return !isExcludedFromNameCues(name) && SERIES_NAME_RE.test(name);
+}
 
 // Fixed-date holidays common in community festival names, where the event
 // itself genuinely tends to land on or very near that exact day (a "4th of
@@ -468,9 +539,16 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
   const ordinalInName = findOrdinalWeekday(eventName);
   if (ordinalInName) {
     return {
-      rule: { frequency: "monthly", weekday: ordinalInName.weekday, ordinal: ordinalInName.ordinal, seasonStartMonth: 1, seasonEndMonth: 12 },
+      rule: {
+        frequency: "monthly",
+        weekday: ordinalInName.weekday,
+        ordinal: ordinalInName.ordinal,
+        seasonStartMonth: ASSUMED_SEASON_START_MONTH,
+        seasonEndMonth: ASSUMED_SEASON_END_MONTH,
+      },
       confidence: "estimated",
-      explanation: "Ordinal-weekday pattern embedded in the event name itself (e.g. \"Third Saturday\"), season not stated anywhere -- defaulted to year-round.",
+      explanation:
+        "Ordinal-weekday pattern embedded in the event name itself (e.g. \"Third Saturday\"), season not stated anywhere -- assumed May-October (not stated, a standing estimate pending Refresh confirmation), not year-round.",
     };
   }
 
@@ -509,6 +587,26 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
       rule: { frequency: "annual-date", month: seasonInName.start, day: 1 },
       confidence: "estimated",
       explanation: `Season named in the event's own title ("${seasonInName.word}") with no other date signal -- anchored to the 1st of the season's first month as a placeholder pending Refresh confirmation.`,
+    };
+  }
+
+  // Last resort: a standing community concert series named with no
+  // month, season, or day cue anywhere ("Music on Main", "Concerts in the
+  // Park", "Front Porch Concerts", "<Venue> Concert Series"). Added per
+  // Greg (2026-11-02). Anchored to May 1st -- the start of the assumed
+  // May-Oct season, same assumption the ordinal-weekday-in-name cue above
+  // now uses -- rather than year-round, per Greg's standing steer: these
+  // estimated name cues assume May-Oct unless the event's own notes or
+  // name say otherwise. isSeriesName's exclusions (venue-programming
+  // "Live Music at <venue>" phrasing, private/one-off life events, named
+  // festivals, award shows and charity/benefit concerts) all run first --
+  // none of those are a real standing May-Oct series.
+  if (isSeriesName(eventName)) {
+    return {
+      rule: { frequency: "annual-date", month: ASSUMED_SEASON_START_MONTH, day: 1 },
+      confidence: "estimated",
+      explanation:
+        "Event name reads as a standing community concert series (\"concert\"/\"music\" in the title) with no month, season, or day stated anywhere -- assumed May-October season, anchored to May 1st as a placeholder pending Refresh confirmation of the actual date.",
     };
   }
 
