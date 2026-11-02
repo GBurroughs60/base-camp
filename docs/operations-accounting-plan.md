@@ -661,6 +661,84 @@ Booked/Earned/Collected read off this table's own lifecycle, not off
 a new Kanban stage (an earlier draft of this conversation proposed one;
 rejected -- see section 5 for why).
 
+**Build status (2026-11-02).** Greg authorized starting the build once
+he signed up for QBO's lowest tier ("We can always bring artist specific
+reporting into basecamp at a later date if desired" -- deferring the
+Classes/Locations question from section 3 for good, not just for now).
+Built: `src/lib/invoicing/types.ts` (the `InvoicingProvider` interface,
+section 7 below) and `src/lib/invoicing/quickbooks.ts` (the full
+`QuickBooksProvider` -- OAuth2 token lifecycle with auto-refresh,
+Customer find-or-create, the one-time Item lookup, `createInvoice`/
+`getInvoice`, webhook signature verification and event parsing), picked
+via `src/lib/invoicing/index.ts`/`INVOICING_PROVIDER`, same pattern as
+`getSignatureProvider()`. `src/app/api/webhooks/quickbooks/route.ts` --
+mirrors the SignWell webhook's "notification in, fetch real state via
+getInvoice, update the local row" shape; resolves `invoice_changed`
+events straight to a `commission_invoices` row by `provider_invoice_id`,
+and for `payment_received` events (which carry a Payment id, not an
+Invoice id -- resolving that precisely needs a further `GET
+/payment/{id}` call this hasn't been built/tested against a real account
+yet) re-checks every currently-`sent` invoice instead, which is correct
+and cheap at Ridge's actual volume even if not maximally precise. Sets
+`plays.status = 'settled'` the moment `paid_at` gets set, guarded to only
+fire from `'played'` (a no-op, not an error, on a redelivered
+notification), per the "Resolved" note above.
+
+The OAuth connect flow: `/api/quickbooks/connect` (redirects to Intuit's
+consent screen with a CSRF `state` cookie) and `/api/quickbooks/callback`
+(validates state, exchanges the code, replaces whatever's in
+`quickbooks_connection` with the new token pair -- a fresh authorization
+always means "use this account from now on," so this replaces rather than
+merges). No middleware exemption needed (unlike the SignWell/cron
+routes) -- both routes are only ever reached by a logged-in Base Camp
+user clicking through from Settings, and the session cookie survives the
+round trip through Intuit's redirect, so `src/lib/supabase/middleware.ts`
+never sees `!user` here the way it does for the truly sessionless
+webhook/cron callers.
+
+A new Settings > QuickBooks page
+(`src/app/(app)/settings/quickbooks/page.tsx`, linked from `Nav.tsx`'s
+`adminLinks` alongside Candidates/Revenue) shows connection status and a
+Connect/Reconnect button. `quickbooks_connection` deliberately carries
+**zero RLS policies** (enabled, no policy -- denies every role except the
+service role) since its rows are live OAuth credentials, equivalent to an
+API key. The one narrow exception: `src/app/actions/quickbooks.ts`
+(`getQuickBooksConnectionStatus`) reads it via the service-role client but
+selects only `realm_id`/`connected_at`/`access_token_expires_at` -- never
+the token columns -- so the Settings page can show "connected or not"
+with no path for a token to leak into the response even by accident.
+
+**Resolves section 9's first open item:** Customer creation is automatic
+(first invoice triggers `findOrCreateCustomer`), cached permanently via
+the new `artists.qbo_customer_id` column so no artist risks a duplicate
+QBO Customer across invoices. The Item (`"Booking Commission"` by
+default, `QUICKBOOKS_COMMISSION_ITEM_NAME` to override) is deliberately
+**not** auto-created the same way -- that's a chart-of-accounts decision
+Greg makes once in QBO itself; `createInvoice` throws a clear error if the
+named Item doesn't exist yet rather than guessing one into being.
+
+The `add_quickbooks_invoicing_foundation` migration (all three schema
+pieces above) hit the same auto-mode production-deploy block every prior
+plain `ALTER TABLE`/`CREATE TABLE` in this project has hit -- logged in
+`docs/db-schema-tracking-gaps.md` with the full replay SQL, same as the
+settlement-table gaps above. It does **not** need to wait for anything
+QBO-side; it's pure Base Camp schema and Greg can apply it whenever.
+
+**Still not built:** the actual trigger that creates a
+`commission_invoices` row and calls `createInvoice` in the first place
+(e.g. a cron analogous to `send-settlement-reminders`, firing once
+`settlement_submitted_at` is set) -- deliberately not built blind, next
+once Greg has real sandbox credentials to test `createInvoice`/`getInvoice`
+against. Also still needed from Greg, external to this codebase:
+register a developer app at developer.intuit.com (once the QBO
+subscription is active) and get a sandbox company; set
+`QUICKBOOKS_CLIENT_ID`/`QUICKBOOKS_CLIENT_SECRET`/
+`QUICKBOOKS_WEBHOOK_VERIFIER_TOKEN` as Vercel env vars; create the
+"Booking Commission" Item in QBO itself; then use Settings > QuickBooks to
+click Connect. `tsc`/`eslint`/`next build` all clean (same unrelated
+`/login` prerender failure from missing Supabase env vars in this sandbox
+as every prior pass).
+
 ## 7. Provider interface (draft)
 
 A `QuickBooksProvider` (or similarly named) interface in a new
@@ -710,8 +788,10 @@ a new file and flipping a config value, not touching call sites.
 
 ## 9. Still open, to resolve during build
 
-- Does creating a QBO Customer for an artist happen automatically (first
-  invoice triggers it) or does Greg set artists up in QBO by hand first?
+- ~~Does creating a QBO Customer for an artist happen automatically (first
+  invoice triggers it) or does Greg set artists up in QBO by hand
+  first?~~ **Resolved (2026-11-02): automatic, cached via
+  `artists.qbo_customer_id` -- see section 6's Build status note.**
 - The exact venue-side settlement form -- a `/book`-style structured
   intake is the direction (section 4), but not designed: what fields,
   how it's delivered to the venue contact (emailed link? included in the

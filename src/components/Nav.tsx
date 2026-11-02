@@ -23,6 +23,7 @@ const links = [
 const adminLinks = [
   { href: "/candidates", label: "Candidates" },
   { href: "/revenue", label: "Revenue" },
+  { href: "/settings/quickbooks", label: "QuickBooks" },
 ];
 
 export default function Nav({

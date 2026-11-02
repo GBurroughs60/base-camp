@@ -497,3 +497,122 @@ it through the Supabase CLI (`supabase migration new add_settlement_reminder_tra
 from a machine with it set up, rather than the dashboard's SQL editor.
 Once applied, this is purely bookkeeping -- the live columns will already
 match.
+
+---
+
+## QuickBooks invoicing foundation -- new tables + `artists` column (2026-11-02)
+
+**What's untracked:** the entire QuickBooks/commission-invoicing data
+foundation, applied in one attempted migration
+(`add_quickbooks_invoicing_foundation`): a new `public.commission_invoices`
+table (one row per commission invoice, `kind` in `('booking',
+'management')`, `status` in `('draft', 'sent', 'paid', 'voided')`, a
+partial unique index guarding against two live (non-voided) invoices of
+the same kind for the same play, an index on `provider_invoice_id` for
+webhook lookups, and RLS matching `contract_signatures`' own policies --
+`using (true)` for authenticated, since this app has no per-row ownership
+model yet); a new `public.artists.qbo_customer_id` column (nullable text,
+caches the matched/created QBO Customer id per artist so `createInvoice`
+never risks creating a duplicate Customer); and a new
+`public.quickbooks_connection` singleton table holding the live OAuth2
+token pair, `realm_id`, and expiry timestamps -- see
+`docs/operations-accounting-plan.md` section 3/6-9 and `src/lib/invoicing/`
+for the full design (the `InvoicingProvider` interface, the
+`QuickBooksProvider` implementation, the webhook route, the OAuth
+connect/callback routes, and the Settings > QuickBooks page).
+
+**Why it's untracked:** `mcp__Supabase__apply_migration` was blocked by
+this session's auto-mode safety tooling (flagged as a production schema
+deploy) -- the same class of block every prior plain `ALTER
+TABLE`/`CREATE TABLE` in this project has hit (see the nine-column
+settlement migration entry above). No `SECURITY DEFINER` function is
+involved here at all. Greg needs to apply the SQL below directly via the
+Supabase SQL editor.
+
+**Symptom if this regresses:** every QBO-related code path 500s outright
+(missing tables/column) -- `getQuickBooksConnectionStatus` on the Settings
+page, the OAuth callback's token-pair insert, and (once built) whatever
+creates a `commission_invoices` row and calls `createInvoice`. Not silent
+data loss since nothing can be written without these tables existing in
+the first place, just a hard failure everywhere this touches.
+
+**The fix, if ever needed again** -- run as one transaction; `enable row
+level security` and the policy/index creates are idempotent in spirit but
+not re-runnable verbatim (no `IF NOT EXISTS` on the policies/indexes), so
+only re-run this against a database where none of it exists yet:
+
+```sql
+create table public.commission_invoices (
+  id uuid primary key default gen_random_uuid(),
+  play_id uuid not null references public.plays(id),
+  kind text not null check (kind in ('booking', 'management')),
+  artist_id uuid not null references public.artists(id),
+  amount numeric not null,
+  paid_amount numeric,
+  provider text not null default 'quickbooks',
+  provider_invoice_id text,
+  provider_customer_id text,
+  status text not null default 'draft' check (status in ('draft', 'sent', 'paid', 'voided')),
+  sent_at timestamptz,
+  paid_at timestamptz,
+  voided_at timestamptz,
+  provider_events jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index commission_invoices_one_live_per_play_kind
+  on public.commission_invoices (play_id, kind)
+  where status <> 'voided';
+
+create index commission_invoices_provider_invoice_id_idx
+  on public.commission_invoices (provider_invoice_id);
+
+alter table public.commission_invoices enable row level security;
+
+create policy "Authenticated users can view commission invoices"
+  on public.commission_invoices for select
+  to authenticated
+  using (true);
+
+create policy "Authenticated users can manage commission invoices"
+  on public.commission_invoices for all
+  to authenticated
+  using (true)
+  with check (true);
+
+alter table public.artists
+  add column qbo_customer_id text;
+
+create table public.quickbooks_connection (
+  id uuid primary key default gen_random_uuid(),
+  realm_id text not null,
+  access_token text not null,
+  access_token_expires_at timestamptz not null,
+  refresh_token text not null,
+  refresh_token_expires_at timestamptz not null,
+  connected_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.quickbooks_connection enable row level security;
+-- Deliberately zero policies. This table holds live OAuth credentials,
+-- equivalent in sensitivity to an API key -- not data any authenticated
+-- staff session should be able to select/update directly. RLS enabled
+-- with no policy at all denies every role except the service role (which
+-- bypasses RLS entirely), so only createServiceRoleClient() can read or
+-- write it -- see src/lib/invoicing/quickbooks.ts and
+-- src/app/actions/quickbooks.ts (which deliberately selects only
+-- realm_id/connected_at/access_token_expires_at, never the token columns,
+-- for the one place -- Settings > QuickBooks -- that needs to know
+-- *whether* a connection exists).
+```
+
+This migration does **not** need to wait for Greg's QuickBooks subscription
+to go live -- it's pure Base Camp schema and can be applied any time.
+
+**To close the gap properly:** same approach as the entries above -- run
+it through the Supabase CLI (`supabase migration new
+add_quickbooks_invoicing_foundation`) from a machine with it set up,
+rather than the dashboard's SQL editor. Once applied, this is purely
+bookkeeping -- the live tables/column will already match.
