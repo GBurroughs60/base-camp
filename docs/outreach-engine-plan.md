@@ -1803,6 +1803,49 @@ enough for a conversion rate to mean anything.
   volume in `outreach_log`/`action_items` for a conversion rate to be
   meaningful.
 
+**Needs Date backlog backfill, full pass (2026-11-02, same day).** With the
+pill bug and name-cue extension from the entry above live, Greg authorized
+("Go") running the extended resolver (`scripts/resolve-date-signal.ts`)
+over the entire 824-event Needs Date backlog and writing real
+`recurrence_rule` + occurrence data for everything it could resolve, not
+just previewing it.
+
+- **391 of 824 events resolved and written.** Each got a
+  `recurrence_rule` (shape varies by cadence: `weekly`, `monthly`,
+  `annual-date`, `annual`) and exactly one new `event_occurrences` row
+  dated at the resolver's computed next occurrence, with `date_confidence`
+  set to the resolver's own confidence tier (92 `confirmed_date` / 100
+  `confirmed_pattern` / 199 `estimated`). Needs Date backlog: **824 →
+  433**, an exact match to the 391 resolved.
+- **Insert-only, not merge.** 345 of the 391 matched events already had at
+  least one `event_occurrences` row (past dates or null placeholders from
+  earlier Discovery passes). Rather than updating those, a new row was
+  inserted alongside them — a single future-dated row is all the
+  `events_needing_attention` view needs to clear an event, and this keeps
+  historical occurrence data intact rather than overwriting it.
+- **Notes append, not replace.** Every written event's `notes` field got a
+  suffix appended (`[Needs Date backfill, 2026-11-02] <explanation>`),
+  preserving whatever was already there. `created_at` was never touched —
+  no backdating.
+- **Batched, not per-event, transactions.** The 391 writes went out as 8
+  chunked SQL statements (~50 events per statement, each statement
+  internally atomic via a single `UPDATE`+`INSERT` pair), rather than 391
+  individual transactions — a practical batching choice for a payload this
+  size, not a change to the write semantics per event.
+- **Review lists delivered alongside the write** (workbook, not a DB
+  write): events whose newly-written rule has an *assumed* season window
+  that isn't stated anywhere in the source (52, all `estimated`
+  weekly/monthly); the 60 events the exclusion-regex logic deliberately
+  left out of the concert/music name cue (34 `venue_programming`, 24
+  `one_off_festival`, 2 `award_or_charity`, 0 `private_event`); 50
+  still-unresolved events whose name/notes mention a real calendar month
+  the parser couldn't use (14 single-month, 36 multi-month/ambiguous); and
+  "3rd on Third" called out by itself per Greg's explicit ask, since no
+  bespoke rule covers that name shape. None of these four lists triggered
+  a write -- hand-review only.
+- Scope held: no schema changes, no new cron jobs, no outreach/action-item
+  writes, no archive/dedup decisions.
+
 ## Keeping this in sync
 
 As pieces of this get implemented, update this file in the same commits as
