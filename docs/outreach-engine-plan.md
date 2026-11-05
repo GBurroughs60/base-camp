@@ -302,6 +302,22 @@ days of rest before it can re-qualify, with room for another check as its
 date keeps approaching. Verified live: still-due dropped from 120 to 95
 immediately after the fix, matching the 25 processed that morning exactly.
 
+**Daily cap raised to 100, plus legacy-notes cleanup folded in
+(2026-11-05, from Greg directly).** The 25/day cap above was sized to the
+September 2026 backlog; by 2026-11-05 the due list had grown back to 419
+(daily firings alone weren't keeping pace with new events coming due), so
+Greg asked to raise the cap to 100 — no reason to let it linger once the
+pacing concern that justified a small number originally no longer applies.
+At the same time, Refresh's per-event loop gained an unconditional step:
+whenever it touches an event whose `notes` still holds pre-2026-11-05
+legacy free text (see section 3a), it relocates that text verbatim into
+`events.research_log` and clears `notes`, rather than leaving the old and
+new homes for this information both populated. This rides along with
+Refresh's existing cadence rather than needing a separate backfill
+project — see section 3a's note on this; raising the cap to 100 also
+means the whole active backlog cycles through (and gets this cleanup)
+within roughly 3-4 weeks instead of 2-3 months.
+
 The annual new-discovery sweep (last two weeks of December) is still just
 resolved design — not built. Separate piece of work, deliberately scoped
 out of this one.
@@ -1111,14 +1127,27 @@ Discovery and Refresh no longer write to it at all (see their scheduled-task
 prompts, updated the same day — both redirect every notes-writing
 instruction to `research_log`, and both gained guidance to populate
 `genre_tags`/`typical_performance_days`/`submission_notes`/`website` when
-they find that information). This is a going-forward change only — the
-~1,800 events already in Basecamp still have this history sitting in their
-existing `notes` field, mixed with whatever Greg's typed there himself. A
-retroactive pass to split that history out into the new fields is a real
-piece of work (good-faith parsing of free text, no clean source of truth to
-check it against) and has been deliberately left undecided — Greg hasn't
-asked for it yet, and it's being raised as a separate decision rather than
-assumed.
+they find that information).
+
+**The ~1,800-event retroactive backfill question, resolved without a
+separate project (2026-11-05).** Rather than running a dedicated parsing
+pass over every existing event's `notes`, Refresh's own daily cycle now
+does this as a byproduct: it already re-fetches each event's live source
+every time it runs, so it opportunistically picks up genre/schedule/
+submission/website info straight from today's page when that's genuinely
+there (a true re-discovery, not a parse of the old notes text); and,
+separately, whenever it touches an event it also relocates whatever's
+still sitting in that event's `notes` — verbatim, no parsing or judgment
+— into `research_log` and clears `notes`. Between the cap raise to
+100/day (see section 2) and the 6-month refresh cadence, the whole active
+backlog gets this treatment within a few weeks to a couple of months, not
+years. The one thing this doesn't do is retroactively populate the
+structured fields from an old notes entry whose underlying fact (e.g.
+last year's confirmed headliner) isn't still visible on the live page
+today — that information just moves to `research_log` as history rather
+than becoming a structured field. Decided as good enough for now; a
+dedicated backfill pass remains an option later if that gap turns out to
+matter in practice.
 
 `events.website` is populated whenever Discovery/Refresh find the event's
 own official page — never an aggregator (Songkick, Bandsintown, etc.) used
