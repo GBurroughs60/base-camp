@@ -94,9 +94,15 @@ export default function DataTable({
   const [sortDir, setSortDir] = useState<"asc" | "desc">(defaultSortDir);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) => row.searchText?.includes(q));
+    // Tokenized AND match, not one literal substring (2026-11-05, per
+    // Greg -- "Wednesday" and "Americana Vermont" should both find a row
+    // whose searchText contains each word somewhere, in any order, not
+    // only the exact phrase "americana vermont" back to back). Every word
+    // in the query must appear somewhere in the row; which column it came
+    // from doesn't matter, same as before.
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return rows;
+    return rows.filter((row) => tokens.every((t) => row.searchText?.includes(t)));
   }, [rows, query]);
 
   const sorted = useMemo(() => {

@@ -1074,6 +1074,100 @@ Status stops at `sent / replied / declined`. The moment something becomes a
 real offer, it hands off to a `plays` row; `plays` stays the one source of
 truth for booking status.
 
+## 3a. Structured event fields & the Events/event-detail UI (2026-11-05)
+
+Greg flagged that the Events UI had gotten "cluttered and messy" — Discovery
+and Refresh were dumping all their free-text findings (genre guesses,
+recurrence reasoning, submission/timing notes, dedup breadcrumbs, changelog
+entries) into one `events.notes` field, mixed in with anything Greg typed
+there himself. This section is the result of breaking that apart.
+
+**Schema (`add_structured_event_fields_and_outreach_user` migration).**
+`events` gained four new columns, each replacing a category of what used to
+be notes prose:
+
+- `genre_tags` (`text[]`, default `'{}'`) — confirmed/inferred genre signal.
+  No fixed vocabulary; written lowercase, deduped. Editable from the event
+  page as a flexible chip editor (add any tag on the fly, not a closed
+  list) — this also closes out the "free text until it earns a structured
+  field" placeholder section 12 used to describe for genre.
+- `typical_performance_days` (`text`) — a day/time pattern richer than
+  `recurrence_rule`'s single weekday+season can hold (a twice-weekly
+  series, specific set times).
+- `submission_notes` (`text`) — booking deadline / application process /
+  how-to-pitch guidance. This is the structured field section 12's
+  "Booking Deadline... free text until it earns a structured field of its
+  own" line anticipated; it's live now, not just captured as prose.
+- `research_log` (`text`, append-only by convention — nothing enforces
+  this at the DB level, it's an engine-prompt convention) — replaces
+  `notes` as where Discovery/Refresh write their automated history: the
+  initial write-up on an event's creation, dedup breadcrumbs, changelog
+  entries ("date changed from X to Y and why"), anything a later pass
+  should know. Each entry is prefixed with the date and which engine wrote
+  it.
+
+**`events.notes` itself is now reserved for Greg's own manual notes.**
+Discovery and Refresh no longer write to it at all (see their scheduled-task
+prompts, updated the same day — both redirect every notes-writing
+instruction to `research_log`, and both gained guidance to populate
+`genre_tags`/`typical_performance_days`/`submission_notes`/`website` when
+they find that information). This is a going-forward change only — the
+~1,800 events already in Basecamp still have this history sitting in their
+existing `notes` field, mixed with whatever Greg's typed there himself. A
+retroactive pass to split that history out into the new fields is a real
+piece of work (good-faith parsing of free text, no clean source of truth to
+check it against) and has been deliberately left undecided — Greg hasn't
+asked for it yet, and it's being raised as a separate decision rather than
+assumed.
+
+`events.website` is populated whenever Discovery/Refresh find the event's
+own official page — never an aggregator (Songkick, Bandsintown, etc.) used
+only to find the event.
+
+**Search.** `DataTable`'s client-side search (shared by every table in the
+app, not just Events) was a single-substring match — `"Americana +
+Vermont"` typed as one query wouldn't match a row containing both words
+elsewhere in its text. Fixed to tokenize the query and AND-match each token
+against the row's `searchText`, so word order and extra words no longer
+block a match. The Events page's `searchText` was extended to include
+`genre_tags`, `typical_performance_days`, `submission_notes`, `notes`, and
+`research_log`, so Discovery/Refresh's research is actually findable from
+the main Events list, not just on the event's own detail page.
+
+**Event detail page.** Rebuilt per an approved mockup: a Booking Details
+card (genre tags, typical performance days, submission notes, alongside the
+existing recurrence/date fields) sits above a Notes card now framed
+explicitly as manual/personal notes. A header badge shows "Pitched
+{relative time} · {artists} · by {name}" (reading from `outreach_log`,
+multi-artist pitches grouped — see below) so the last-pitched state Greg
+asked to "visibly see" doesn't require opening the Action List history.
+Two collapsible (collapsed by default) sections at the bottom hold
+Outreach History (grouped touches, see below) and Research Log (the raw
+`research_log` text), each only rendered when there's content.
+
+**Multi-artist pitch grouping + attribution.** When a single "Mark
+complete" action pitches more than one artist, `completeActionItem`
+(`src/app/actions/actionItems.ts`) inserts one `outreach_log` row per
+artist in a single multi-row INSERT, so they share an identical DB-default
+`sent_at`. The event page groups by exact `sent_at` match to reconstruct
+"one touch, N artists" rather than showing N separate touches. `outreach_log`
+also gained a `user_id` column (nullable, `references auth.users(id) on
+delete set null`), set at the same `completeActionItem` write, so each touch
+can say who pitched it.
+
+**Team / display names.** Two real Base Camp accounts
+(`gburroughs@theridgemusicgroup.com`, `jmayotte@theridgemusicgroup.com`)
+existed with no attribution anywhere in the app. A new `user_profiles`
+table (`id` → `auth.users.id`, `display_name`, same `authenticated_full_access`
+RLS pattern as every other table here) holds an optional friendly name per
+account; a no-name account falls back to showing its email everywhere it'd
+otherwise be credited (the outreach-history "by {name}" line, the pitch
+badge). A Settings → Team page (admin nav) lists every account via the
+Admin API (`auth.admin.listUsers()`, service-role — the only other
+legitimate service-role use in the project besides the SignWell webhook,
+and read-only here) with an inline click-to-edit display name field. Set up
+ahead of a third Base Camp user joining soon.
+
 ## 4. Identity & dedup
 
 An event's identity is the composite of **organizer/venue identity +
@@ -1682,8 +1776,9 @@ the fact:
   research time (a value frozen at discovery time goes stale the moment
   time passes). A field like "Booking Deadline" — a hard organizer-side
   cutoff distinct from our own 180-day rule — is useful context and should
-  still be captured, but as free text on the event until it earns a
-  structured field of its own.
+  still be captured; as of 2026-11-05 it has its own structured field
+  (`events.submission_notes` — see section 3a) rather than living as
+  undifferentiated notes prose.
 
 ## 13. Financial reporting — Ridge's revenue tracker
 
@@ -1802,49 +1897,6 @@ enough for a conversion rate to mean anything.
   efficiency, Action List throughput) — deferred until there's enough
   volume in `outreach_log`/`action_items` for a conversion rate to be
   meaningful.
-
-**Needs Date backlog backfill, full pass (2026-11-02, same day).** With the
-pill bug and name-cue extension from the entry above live, Greg authorized
-("Go") running the extended resolver (`scripts/resolve-date-signal.ts`)
-over the entire 824-event Needs Date backlog and writing real
-`recurrence_rule` + occurrence data for everything it could resolve, not
-just previewing it.
-
-- **391 of 824 events resolved and written.** Each got a
-  `recurrence_rule` (shape varies by cadence: `weekly`, `monthly`,
-  `annual-date`, `annual`) and exactly one new `event_occurrences` row
-  dated at the resolver's computed next occurrence, with `date_confidence`
-  set to the resolver's own confidence tier (92 `confirmed_date` / 100
-  `confirmed_pattern` / 199 `estimated`). Needs Date backlog: **824 →
-  433**, an exact match to the 391 resolved.
-- **Insert-only, not merge.** 345 of the 391 matched events already had at
-  least one `event_occurrences` row (past dates or null placeholders from
-  earlier Discovery passes). Rather than updating those, a new row was
-  inserted alongside them — a single future-dated row is all the
-  `events_needing_attention` view needs to clear an event, and this keeps
-  historical occurrence data intact rather than overwriting it.
-- **Notes append, not replace.** Every written event's `notes` field got a
-  suffix appended (`[Needs Date backfill, 2026-11-02] <explanation>`),
-  preserving whatever was already there. `created_at` was never touched —
-  no backdating.
-- **Batched, not per-event, transactions.** The 391 writes went out as 8
-  chunked SQL statements (~50 events per statement, each statement
-  internally atomic via a single `UPDATE`+`INSERT` pair), rather than 391
-  individual transactions — a practical batching choice for a payload this
-  size, not a change to the write semantics per event.
-- **Review lists delivered alongside the write** (workbook, not a DB
-  write): events whose newly-written rule has an *assumed* season window
-  that isn't stated anywhere in the source (52, all `estimated`
-  weekly/monthly); the 60 events the exclusion-regex logic deliberately
-  left out of the concert/music name cue (34 `venue_programming`, 24
-  `one_off_festival`, 2 `award_or_charity`, 0 `private_event`); 50
-  still-unresolved events whose name/notes mention a real calendar month
-  the parser couldn't use (14 single-month, 36 multi-month/ambiguous); and
-  "3rd on Third" called out by itself per Greg's explicit ask, since no
-  bespoke rule covers that name shape. None of these four lists triggered
-  a write -- hand-review only.
-- Scope held: no schema changes, no new cron jobs, no outreach/action-item
-  writes, no archive/dedup decisions.
 
 ## Keeping this in sync
 

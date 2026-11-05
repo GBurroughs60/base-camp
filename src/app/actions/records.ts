@@ -44,8 +44,17 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "venue_id",
     "primary_contact_id",
     "notes",
+    "typical_performance_days",
+    "submission_notes",
     "archived",
     "disqualified_reason",
+    // genre_tags deliberately NOT here -- it's a text[], not a scalar
+    // value updateField/updateFields can set, so it goes through its own
+    // dedicated action (updateEventGenreTags, eventGenre.ts) instead, same
+    // split as plays.settlement_expenses/ticket_price_tiers. research_log
+    // deliberately NOT here either -- it's the Discovery/Refresh changelog,
+    // not something a person free-edits (see the add_structured_event_
+    // fields_and_outreach_user migration's column comment).
   ]),
   plays: new Set([
     "show_date",

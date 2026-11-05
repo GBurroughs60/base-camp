@@ -57,6 +57,15 @@ export async function completeActionItem(
 ): Promise<ActionResult> {
   const supabase = await createClient();
 
+  // Who's logged in right now -- outreach_log.user_id (2026-11-05, per
+  // Greg, ahead of a third Base Camp user joining) records this
+  // automatically, no picker/extra click needed. getUser() reads the
+  // session cookie this same request already carries, so this is just
+  // "whoever is clicking the button," never prompted for.
+  const {
+    data: { user: actingUser },
+  } = await supabase.auth.getUser();
+
   const { data: item, error: fetchError } = await supabase
     .from("action_items")
     .select("id, source, status, event_id")
@@ -97,6 +106,7 @@ export async function completeActionItem(
           artist_id: artistId,
           event_id: item.event_id,
           status: "sent",
+          user_id: actingUser?.id ?? null,
         }))
       )
       .select("id");

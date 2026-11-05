@@ -17,6 +17,11 @@ type EventRow = {
   dedup_match_id: string | null;
   refresh_flagged: boolean;
   catchup_drafted: boolean;
+  genre_tags: string[] | null;
+  typical_performance_days: string | null;
+  submission_notes: string | null;
+  notes: string | null;
+  research_log: string | null;
   companies: { id: string; name: string } | null;
   contacts: { id: string; full_name: string } | null;
 };
@@ -125,6 +130,13 @@ function toRow(e: EventRow, dedupMatchName: Map<string, string>): DataRow {
       contact: e.contacts?.full_name ?? null,
       visibility: e.is_public ? "Public" : "Private",
     },
+    // 2026-11-05, per Greg: genre tags, typical performance days,
+    // submission notes, and the research log should all be searchable
+    // too ("Wednesday" or "Americana Vermont" should surface a match) --
+    // folded into the same tokenized-AND search DataTable already runs
+    // against every other field here. notes/research_log included for
+    // recall even though they're long -- cheap to include, and an old
+    // research note mentioning a real detail is still a legitimate match.
     searchText: [
       e.name,
       e.companies?.name,
@@ -132,6 +144,11 @@ function toRow(e: EventRow, dedupMatchName: Map<string, string>): DataRow {
       stateOrCountry,
       e.contacts?.full_name,
       e.is_public ? "Public" : "Private",
+      ...(e.genre_tags ?? []),
+      e.typical_performance_days,
+      e.submission_notes,
+      e.notes,
+      e.research_log,
     ]
       .filter(Boolean)
       .join(" ")
@@ -156,7 +173,7 @@ export default async function EventsPage({
   let query = supabase
     .from("events")
     .select(
-      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, dedup_match_id, refresh_flagged, catchup_drafted, companies(id, name), contacts(id, full_name)"
+      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, dedup_match_id, refresh_flagged, catchup_drafted, genre_tags, typical_performance_days, submission_notes, notes, research_log, companies(id, name), contacts(id, full_name)"
     )
     .order("name");
 
@@ -263,6 +280,16 @@ export default async function EventsPage({
           dedup_match_id: null,
           refresh_flagged: false,
           catchup_drafted: false,
+          // Same simplification as the other flags above -- this lens
+          // only ever shows id/name/city/state/venue, not the new
+          // structured fields, so toRow()'s searchText just has less to
+          // work with for a Needs Date row (fine: city/state/name alone
+          // still cover the common case).
+          genre_tags: null,
+          typical_performance_days: null,
+          submission_notes: null,
+          notes: null,
+          research_log: null,
           companies: venueId ? { id: venueId, name: venueNameById.get(venueId) ?? "Unknown venue" } : null,
           contacts: contactId ? { id: contactId, full_name: contactNameById.get(contactId) ?? "Unknown contact" } : null,
         };
