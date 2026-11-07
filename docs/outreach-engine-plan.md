@@ -1809,6 +1809,52 @@ the fact:
   (`events.submission_notes` — see section 3a) rather than living as
   undifferentiated notes prose.
 
+**Needs Date backlog backfill, second pass (2026-11-07).** Same resolver
+(`scripts/resolve-date-signal.ts`), run again against the backlog that had
+rebuilt since the 2026-11-02 full pass, after Greg authorized ("Yes, write
+it.") executing the prepared write.
+
+- **315 of 636 candidate events resolved and written.** Same shape as the
+  first pass: a `recurrence_rule` plus exactly one new `event_occurrences`
+  row per event (`date_confidence` set per the resolver's tier — mostly
+  `estimated` via the single-date-fallback path, since most of this
+  second-pass backlog had only one past occurrence on file and no
+  text/name signal). Needs Date backlog: **667 → 353**, an exact match to
+  the 315 resolved. Writes went out as 8 chunked SQL statements (same
+  batching rationale as the first pass) and were spot-checked afterward
+  against `event_occurrences` row counts to rule out double-writes — clean.
+- **Logging convention has since split**: these writes went to
+  `events.research_log` (append-only), not `notes` — `notes` was reserved
+  for Greg's own manual notes as of 2026-11-05 (section 3a). Entries are
+  prefixed `[Needs Date backfill, 2026-11-07]`.
+- **5 stale single-occurrence events archived** at Greg's request in the
+  same sitting (`events.archived = true`, non-destructive, with
+  `disqualified_reason` + a `research_log` breadcrumb each) — old events
+  with one past occurrence and no recurrence signal, not worth resolving.
+  One of the five (`ef1b5968-d6d9-45b2-90c0-d7ed0cfc0eef`) had already
+  picked up a weak name-pattern `recurrence_rule` guess from this same
+  backfill pass before the archive request was processed; the archive
+  takes precedence and the breadcrumb notes the overlap so it doesn't read
+  as a contradiction later. Needs Date backlog after archiving: **349**.
+- **Discovery already closes the loop at insert time.** Checked Discovery's
+  live scheduled-task prompt (step 4c) rather than assuming a gap: it
+  already calls the resolver against the source's own date/pattern text
+  the moment a new event is inserted, and only falls back to `unknown`
+  when there's truly no signal. No change was needed or made to Discovery.
+- **Remaining gap — a once-a-month mop-up, not yet created.** The
+  single-past-date-fallback technique (inferring an annual rule from one
+  confirmed past occurrence) can't run at Discovery's insert time, since a
+  brand-new event has no occurrence history yet. It only becomes available
+  once an unresolved event has accumulated at least one real past
+  `event_occurrences` row. Designed as a separate monthly scheduled task
+  ("Base Camp — Needs Date Monthly Mop-up") scoped to exactly that: events
+  with `recurrence_rule is null`, not archived/pending-review, with at
+  least one past occurrence within the last 2 years, capped at 150
+  candidates/firing, always writing `date_confidence = 'estimated'`. Not
+  yet created — the scheduled-task write was blocked by the auto-mode
+  safety classifier (`[Cowork Scheduled Task Write]`) and needs either
+  Greg's explicit re-authorization to retry or Greg creating it himself.
+
 ## 13. Financial reporting — Ridge's revenue tracker
 
 A separate initiative from the outreach engines above, started when Greg
