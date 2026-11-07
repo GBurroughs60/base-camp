@@ -9,7 +9,6 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -20,27 +19,15 @@ export default function LoginPage() {
     setLoading(true);
     setMessage(null);
 
-    if (mode === "sign-in") {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) {
-        setMessage(error.message);
-      } else {
-        router.replace("/");
-        router.refresh();
-      }
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) {
+      setMessage(error.message);
     } else {
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) {
-        setMessage(error.message);
-      } else {
-        setMessage(
-          "Account created. If email confirmation is required, check your inbox, then sign in."
-        );
-        setMode("sign-in");
-      }
+      router.replace("/");
+      router.refresh();
     }
     setLoading(false);
   }
@@ -69,9 +56,7 @@ export default function LoginPage() {
             Base Camp
           </h1>
           <p className="text-sm text-black/60 dark:text-white/60 mt-1">
-            {mode === "sign-in"
-              ? "Sign in to your account"
-              : "Create a team account"}
+            Sign in to your account
           </p>
         </div>
         <form
@@ -100,11 +85,7 @@ export default function LoginPage() {
             disabled={loading}
             className="rounded-md bg-ridge-orange hover:bg-ridge-orange-dark text-white py-2 font-medium transition-colors disabled:opacity-50"
           >
-            {loading
-              ? "Please wait…"
-              : mode === "sign-in"
-              ? "Sign in"
-              : "Create account"}
+            {loading ? "Please wait…" : "Sign in"}
           </button>
         </form>
         {message && (
@@ -112,16 +93,9 @@ export default function LoginPage() {
             {message}
           </p>
         )}
-        <button
-          className="text-sm mt-4 text-black/60 dark:text-white/60 hover:text-ridge-orange transition-colors block mx-auto"
-          onClick={() =>
-            setMode(mode === "sign-in" ? "sign-up" : "sign-in")
-          }
-        >
-          {mode === "sign-in"
-            ? "Need an account? Sign up"
-            : "Already have an account? Sign in"}
-        </button>
+        <p className="text-sm mt-4 text-black/50 dark:text-white/50 text-center">
+          Need an account? Ask Greg to set one up for you.
+        </p>
       </div>
     </div>
   );
