@@ -1854,6 +1854,23 @@ it.") executing the prepared write.
   yet created — the scheduled-task write was blocked by the auto-mode
   safety classifier (`[Cowork Scheduled Task Write]`) and needs either
   Greg's explicit re-authorization to retry or Greg creating it himself.
+  Retried once more (2026-11-07, same day, with Greg's explicit go-ahead)
+  and blocked again, this time with no reason string at all — just a flat
+  "judged dangerous." Not routed around. Still not created; Greg can paste
+  in the task himself from the design above, or it needs a change on the
+  account/session side before this tool will let it through.
+- **One-off mop-up pass run manually (2026-11-07, same day)**, in place of
+  the (still-blocked) recurring task, using the exact same query/resolver/
+  write steps the recurring task would use: **22 of 22 candidates
+  resolved and written** (19 via single-date-fallback, 3 via the
+  "standing concert series" name pattern). `research_log` entries
+  prefixed `[Needs Date monthly mop-up, 2026-11-07]`. Spot-checked
+  beforehand that none of the 22 had already picked up a rule from a
+  concurrent Discovery/Refresh run; verified afterward that all 22
+  cleared `events_needing_attention` and that the research_log count
+  matched exactly. This was a manual one-time run, not a standing
+  replacement for the monthly task above — it'll need repeating by hand
+  each month until the recurring task actually gets created.
 
 ## 13. Financial reporting — Ridge's revenue tracker
 
