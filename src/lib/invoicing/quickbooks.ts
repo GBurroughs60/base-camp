@@ -24,6 +24,7 @@ const API_BASE =
     ? "https://quickbooks.api.intuit.com/v3/company"
     : "https://sandbox-quickbooks.api.intuit.com/v3/company";
 const TOKEN_ENDPOINT = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+const REVOKE_ENDPOINT = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke";
 
 // The commission-invoice line needs a QBO "Item" (a product/service) to
 // reference -- QBO's data model requires it, Base Camp has no equivalent
@@ -150,6 +151,47 @@ async function refreshAccessToken(connection: ConnectionRow): Promise<string> {
   if (error) throw new Error(`Couldn't save the refreshed QuickBooks token: ${error.message}`);
 
   return tokens.access_token;
+}
+
+// Revokes the stored OAuth token at Intuit and forgets the connection
+// locally -- the Disconnect button on Settings > QuickBooks, and the only
+// caller. Exists because Intuit's production-keys checklist requires a
+// working disconnect flow, not just a connect one, and because leaving a
+// revoked-at-Intuit's-end token sitting in quickbooks_connection would
+// make Base Camp think it's still connected when it isn't. Revoking is
+// best-effort: if Intuit's endpoint errors or the token's already invalid
+// there, the local row is deleted regardless -- a connection Base Camp
+// still thinks is live is the worse failure mode of the two.
+export async function disconnectConnection(): Promise<{ wasConnected: boolean }> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("quickbooks_connection")
+    .select("id, refresh_token")
+    .maybeSingle();
+  if (error) throw new Error(`Couldn't read the QuickBooks connection: ${error.message}`);
+  if (!data) return { wasConnected: false };
+
+  try {
+    const { clientId, clientSecret } = clientCredentials();
+    await fetch(REVOKE_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ token: data.refresh_token }),
+    });
+  } catch {
+    // Best-effort -- see comment above.
+  }
+
+  const { error: deleteError } = await supabase
+    .from("quickbooks_connection")
+    .delete()
+    .eq("id", data.id);
+  if (deleteError) throw new Error(`Couldn't remove the QuickBooks connection: ${deleteError.message}`);
+  return { wasConnected: true };
 }
 
 // 2-minute buffer before the documented expiry, so a token that's valid

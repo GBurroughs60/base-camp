@@ -1,4 +1,4 @@
-import { getQuickBooksConnectionStatus } from "@/app/actions/quickbooks";
+import { getQuickBooksConnectionStatus, disconnectQuickBooks } from "@/app/actions/quickbooks";
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_state: "That connection attempt couldn't be verified -- please try again.",
@@ -15,9 +15,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function QuickBooksSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ connected?: string; error?: string }>;
+  searchParams: Promise<{ connected?: string; error?: string; disconnected?: string }>;
 }) {
-  const { connected: justConnected, error } = await searchParams;
+  const { connected: justConnected, error, disconnected: justDisconnected } = await searchParams;
   const status = await getQuickBooksConnectionStatus();
 
   return (
@@ -31,6 +31,11 @@ export default async function QuickBooksSettingsPage({
       {justConnected && (
         <div className="mb-4 rounded-lg border border-emerald-600/20 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300">
           QuickBooks connected successfully.
+        </div>
+      )}
+      {justDisconnected && (
+        <div className="mb-4 rounded-lg border border-black/10 dark:border-white/15 bg-black/5 dark:bg-white/5 px-4 py-3 text-sm">
+          QuickBooks disconnected.
         </div>
       )}
       {error && (
@@ -60,12 +65,22 @@ export default async function QuickBooksSettingsPage({
               Access tokens refresh automatically. Reconnect only if invoices start failing with an
               authorization error, or to point Base Camp at a different QuickBooks company.
             </p>
-            <a
-              href="/api/quickbooks/connect"
-              className="inline-flex items-center rounded-md border border-black/10 dark:border-white/15 px-4 py-2 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-            >
-              Reconnect QuickBooks
-            </a>
+            <div className="flex items-center gap-3">
+              <a
+                href="/api/quickbooks/connect"
+                className="inline-flex items-center rounded-md border border-black/10 dark:border-white/15 px-4 py-2 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              >
+                Reconnect QuickBooks
+              </a>
+              <form action={disconnectQuickBooks}>
+                <button
+                  type="submit"
+                  className="inline-flex items-center rounded-md px-4 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                >
+                  Disconnect
+                </button>
+              </form>
+            </div>
           </>
         ) : (
           <>

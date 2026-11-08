@@ -1,6 +1,8 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
+import { disconnectConnection } from "@/lib/invoicing/quickbooks";
 
 export type QuickBooksConnectionStatus = {
   connected: boolean;
@@ -35,4 +37,14 @@ export async function getQuickBooksConnectionStatus(): Promise<QuickBooksConnect
     connectedAt: data.connected_at,
     accessTokenExpiresAt: data.access_token_expires_at,
   };
+}
+
+// Settings > QuickBooks's Disconnect button posts here. Revokes the token
+// at Intuit and removes the stored connection, then redirects back to the
+// same page (full navigation, same pattern as approval.ts/settlement.ts)
+// so the page re-reads getQuickBooksConnectionStatus and shows "Not
+// connected" rather than relying on client-side cache invalidation.
+export async function disconnectQuickBooks(): Promise<void> {
+  await disconnectConnection();
+  redirect("/settings/quickbooks?disconnected=1");
 }
