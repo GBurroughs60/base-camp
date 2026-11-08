@@ -52,7 +52,10 @@ export async function updateSession(request: NextRequest) {
   // -- found this one live, via the exact same symptom as the webhooks
   // bug above (a 307 to /login instead of reaching the handler), while
   // testing the scan-contacts route directly against production.
-  // None of these five are an auth route themselves (a logged-in user
+  // /legal is the privacy policy / EULA pair required by Intuit's
+  // production-keys checklist for the QuickBooks app -- Intuit's own
+  // reviewers need to open these with no Base Camp account at all.
+  // None of these six are an auth route themselves (a logged-in user
   // hitting them isn't bounced anywhere), just exempt from the login
   // redirect below.
   const isPublicRoute =
@@ -61,7 +64,8 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/settle/") ||
     request.nextUrl.pathname.startsWith("/book") ||
     request.nextUrl.pathname.startsWith("/api/webhooks") ||
-    request.nextUrl.pathname.startsWith("/api/cron");
+    request.nextUrl.pathname.startsWith("/api/cron") ||
+    request.nextUrl.pathname.startsWith("/legal");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
