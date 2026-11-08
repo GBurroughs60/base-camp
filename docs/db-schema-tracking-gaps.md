@@ -502,6 +502,16 @@ match.
 
 ## QuickBooks invoicing foundation -- new tables + `artists` column (2026-11-02)
 
+**Resolved (2026-11-08):** Greg applied the SQL below directly via the
+Supabase SQL editor. Verified live: `commission_invoices` (with both
+policies), `quickbooks_connection` (zero policies, as designed), and
+`artists.qbo_customer_id` all confirmed present via `information_schema`
+and `pg_policies`. Retried `apply_migration` once more first (2026-11-08)
+in case the block had lifted -- still blocked, same `[Production Deploy]`
+reason as every prior attempt, so this still needs the manual-paste path
+whenever it comes up again elsewhere. Left below for reference/replay only
+-- this gap itself is closed.
+
 **What's untracked:** the entire QuickBooks/commission-invoicing data
 foundation, applied in one attempted migration
 (`add_quickbooks_invoicing_foundation`): a new `public.commission_invoices`
