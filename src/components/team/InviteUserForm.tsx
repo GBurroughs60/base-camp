@@ -14,6 +14,7 @@ export default function InviteUserForm() {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [role, setRole] = useState<"member" | "admin">("member");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -21,6 +22,7 @@ export default function InviteUserForm() {
     setOpen(false);
     setEmail("");
     setDisplayName("");
+    setRole("member");
     setError(null);
   }
 
@@ -28,7 +30,7 @@ export default function InviteUserForm() {
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const res = await inviteTeamMember(email, displayName);
+      const res = await inviteTeamMember(email, displayName, role === "admin");
       if (res.ok) {
         reset();
         router.refresh();
@@ -74,6 +76,36 @@ export default function InviteUserForm() {
         onChange={(e) => setDisplayName(e.target.value)}
         className="border border-black/15 dark:border-white/15 rounded-md px-3 py-2 text-sm bg-transparent focus:outline-none focus:ring-2 focus:ring-ridge-orange/40 focus:border-ridge-orange transition-colors disabled:opacity-50"
       />
+      {/* Role at invite time (2026-11-09, per Greg: "new users should be
+          able to be added as users or as admins with full permissions on
+          the latter") -- an "Admin" invite lands with is_admin already
+          true once they set their password, same effect as inviting as a
+          member and then using "Make admin" on their row afterward, just
+          without the extra step. */}
+      <div className="flex items-center gap-4 text-sm">
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            name="role"
+            checked={role === "member"}
+            disabled={pending}
+            onChange={() => setRole("member")}
+            className="accent-ridge-orange"
+          />
+          Member
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="radio"
+            name="role"
+            checked={role === "admin"}
+            disabled={pending}
+            onChange={() => setRole("admin")}
+            className="accent-ridge-orange"
+          />
+          Admin (full permissions)
+        </label>
+      </div>
       <div className="flex items-center gap-2">
         <button
           type="submit"

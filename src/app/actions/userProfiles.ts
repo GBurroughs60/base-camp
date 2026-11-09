@@ -141,6 +141,11 @@ function buildConfirmUrl(hashedToken: string, type: "invite" | "magiclink"): str
 // The Team page's "+ New user" form (2026-11-09, per Greg). Creates the
 // auth.users row and a matching user_profiles row (invite_status:
 // "invited") in the same call, then emails a one-time set-password link.
+// isAdmin picks the role at invite time (per Greg's follow-up same day:
+// "New users should be able to be added as users or as admins with full
+// permissions on the latter") -- an admin invited this way lands straight
+// at is_admin: true once they set their password, no separate "Make
+// admin" click needed after the fact.
 // Deliberately two separate near-identical failure returns: if the auth
 // user/profile insert itself fails, nothing was created, so the admin just
 // retries the whole thing. If *that* succeeds but the email send throws,
@@ -151,7 +156,8 @@ function buildConfirmUrl(hashedToken: string, type: "invite" | "magiclink"): str
 // since generateLink's token is already spent/replaced at that point).
 export async function inviteTeamMember(
   email: string,
-  displayName?: string
+  displayName?: string,
+  isAdmin?: boolean
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const adminUser = await requireAdmin();
   const trimmedEmail = email.trim().toLowerCase();
@@ -173,7 +179,7 @@ export async function inviteTeamMember(
     {
       id: data.user.id,
       display_name: trimmedName ? trimmedName : null,
-      is_admin: false,
+      is_admin: isAdmin === true,
       invite_status: "invited",
       invited_at: new Date().toISOString(),
       invited_by: adminUser.id,
