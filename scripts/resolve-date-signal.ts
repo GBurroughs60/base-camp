@@ -50,17 +50,18 @@
 // this project.
 
 import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
 import { resolveDateSignal } from "../src/lib/dateSignalExtraction";
 import { computeNextOccurrence, describeRule, inferAnnualRuleFromDate, type RecurrenceRule } from "../src/lib/recurrence";
 
-type Candidate = {
+export type Candidate = {
   id: string;
   name: string;
   rawDateText?: string | null;
   knownDate?: string | null;
 };
 
-type Result =
+export type Result =
   | { id: string; matched: false }
   | {
       id: string;
@@ -73,7 +74,7 @@ type Result =
       next_occurrence: string;
     };
 
-function todayUTC(): Date {
+export function todayUTC(): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
@@ -101,38 +102,77 @@ function nextFutureOccurrence(rule: RecurrenceRule, afterDate: Date, today: Date
   return next;
 }
 
-function resolveOne(candidate: Candidate, today: Date): Result {
+function patternResult(id: string, resolved: NonNullable<ReturnType<typeof resolveDateSignal>>, today: Date): Result | null {
+  const next = nextFutureOccurrence(resolved.rule, today, today);
+  if (!next) return null;
+  return {
+    id,
+    matched: true,
+    source: "pattern",
+    rule: resolved.rule,
+    rule_description: describeRule(resolved.rule),
+    confidence: resolved.confidence,
+    explanation: resolved.explanation,
+    next_occurrence: toDateOnlyString(next),
+  };
+}
+
+function singleDateFallbackResult(id: string, knownDate: string, today: Date): Result | null {
+  const known = parseDateOnly(knownDate);
+  const rule = inferAnnualRuleFromDate(known);
+  const next = nextFutureOccurrence(rule, known, today);
+  if (!next) return null;
+  return {
+    id,
+    matched: true,
+    source: "single-date-fallback",
+    rule,
+    rule_description: describeRule(rule),
+    confidence: "estimated",
+    explanation: `No recurrence pattern stated anywhere -- only a single past date (${knownDate}) on file. Inferred "${describeRule(rule)}" from that date as a starting estimate; correct via the next Refresh pass if wrong.`,
+    next_occurrence: toDateOnlyString(next),
+  };
+}
+
+// Precedence: a SPECIFIC resolved result (confirmed_date/confirmed_pattern,
+// or a name-only cue that actually read a stated pattern/exact day -- e.g.
+// ordinal-weekday-in-name, a named holiday) always wins outright, same as
+// before this function existed. But resolveDateSignal's three bare
+// last-resort name cues (monthInName, seasonInName, isSeriesName -- see
+// their comments in dateSignalExtraction.ts) invent an arbitrary day-1
+// anchor from nothing more than a month/season word, or just "concert"/
+// "music", sitting in the title -- resolved.placeholder is true for
+// exactly those three. A real confirmed past occurrence
+// (candidate.knownDate) is strictly better evidence than that kind of
+// guess, so it's preferred over a placeholder result (but still loses to
+// knownDate missing or failing to project forward, in which case the
+// placeholder guess is used as a last resort rather than giving up).
+//
+// Bug this fixes: every one of these shapes used to beat a real
+// knownDate every time, because the old code only ever consulted
+// knownDate when resolveDateSignal returned null outright -- so "Plaza
+// Summer Concert Series" (seasonInName: "summer") or "Concert for
+// Legends" (isSeriesName's bare "concert" catch-all) got the generic
+// "May 1st, estimated" placeholder even when a real confirmed date was
+// sitting right there in knownDate. Caught during Ohio Discovery
+// (2026-11-09) -- several events needed a hand workaround for exactly
+// this (see their event research_log entries) before this fix existed.
+export function resolveOne(candidate: Candidate, today: Date): Result {
   const resolved = resolveDateSignal(candidate.rawDateText ?? null, candidate.name);
-  if (resolved) {
-    const next = nextFutureOccurrence(resolved.rule, today, today);
-    if (!next) return { id: candidate.id, matched: false };
-    return {
-      id: candidate.id,
-      matched: true,
-      source: "pattern",
-      rule: resolved.rule,
-      rule_description: describeRule(resolved.rule),
-      confidence: resolved.confidence,
-      explanation: resolved.explanation,
-      next_occurrence: toDateOnlyString(next),
-    };
+
+  if (resolved && !resolved.placeholder) {
+    const r = patternResult(candidate.id, resolved, today);
+    if (r) return r;
   }
 
   if (candidate.knownDate) {
-    const known = parseDateOnly(candidate.knownDate);
-    const rule = inferAnnualRuleFromDate(known);
-    const next = nextFutureOccurrence(rule, known, today);
-    if (!next) return { id: candidate.id, matched: false };
-    return {
-      id: candidate.id,
-      matched: true,
-      source: "single-date-fallback",
-      rule,
-      rule_description: describeRule(rule),
-      confidence: "estimated",
-      explanation: `No recurrence pattern stated anywhere -- only a single past date (${candidate.knownDate}) on file. Inferred "${describeRule(rule)}" from that date as a starting estimate; correct via the next Refresh pass if wrong.`,
-      next_occurrence: toDateOnlyString(next),
-    };
+    const r = singleDateFallbackResult(candidate.id, candidate.knownDate, today);
+    if (r) return r;
+  }
+
+  if (resolved) {
+    const r = patternResult(candidate.id, resolved, today);
+    if (r) return r;
   }
 
   return { id: candidate.id, matched: false };
@@ -149,4 +189,13 @@ function main() {
   process.stderr.write(`resolve-date-signal: ${matched}/${results.length} matched\n`);
 }
 
-main();
+// Only run the CLI (and its blocking stdin read) when this file is
+// executed directly -- `npx tsx scripts/resolve-date-signal.ts`. Guard
+// added 2026-11-09 alongside the exported resolveOne/Candidate/Result
+// above, which the new test file imports: without this guard, importing
+// this module for a unit test ran `main()` as a side effect of the import
+// and hung forever on `readFileSync(0)` waiting for stdin that was never
+// going to arrive.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main();
+}

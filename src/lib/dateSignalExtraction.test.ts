@@ -108,6 +108,37 @@ describe("resolveDateSignal -- concert-series cue exclusions", () => {
   });
 });
 
+describe("resolveDateSignal -- placeholder flag (2026-11-09)", () => {
+  // Marks exactly the three bare last-resort name cues that invent an
+  // arbitrary day-1 anchor from nothing more than a month/season word, or
+  // just "concert"/"music", in the title -- see scripts/resolve-date-signal.ts
+  // for why this matters (it's weaker evidence than a real confirmed past
+  // date, so that script prefers knownDate over a placeholder result).
+  it("is true for the bare month-in-name cue", () => {
+    expect(resolveDateSignal(null, "October Music Series")?.placeholder).toBe(true);
+  });
+
+  it("is true for the bare season-in-name cue", () => {
+    expect(resolveDateSignal(null, "Plaza Summer Concert Series")?.placeholder).toBe(true);
+  });
+
+  it("is true for the community concert-series catch-all", () => {
+    expect(resolveDateSignal(null, "Music on Main")?.placeholder).toBe(true);
+  });
+
+  it("is NOT true for the ordinal-weekday-in-name cue (an actually stated pattern)", () => {
+    expect(resolveDateSignal(null, "First Friday Night Concert Series")?.placeholder).toBeFalsy();
+  });
+
+  it("is NOT true for a named holiday in the name", () => {
+    expect(resolveDateSignal(null, "Downtown Halloween Bash")?.placeholder).toBeFalsy();
+  });
+
+  it("is NOT true for a text-based resolution", () => {
+    expect(resolveDateSignal("Confirmed for October 17, 2026.", "Music on Main")?.placeholder).toBeFalsy();
+  });
+});
+
 describe("resolveDateSignal -- deliberately not given a bespoke rule", () => {
   it("'3rd on Third' stays unresolved (no weekday word, no bespoke pattern) -- hand-resolve list", () => {
     // Greg's explicit call (2026-11-02): no new rule for this shape, it

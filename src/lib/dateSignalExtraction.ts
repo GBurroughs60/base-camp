@@ -48,6 +48,20 @@ export type DateSignalResult = {
   confidence: DateSignalConfidence;
   /** Human-readable note for event.notes explaining what was inferred and from where. */
   explanation: string;
+  /**
+   * True only for the three bare last-resort name cues (monthInName,
+   * seasonInName, isSeriesName below) that anchor to an arbitrary day-1
+   * with NO actual day/weekday/pattern signal behind it -- "a month or
+   * season word is somewhere in the title, so guess the 1st." Omitted
+   * (falsy) for every other branch, including the other name-only cues
+   * (ordinalInName, HOLIDAY_DATES/HOLIDAY_MONTH_ONLY-in-name), which read
+   * an actually-stated pattern or exact day out of the name rather than
+   * inventing one. Added so a caller that also has a real confirmed past
+   * occurrence on file (scripts/resolve-date-signal.ts's `knownDate`) can
+   * tell these two "estimated" cases apart and prefer the real date over
+   * the bare guess -- see that script for why this matters.
+   */
+  placeholder?: boolean;
 };
 
 const WEEKDAY_WORDS: Record<string, number> = {
@@ -578,6 +592,7 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
       rule: { frequency: "annual-date", month: monthInName.month, day: 1 },
       confidence: "estimated",
       explanation: `Month named in the event's own title -- anchored to the 1st as a placeholder pending Refresh confirmation of the actual date.`,
+      placeholder: true,
     };
   }
 
@@ -587,6 +602,7 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
       rule: { frequency: "annual-date", month: seasonInName.start, day: 1 },
       confidence: "estimated",
       explanation: `Season named in the event's own title ("${seasonInName.word}") with no other date signal -- anchored to the 1st of the season's first month as a placeholder pending Refresh confirmation.`,
+      placeholder: true,
     };
   }
 
@@ -607,6 +623,7 @@ export function resolveDateSignal(rawDateText: string | null, eventName: string)
       confidence: "estimated",
       explanation:
         "Event name reads as a standing community concert series (\"concert\"/\"music\" in the title) with no month, season, or day stated anywhere -- assumed May-October season, anchored to May 1st as a placeholder pending Refresh confirmation of the actual date.",
+      placeholder: true,
     };
   }
 

@@ -646,6 +646,49 @@ different algorithm the script doesn't cover, so that case still reasons
 directly in the scheduled task's own prompt, clearly marked as a distinct
 path from the scripted one.
 
+**`resolve-date-signal.ts` was letting a bare name guess beat a real
+known date (2026-11-09).** Found during Ohio Discovery: events like
+"Plaza Summer Concert Series" and "Concert for Legends" kept getting the
+generic "May 1st, estimated" placeholder even though Discovery had a real
+confirmed past date for them (`knownDate`) on hand. Root cause was in this
+script's `resolveOne`, not in `dateSignalExtraction.ts` itself (whose own
+contract and tests are unaffected): it only ever consulted `knownDate`
+when `resolveDateSignal` returned `null` outright, so *any* non-null
+result — even `resolveDateSignal`'s own weakest last-resort name guesses
+(bare month-in-name, bare season-in-name, and the "concert"/"music"
+catch-all; see `dateSignalExtraction.ts`) — always won, even though a real
+confirmed single date is strictly better evidence than a guess anchored to
+an arbitrary day-1 with no connection to that event's actual history.
+Fixed with two coordinated changes:
+1. `DateSignalResult` (`dateSignalExtraction.ts`) gained a new, purely
+   additive `placeholder?: boolean` field, `true` only for those three
+   bare guesses (monthInName, seasonInName, isSeriesName) and omitted
+   everywhere else — including the other name-only cues (ordinal-weekday-
+   in-name, a named holiday in the name), which read an actually-stated
+   pattern or exact day out of the name rather than inventing one, and so
+   still win outright same as before.
+2. `resolve-date-signal.ts`'s `resolveOne` now orders its three sources by
+   strength: a non-placeholder `resolveDateSignal` result wins outright →
+   else a real `knownDate` (via `inferAnnualRuleFromDate`) wins → else a
+   placeholder guess is used as a last resort rather than giving up
+   entirely. `resolveOne`/`Candidate`/`Result`/`todayUTC` are now exported
+   so this precedence logic has direct unit test coverage
+   (`scripts/resolve-date-signal.test.ts`, new) rather than only being
+   exercised through Discovery/Refresh's live use of the CLI. Also fixed
+   in the same pass: importing this file for that test used to hang
+   forever, because the CLI's `main()` ran as an unconditional side effect
+   of the module load and blocked on `readFileSync(0)` waiting for stdin
+   that was never coming — guarded behind an `import.meta.url` check so
+   `main()` only runs when the file is executed directly.
+
+The 7+ events Ohio Discovery hand-corrected around this bug before the fix
+landed (their `research_log` entries already document the workaround)
+were left as-is rather than backfilled — the correct data is already on
+file either way. Not yet checked: whether earlier states' Discovery passes
+hit this same bug on any `knownDate`-bearing event with a "concert"/
+"series"/"summer"-style name; flagged to Greg as a possible backfill-check
+candidate, not acted on without his input.
+
 **Needs Date, round two (2026-09-28, same day).** Two more things Greg
 caught by spot-checking what was left after the pass above:
 
