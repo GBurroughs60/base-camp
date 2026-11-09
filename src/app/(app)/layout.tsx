@@ -1,6 +1,7 @@
 import Nav from "@/components/Nav";
 import { createClient } from "@/lib/supabase/server";
 import { isCurrentUserAdmin } from "@/lib/admin";
+import { getQuickBooksConnectionStatus } from "@/app/actions/quickbooks";
 
 export default async function AppLayout({
   children,
@@ -18,6 +19,7 @@ export default async function AppLayout({
     { count: eventCount },
     { count: playCount },
     { count: candidateCount },
+    qbStatus,
   ] = await Promise.all([
     // Same visibility rule as the Action List page itself: open, and
     // either never hidden or past its hidden_until. superseded/completed
@@ -49,6 +51,10 @@ export default async function AppLayout({
       .from("candidates")
       .select("*", { count: "exact", head: true })
       .or("status.is.null,status.eq.new"),
+    // Only admins see the QuickBooks nav link (and its status light), so
+    // skip the query entirely for everyone else rather than running a
+    // service-role read that nothing on the page uses.
+    isAdmin ? getQuickBooksConnectionStatus() : Promise.resolve(null),
   ]);
 
   const counts = {
@@ -63,7 +69,11 @@ export default async function AppLayout({
 
   return (
     <div className="flex-1 flex min-h-screen bg-neutral-50 dark:bg-neutral-950">
-      <Nav counts={counts} isAdmin={isAdmin} />
+      <Nav
+        counts={counts}
+        isAdmin={isAdmin}
+        statusDots={qbStatus ? { "/settings/quickbooks": qbStatus.health } : undefined}
+      />
       <div className="flex-1 min-w-0">
         {/* Extra top padding on mobile only, clearing the fixed nav
             expand tab (Nav.tsx) that sits on the viewport's left edge

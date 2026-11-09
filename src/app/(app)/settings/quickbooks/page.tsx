@@ -52,8 +52,15 @@ export default async function QuickBooksSettingsPage({
         {status.connected ? (
           <>
             <div className="flex items-center gap-2 mb-4">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-              <h2 className="font-medium">Connected</h2>
+              <span
+                className={
+                  "inline-block h-2 w-2 rounded-full " +
+                  (status.health === "warning" ? "bg-amber-500" : "bg-emerald-500")
+                }
+              />
+              <h2 className="font-medium">
+                {status.health === "warning" ? "Connected -- needs attention soon" : "Connected"}
+              </h2>
             </div>
             <dl className="text-sm space-y-2 mb-6">
               <div className="flex justify-between">
@@ -65,6 +72,13 @@ export default async function QuickBooksSettingsPage({
                 <dd>{status.connectedAt ? new Date(status.connectedAt).toLocaleString() : "--"}</dd>
               </div>
             </dl>
+            {status.health === "warning" && (
+              <div className="mb-4 rounded-lg border border-amber-600/20 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
+                This connection&apos;s refresh token is within two weeks of expiring (it renews on
+                its own as long as invoices keep going out, but has been sitting idle). Reconnect
+                now to avoid invoices failing later.
+              </div>
+            )}
             <p className="text-xs text-black/50 dark:text-white/50 mb-4">
               Access tokens refresh automatically. Reconnect only if invoices start failing with an
               authorization error, or to point Base Camp at a different QuickBooks company.

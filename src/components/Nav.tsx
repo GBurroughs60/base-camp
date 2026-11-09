@@ -31,12 +31,31 @@ const adminLinks = [
   { href: "/settings/team", label: "Team" },
 ];
 
+// Keyed the same as counts/adminLinks hrefs -- currently only
+// /settings/quickbooks sets one, but any link can opt in by having its
+// href show up in the statusDots map passed down from layout.tsx.
+type DotStatus = "connected" | "warning" | "disconnected";
+
+const DOT_COLOR: Record<DotStatus, string> = {
+  connected: "bg-emerald-500",
+  warning: "bg-amber-500",
+  disconnected: "bg-red-500",
+};
+
+const DOT_LABEL: Record<DotStatus, string> = {
+  connected: "Connected",
+  warning: "Connected -- needs attention soon",
+  disconnected: "Not connected",
+};
+
 export default function Nav({
   counts,
   isAdmin,
+  statusDots,
 }: {
   counts?: Record<string, number>;
   isAdmin: boolean;
+  statusDots?: Record<string, DotStatus>;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -77,7 +96,17 @@ export default function Nav({
             (active ? "opacity-100" : "opacity-0 group-hover:opacity-40")
           }
         />
-        <span className="pl-2 flex-1">{link.label}</span>
+        <span className="pl-2 flex-1 flex items-center gap-2">
+          {link.label}
+          {statusDots?.[link.href] && (
+            <span
+              title={DOT_LABEL[statusDots[link.href]]}
+              className={
+                "inline-block h-1.5 w-1.5 rounded-full shrink-0 " + DOT_COLOR[statusDots[link.href]]
+              }
+            />
+          )}
+        </span>
         {counts?.[link.href] !== undefined && (
           <span
             className={
