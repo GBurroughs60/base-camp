@@ -813,6 +813,57 @@ a new file and flipping a config value, not touching call sites.
   presumably where an actual future rebooking decision gets made, not by
   paging back through past plays? Not designed.
 
+## 10. Going live: QuickBooks production keys (2026-11-08/09)
+
+Intuit's Development/sandbox keys cannot connect to a real, live QBO
+company -- confirmed live via Intuit's own "no sandbox companies found for
+the user" OAuth error. Getting Production Client ID/Secret requires
+clearing two checklist items on the Production tab of the Intuit developer
+app ("Base Camp Invoicing"):
+
+- **App details (done, 100%):** host domain, launch/disconnect/connect
+  URLs all pointed at `https://base-camp-lovat.vercel.app/settings/quickbooks`;
+  category "Invoicing & payments"; hosting country United States (no fixed
+  outbound IP -- left blank per Intuit's own guidance for serverless
+  platforms); EULA/privacy policy URLs pointed at two new pages built for
+  this, `/legal/eula` and `/legal/privacy` (`src/app/legal/`, exempted from
+  the login redirect in `src/lib/supabase/middleware.ts`'s `isPublicRoute`
+  so Intuit's reviewers can open them with no Base Camp account). Also
+  added a real Disconnect flow (`disconnectConnection()` in
+  `src/lib/invoicing/quickbooks.ts`, wired to a button on Settings >
+  QuickBooks) since there wasn't one before and Intuit's checklist asks for
+  a working disconnect URL, not just one that resolves.
+- **Compliance (in progress):** an external "App assessment questionnaire"
+  (six tabs: General, App Information, Authorization & Authentication, API
+  Usage, Error Handling, Security). Two answers researched rather than
+  guessed, since a wrong one either blocks approval or quietly misstates
+  something:
+  - **Sandbox connect/disconnect/reconnect testing is a documented hard
+    gate** -- Intuit's own stated policy (per third-party integration-
+    platform docs that quote it directly) is that it rejects the app if
+    this is answered "No." Not yet done (no sandbox company existed on
+    Greg's Intuit account until now) -- **must** be completed before
+    submitting, not optional.
+  - **Capturing the `intuit_tid` response header is best-practice, not a
+    documented hard gate** -- added anyway since it's cheap: every thrown
+    error in `src/lib/invoicing/quickbooks.ts` now includes it via a
+    shared `describeFailedResponse()` helper, when Intuit's response
+    included one.
+  - Everything else on the questionnaire splits into (a) purely technical
+    answers confirmable from this codebase, (b) business/legal attestations
+    about Ridge Music Group that are Greg's to confirm (regulatory
+    complaints, legal counsel, sanctions exposure, security team, prior
+    breaches), and (c) a couple of honest "No"s that aren't believed to be
+    blocking on their own for a small single-company integration (no OAuth
+    discovery-document use; no auth-retry-on-failure logic, paired with a
+    "Yes" on asking users to reconnect instead).
+
+**Not yet done:** the sandbox OAuth test itself; submitting the
+questionnaire; swapping `QUICKBOOKS_CLIENT_ID`/`QUICKBOOKS_CLIENT_SECRET`
+in Vercel from Development to Production values once approved; a fresh
+deploy; retrying the real Connect flow against Ridge Music Group's actual
+QBO company.
+
 ## Keeping this in sync
 
 As pieces of this get implemented, update this file in the same commits as

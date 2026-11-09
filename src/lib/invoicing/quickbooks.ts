@@ -37,6 +37,20 @@ const REVOKE_ENDPOINT = "https://developer.api.intuit.com/v2/oauth2/tokens/revok
 // a clear error rather than guessing.
 const COMMISSION_ITEM_NAME = process.env.QUICKBOOKS_COMMISSION_ITEM_NAME ?? "Booking Commission";
 
+// Intuit's own support/debugging convention: every QBO API and OAuth
+// response carries an `intuit_tid` header, and Intuit support asks for it
+// when diagnosing a failed call -- it's useless after the fact if it was
+// never captured. Folded into the thrown error message (rather than a
+// separate log call) so it travels with the error wherever it surfaces
+// (webhook route logs, Vercel runtime logs, a future error-tracking tool)
+// instead of needing its own plumbing.
+function describeFailedResponse(prefix: string, res: Response, body: string, extra?: string): Error {
+  const tid = res.headers.get("intuit_tid");
+  const tidSuffix = tid ? ` [intuit_tid: ${tid}]` : "";
+  const extraSuffix = extra ? ` -- ${extra}` : "";
+  return new Error(`${prefix} (${res.status}): ${body}${tidSuffix}${extraSuffix}`);
+}
+
 function clientCredentials(): { clientId: string; clientSecret: string } {
   const clientId = process.env.QUICKBOOKS_CLIENT_ID;
   const clientSecret = process.env.QUICKBOOKS_CLIENT_SECRET;
@@ -101,7 +115,7 @@ export async function exchangeAuthorizationCode(
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`QuickBooks token exchange failed (${res.status}): ${body}`);
+    throw describeFailedResponse("QuickBooks token exchange failed", res, body);
   }
   return (await res.json()) as TokenResponse;
 }
@@ -130,8 +144,11 @@ async function refreshAccessToken(connection: ConnectionRow): Promise<string> {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(
-      `QuickBooks token refresh failed (${res.status}): ${body} -- the connection may need to be re-authorized from Settings > QuickBooks.`
+    throw describeFailedResponse(
+      "QuickBooks token refresh failed",
+      res,
+      body,
+      "the connection may need to be re-authorized from Settings > QuickBooks."
     );
   }
   const tokens = (await res.json()) as TokenResponse;
@@ -234,7 +251,7 @@ async function findOrCreateCustomer(name: string, email: string): Promise<string
   const res = await qboFetch(`/query?query=${encodeURIComponent(query)}&minorversion=65`);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`QuickBooks Customer query failed (${res.status}): ${body}`);
+    throw describeFailedResponse("QuickBooks Customer query failed", res, body);
   }
   const data = (await res.json()) as QboQueryResponse<{ Id: string }>;
   const existing = data.QueryResponse.Customer?.[0];
@@ -249,7 +266,7 @@ async function findOrCreateCustomer(name: string, email: string): Promise<string
   });
   if (!createRes.ok) {
     const body = await createRes.text().catch(() => "");
-    throw new Error(`QuickBooks Customer create failed (${createRes.status}): ${body}`);
+    throw describeFailedResponse("QuickBooks Customer create failed", createRes, body);
   }
   const created = (await createRes.json()) as { Customer: { Id: string } };
   return created.Customer.Id;
@@ -260,7 +277,7 @@ async function findCommissionItemId(): Promise<string> {
   const res = await qboFetch(`/query?query=${encodeURIComponent(query)}&minorversion=65`);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`QuickBooks Item query failed (${res.status}): ${body}`);
+    throw describeFailedResponse("QuickBooks Item query failed", res, body);
   }
   const data = (await res.json()) as QboQueryResponse<{ Id: string }>;
   const item = data.QueryResponse.Item?.[0];
@@ -302,7 +319,7 @@ export class QuickBooksProvider implements InvoicingProvider {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new Error(`QuickBooks Invoice create failed (${res.status}): ${body}`);
+      throw describeFailedResponse("QuickBooks Invoice create failed", res, body);
     }
     const data = (await res.json()) as { Invoice: { Id: string } };
 
@@ -313,7 +330,7 @@ export class QuickBooksProvider implements InvoicingProvider {
     const res = await qboFetch(`/invoice/${providerInvoiceId}?minorversion=65`);
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new Error(`QuickBooks Invoice fetch failed (${res.status}): ${body}`);
+      throw describeFailedResponse("QuickBooks Invoice fetch failed", res, body);
     }
     const data = (await res.json()) as {
       Invoice: { Balance?: number; TotalAmt: number; void?: boolean };
