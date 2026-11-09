@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TableName } from "@/app/actions/records";
 import CreateRecordModal from "./CreateRecordModal";
+import NewPlayModal from "./NewPlayModal";
 
 const TYPES: { key: TableName; label: string }[] = [
   { key: "artists", label: "Artist" },
@@ -51,8 +52,10 @@ export default function NewRecordButton() {
           ))}
         </div>
       )}
-      {modalType && (
-        <CreateRecordModal table={modalType} onClose={() => setModalType(null)} />
+      {modalType === "plays" ? (
+        <NewPlayModal onClose={() => setModalType(null)} />
+      ) : (
+        modalType && <CreateRecordModal table={modalType} onClose={() => setModalType(null)} />
       )}
     </div>
   );

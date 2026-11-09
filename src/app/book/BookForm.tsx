@@ -5,9 +5,7 @@ import type { BookableArtist } from "@/app/actions/offerIntake";
 import { submitOfferInquiry } from "@/app/actions/offerIntake";
 import TicketTierEditor from "@/components/inline/TicketTierEditor";
 import { type TierDraft, makeEmptyTierDraft } from "@/lib/ticketTiers";
-
-const inputClass =
-  "border border-black/15 dark:border-white/15 rounded-md px-3 py-2 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-ridge-orange/40 focus:border-ridge-orange transition-colors";
+import { Field, ToggleChip, SectionCard, inputClass } from "@/components/inline/PlayFormParts";
 
 const initialState = {
   companyUrl: "",
@@ -91,55 +89,6 @@ function clearDraft() {
   } catch {
     // Same as above -- nothing to do if storage isn't available.
   }
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-black/50 dark:text-white/50">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function ToggleChip({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      aria-pressed={checked}
-      className={`px-3 py-1 text-sm rounded-full border transition-colors ${
-        checked
-          ? "bg-ridge-orange text-white border-transparent"
-          : "border-black/15 dark:border-white/15 text-black/50 dark:text-white/50 hover:border-ridge-orange/50"
-      }`}
-    >
-      {label}: {checked ? "Yes" : "No"}
-    </button>
-  );
-}
-
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white dark:bg-neutral-900 border border-black/10 dark:border-white/10 rounded-xl p-6 shadow-sm flex flex-col gap-3">
-      <h2 className="font-medium text-sm">{title}</h2>
-      {children}
-    </div>
-  );
 }
 
 export default function BookForm({ artists }: { artists: BookableArtist[] }) {

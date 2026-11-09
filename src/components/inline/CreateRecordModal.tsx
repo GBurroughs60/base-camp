@@ -4,13 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   createRecord,
-  listActiveArtists,
   fuzzyMatchCompanies,
   type TableName,
   type CompanyFuzzyMatch,
 } from "@/app/actions/records";
-import RelationSearchPicker from "./RelationSearchPicker";
-import { ChevronIcon } from "./icons";
 
 const ROUTE: Record<TableName, string> = {
   contacts: "/contacts",
@@ -40,72 +37,17 @@ const COMPANY_TYPES = [
   { value: "other", label: "Other" },
 ];
 
-// A small "pick or create" slot used for Play's venue/event, which don't
-// have a parent record id to write to yet -- selection just lives in local
-// state until the whole form is submitted.
-function PickerSlot({
-  table,
-  label,
-  selected,
-  onChange,
-}: {
-  table: "companies" | "events";
-  label: string;
-  selected: { id: string; label: string } | null;
-  onChange: (v: { id: string; label: string } | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative">
-      <div className="flex items-center justify-between rounded border border-black/15 dark:border-white/15 px-2 py-1.5">
-        <span className="text-sm">
-          {selected ? (
-            selected.label
-          ) : (
-            <span className="text-black/40 dark:text-white/40">
-              No {label.toLowerCase()} selected
-            </span>
-          )}
-        </span>
-        <div className="flex items-center gap-2">
-          {selected && (
-            <button
-              type="button"
-              onClick={() => onChange(null)}
-              className="text-xs text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70"
-            >
-              Clear
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70"
-          >
-            <ChevronIcon className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-      {open && (
-        <div className="absolute z-30 top-full left-0 mt-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-lg overflow-hidden">
-          <RelationSearchPicker
-            table={table}
-            onSelect={(id, l) => {
-              onChange({ id, label: l });
-              setOpen(false);
-            }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
+// Handles contacts/companies/events/artists. Plays are deliberately excluded
+// -- see NewPlayModal.tsx, which NewRecordButton opens instead for the
+// full-scope internal "New Play" flow (section-card layout mirroring the
+// public /book form, search-first venue/event/contact pickers). Keeping
+// that entirely separate rather than special-cased in here avoids two
+// half-overlapping implementations of "create a play" drifting apart.
 export default function CreateRecordModal({
   table,
   onClose,
 }: {
-  table: TableName;
+  table: Exclude<TableName, "plays">;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -116,17 +58,11 @@ export default function CreateRecordModal({
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [website, setWebsite] = useState("");
-  const [showDate, setShowDate] = useState("");
-  const [venue, setVenue] = useState<{ id: string; label: string } | null>(null);
-  const [event, setEvent] = useState<{ id: string; label: string } | null>(null);
-  const [artistOptions, setArtistOptions] = useState<{ id: string; name: string }[]>([]);
-  const [artistId, setArtistId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fuzzyMatches, setFuzzyMatches] = useState<CompanyFuzzyMatch[]>([]);
 
   const nameLabel = table === "contacts" ? "Full name" : "Name";
-  const playNeedsLink = table === "plays" && !venue && !event;
 
   // Same "did you mean" nudge as RelationSearchPicker's quick-create, for
   // this modal's own top-level company form (the Companies page's "+ New
@@ -147,35 +83,11 @@ export default function CreateRecordModal({
     };
   }, [table, name]);
 
-  useEffect(() => {
-    if (table !== "plays") return;
-    let cancelled = false;
-    listActiveArtists().then((rows) => {
-      if (cancelled) return;
-      setArtistOptions(rows);
-      // Only worth pre-selecting when there's just one artist to choose
-      // from -- with more than one on the roster, defaulting to whichever
-      // sorts first would silently misattribute the play if left unchanged.
-      if (rows.length === 1) setArtistId(rows[0].id);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [table]);
-
   async function handleSubmit() {
     setError(null);
 
-    if (table !== "plays" && !name.trim()) {
+    if (!name.trim()) {
       setError(`${nameLabel} is required`);
-      return;
-    }
-    if (table === "plays" && !artistId) {
-      setError("Select an artist");
-      return;
-    }
-    if (playNeedsLink) {
-      setError("Pick or create a venue or event");
       return;
     }
     // Website drives domain-based candidate matching in the weekly scan --
@@ -195,16 +107,9 @@ export default function CreateRecordModal({
             ? { name, city: city || null, state: state || null }
             : table === "artists"
               ? { name }
-              : table === "plays"
-                ? {
-                    show_date: showDate || null,
-                    venue_id: venue?.id ?? null,
-                    event_id: event?.id ?? null,
-                    artist_id: artistId,
-                  }
-                : // Unreachable -- this modal is never opened for
-                  // candidates (see the ROUTE/TITLE comment above).
-                  {};
+              : // Unreachable -- this modal is never opened for
+                // candidates (see the ROUTE/TITLE comment above).
+                {};
 
     setSubmitting(true);
     const res = await createRecord(table, data);
@@ -230,68 +135,18 @@ export default function CreateRecordModal({
         <h2 className="font-display text-lg font-medium mb-4">{TITLE[table]}</h2>
 
         <div className="space-y-3">
-          {table === "plays" ? (
-            <>
-              <div>
-                <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
-                  Artist
-                </label>
-                <select
-                  value={artistId}
-                  onChange={(e) => setArtistId(e.target.value)}
-                  className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange"
-                >
-                  <option value="" disabled>
-                    Select an artist
-                  </option>
-                  {artistOptions.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
-                  Show date
-                </label>
-                <input
-                  type="date"
-                  value={showDate}
-                  onChange={(e) => setShowDate(e.target.value)}
-                  className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
-                  Venue
-                </label>
-                <PickerSlot table="companies" label="Venue" selected={venue} onChange={setVenue} />
-              </div>
-              <div>
-                <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
-                  Event
-                </label>
-                <PickerSlot table="events" label="Event" selected={event} onChange={setEvent} />
-              </div>
-              <p className="text-xs text-black/40 dark:text-white/40">
-                At least a venue or event is required. Everything else can be filled in after creating the play.
-              </p>
-            </>
-          ) : (
-            <>
-              <div>
-                <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
-                  {nameLabel}
-                </label>
-                <input
-                  autoFocus
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange"
-                />
-              </div>
-              {table === "contacts" && (
+          <div>
+            <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
+              {nameLabel}
+            </label>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange"
+            />
+          </div>
+          {table === "contacts" && (
                 <div className="flex gap-2">
                   <div className="w-1/2">
                     <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
@@ -373,9 +228,7 @@ export default function CreateRecordModal({
                       className="w-full rounded border border-black/15 dark:border-white/15 bg-white dark:bg-neutral-900 px-2 py-1.5 text-sm outline-none focus:border-ridge-orange"
                     />
                   </div>
-                </div>
-              )}
-            </>
+            </div>
           )}
 
           {table === "companies" && fuzzyMatches.length > 0 && (
