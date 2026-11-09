@@ -1,4 +1,5 @@
 import { getQuickBooksConnectionStatus, disconnectQuickBooks } from "@/app/actions/quickbooks";
+import { requireAdmin } from "@/lib/admin";
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_state: "That connection attempt couldn't be verified -- please try again.",
@@ -17,6 +18,9 @@ export default async function QuickBooksSettingsPage({
 }: {
   searchParams: Promise<{ connected?: string; error?: string; disconnected?: string }>;
 }) {
+  // Admin-only (2026-11-09, per Greg) -- see candidates/page.tsx's
+  // identical comment; same reasoning, same src/lib/admin.ts helper.
+  await requireAdmin();
   const { connected: justConnected, error, disconnected: justDisconnected } = await searchParams;
   const status = await getQuickBooksConnectionStatus();
 

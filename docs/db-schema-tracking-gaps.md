@@ -626,3 +626,91 @@ it through the Supabase CLI (`supabase migration new
 add_quickbooks_invoicing_foundation`) from a machine with it set up,
 rather than the dashboard's SQL editor. Once applied, this is purely
 bookkeeping -- the live tables/column will already match.
+
+## `user_profiles` -- admin role + invite-lifecycle columns (2026-11-09)
+
+**What's untracked:** `is_admin boolean`, `invite_status text`, `invited_at
+timestamptz`, `invited_by uuid` added to `public.user_profiles`, plus a
+`guard_user_profiles_admin_fields` trigger (before insert/update) that
+blocks writes to those four columns from anything other than the
+service-role key. Needed before any of the new admin-section-gating or
+Team-page invite code (see `src/lib/admin.ts`,
+`src/app/actions/userProfiles.ts`) will actually work -- right now none of
+those columns exist live, so every query referencing them will error.
+
+**Why it's untracked:** `mcp__Supabase__apply_migration` for this one asked
+for human approval (same `[Production Deploy]`-style gate every prior
+plain `ALTER TABLE`/`CREATE TABLE` in this project has hit -- see every
+entry above) and got no answer before timing out, so **nothing was
+applied**. Confirmed live: `user_profiles` still has only its original
+three columns (`id`, `display_name`, `updated_at`).
+
+**Symptom if this is still open:** Settings > Team throws when it tries to
+read `is_admin`/`invite_status`; the admin-section gate in
+`src/lib/admin.ts` can't tell who's an admin; inviting a new user fails
+outright.
+
+**Replay SQL:**
+
+```sql
+alter table public.user_profiles
+  add column is_admin boolean not null default false,
+  add column invite_status text not null default 'active'
+    check (invite_status in ('invited', 'active')),
+  add column invited_at timestamptz,
+  add column invited_by uuid references auth.users(id);
+
+create or replace function public.guard_user_profiles_admin_fields()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.role() <> 'service_role' then
+    if tg_op = 'INSERT' then
+      if new.is_admin or new.invite_status <> 'active' or new.invited_at is not null or new.invited_by is not null then
+        raise exception 'is_admin / invite_status / invited_at / invited_by can only be set by an admin action';
+      end if;
+    elsif tg_op = 'UPDATE' then
+      if new.is_admin is distinct from old.is_admin
+        or new.invite_status is distinct from old.invite_status
+        or new.invited_at is distinct from old.invited_at
+        or new.invited_by is distinct from old.invited_by
+      then
+        raise exception 'is_admin / invite_status / invited_at / invited_by can only be changed by an admin action';
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_user_profiles_admin_fields on public.user_profiles;
+create trigger guard_user_profiles_admin_fields
+  before insert or update on public.user_profiles
+  for each row execute function public.guard_user_profiles_admin_fields();
+
+-- Seed the two existing real accounts as admins -- exactly Greg and
+-- Justin Mayotte. Every future admin promotion goes through the app's
+-- own "Make admin" action (service-role, logged), not another direct
+-- migration like this one.
+update public.user_profiles set is_admin = true
+where id in (
+  select id from auth.users where email in (
+    'gburroughs@theridgemusicgroup.com',
+    'jmayotte@theridgemusicgroup.com'
+  )
+);
+```
+
+This migration does **not** need to wait for anything else -- it's pure
+Base Camp schema and can be applied any time, but it **is a hard
+prerequisite** for every piece of the admin-gating/invite feature in this
+same batch of work.
+
+**To close the gap properly:** same approach as the entries above -- run
+it through the Supabase CLI (`supabase migration new
+add_user_admin_and_invite_tracking`) from a machine with it set up, rather
+than the dashboard's SQL editor. Once applied, this is purely
+bookkeeping -- the live table will already match.

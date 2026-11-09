@@ -1,5 +1,6 @@
 import Nav from "@/components/Nav";
 import { createClient } from "@/lib/supabase/server";
+import { isCurrentUserAdmin } from "@/lib/admin";
 
 export default async function AppLayout({
   children,
@@ -8,6 +9,7 @@ export default async function AppLayout({
 }) {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
+  const isAdmin = await isCurrentUserAdmin();
   const [
     { count: actionItemCount },
     { count: artistCount },
@@ -61,7 +63,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex-1 flex min-h-screen bg-neutral-50 dark:bg-neutral-950">
-      <Nav counts={counts} />
+      <Nav counts={counts} isAdmin={isAdmin} />
       <div className="flex-1 min-w-0">
         {/* Extra top padding on mobile only, clearing the fixed nav
             expand tab (Nav.tsx) that sits on the viewport's left edge

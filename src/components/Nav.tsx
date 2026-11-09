@@ -17,9 +17,13 @@ const links = [
   { href: "/plays", label: "Plays" },
 ];
 
-// Open to everyone for now -- no permission check yet. Once Base Camp has
-// real roles, gate this section (and its routes) behind an admin-only
-// permission set rather than just hiding the nav link.
+// Gated behind isAdmin below (2026-11-09, per Greg: "truly treat that as
+// a second, higher-level permission set for admins only") -- see
+// src/lib/admin.ts. Hiding the link here is the UX half; each of these
+// four routes also calls requireAdmin() itself (candidates/page.tsx,
+// revenue/page.tsx, settings/quickbooks/page.tsx, settings/team/page.tsx),
+// which is the half that actually matters, since a hidden link doesn't
+// stop someone from typing the URL directly.
 const adminLinks = [
   { href: "/candidates", label: "Candidates" },
   { href: "/revenue", label: "Revenue" },
@@ -29,8 +33,10 @@ const adminLinks = [
 
 export default function Nav({
   counts,
+  isAdmin,
 }: {
   counts?: Record<string, number>;
+  isAdmin: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -149,15 +155,17 @@ export default function Nav({
       <nav className="flex-1 px-3 py-4 flex flex-col overflow-y-auto">
         <div className="flex flex-col gap-0.5">{links.map(renderLink)}</div>
 
-        {/* Admin area -- lower in the sidebar, visually separated. Open to
-            everyone for now; see the adminLinks comment above for the
-            planned permission gate. */}
-        <div className="mt-auto pt-4 flex flex-col gap-0.5">
-          <p className="px-3 pb-1 text-[10px] uppercase tracking-[0.14em] text-white/30">
-            Admin
-          </p>
-          {adminLinks.map(renderLink)}
-        </div>
+        {/* Admin area -- lower in the sidebar, visually separated, and now
+            actually gated (see adminLinks' comment above) rather than just
+            visually set apart. */}
+        {isAdmin && (
+          <div className="mt-auto pt-4 flex flex-col gap-0.5">
+            <p className="px-3 pb-1 text-[10px] uppercase tracking-[0.14em] text-white/30">
+              Admin
+            </p>
+            {adminLinks.map(renderLink)}
+          </div>
+        )}
       </nav>
 
       <div className="px-3 py-4 border-t border-white/10">

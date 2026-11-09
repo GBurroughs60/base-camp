@@ -1,18 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+// URL ?error= values a redirect can land here with, outside the normal
+// sign-in failure path below (which just shows Supabase's own error.message).
+// Currently just the one case: src/app/auth/confirm/route.ts sends someone
+// here when an invite-email link's token is missing, expired, or already
+// used (invite links are one-time-use -- see inviteTeamMember's "Resend
+// invite" for the fix, not a second click on the same email).
+const URL_ERROR_MESSAGES: Record<string, string> = {
+  invite_link_invalid:
+    "That invite link isn't valid anymore -- it may have already been used, or expired. Ask whoever invited you to resend it.",
+};
+
+// useSearchParams() needs a Suspense boundary or `next build` fails to
+// prerender this page at all (Next.js bails the whole page to
+// client-only rendering otherwise -- see the linked docs in the error).
+// The actual sign-in form carries no server data of its own, so this is
+// just bureaucracy for Next's benefit, not a real loading state -- nothing
+// here ever meaningfully shows the fallback.
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const urlError = searchParams.get("error");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -88,6 +116,11 @@ export default function LoginPage() {
             {loading ? "Please wait…" : "Sign in"}
           </button>
         </form>
+        {urlError && !message && (
+          <p className="text-sm mt-3 text-red-700 dark:text-red-400">
+            {URL_ERROR_MESSAGES[urlError] ?? "Something went wrong -- please try again."}
+          </p>
+        )}
         {message && (
           <p className="text-sm mt-3 text-black/70 dark:text-white/70">
             {message}

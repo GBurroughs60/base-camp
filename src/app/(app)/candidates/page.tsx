@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/admin";
 import CandidatesList, { type CandidateListRow } from "@/components/CandidatesList";
 
 type CandidateRow = {
@@ -15,6 +16,10 @@ type CandidateRow = {
 };
 
 export default async function CandidatesPage() {
+  // Admin-only (2026-11-09, per Greg) -- see src/lib/admin.ts. A hidden
+  // Nav.tsx link alone doesn't stop a direct URL visit; this is the half
+  // that actually enforces it, silently redirecting a non-admin to "/".
+  await requireAdmin();
   const supabase = await createClient();
 
   // "New" candidates only -- imported/dismissed rows drop off this list

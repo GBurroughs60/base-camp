@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/admin";
 import RevenueDashboard, {
   type LivePlayRow,
   type HistoricalYearRow,
@@ -28,6 +29,9 @@ type ArtistRecord = {
 };
 
 export default async function RevenuePage() {
+  // Admin-only (2026-11-09, per Greg) -- see candidates/page.tsx's
+  // identical comment; same reasoning, same src/lib/admin.ts helper.
+  await requireAdmin();
   const supabase = await createClient();
 
   // Everything except declined/cancelled -- those deals never happened, so

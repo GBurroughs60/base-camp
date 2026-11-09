@@ -55,7 +55,17 @@ export async function updateSession(request: NextRequest) {
   // /legal is the privacy policy / EULA pair required by Intuit's
   // production-keys checklist for the QuickBooks app -- Intuit's own
   // reviewers need to open these with no Base Camp account at all.
-  // None of these six are an auth route themselves (a logged-in user
+  // /auth/confirm is the invite-email link's landing route (src/app/auth/
+  // confirm/route.ts) -- it's the thing that *establishes* the session
+  // (calling supabase.auth.verifyOtp with the token in the URL), so by
+  // definition there's no session yet when this route is hit. Without this
+  // exemption the middleware would 307 the brand-new invite link straight
+  // to /login before verifyOtp ever ran. /invite/set-password (the page
+  // that route redirects to) is deliberately *not* here -- by the time
+  // they land there they do have a session, so the normal !user check is
+  // exactly what's wanted (anyone who lands there without a valid session
+  // gets bounced to /login like any other page).
+  // None of these seven are an auth route themselves (a logged-in user
   // hitting them isn't bounced anywhere), just exempt from the login
   // redirect below.
   const isPublicRoute =
@@ -65,7 +75,8 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/book") ||
     request.nextUrl.pathname.startsWith("/api/webhooks") ||
     request.nextUrl.pathname.startsWith("/api/cron") ||
-    request.nextUrl.pathname.startsWith("/legal");
+    request.nextUrl.pathname.startsWith("/legal") ||
+    request.nextUrl.pathname.startsWith("/auth/confirm");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
