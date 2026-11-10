@@ -326,6 +326,23 @@ export class QuickBooksProvider implements InvoicingProvider {
     return { providerInvoiceId: data.Invoice.Id, providerCustomerId: customerId };
   }
 
+  // Intuit's documented recipe for actually delivering an invoice: POST
+  // .../invoice/{id}/send?sendTo=<email>, no body. QBO renders and emails
+  // its own invoice template (with a pay-online link) straight to that
+  // address -- Base Camp never builds or sends that email itself, same
+  // "provider owns sending" split as the rest of section 2. NEEDS LIVE
+  // VERIFICATION, same caveat as the rest of this file.
+  async sendInvoice(providerInvoiceId: string, email: string): Promise<void> {
+    const res = await qboFetch(
+      `/invoice/${providerInvoiceId}/send?sendTo=${encodeURIComponent(email)}&minorversion=65`,
+      { method: "POST" }
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw describeFailedResponse("QuickBooks Invoice send failed", res, body);
+    }
+  }
+
   async getInvoice(providerInvoiceId: string): Promise<InvoiceState> {
     const res = await qboFetch(`/invoice/${providerInvoiceId}?minorversion=65`);
     if (!res.ok) {

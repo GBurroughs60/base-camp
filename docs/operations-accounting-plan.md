@@ -724,20 +724,80 @@ plain `ALTER TABLE`/`CREATE TABLE` in this project has hit -- logged in
 settlement-table gaps above. It does **not** need to wait for anything
 QBO-side; it's pure Base Camp schema and Greg can apply it whenever.
 
-**Still not built:** the actual trigger that creates a
-`commission_invoices` row and calls `createInvoice` in the first place
-(e.g. a cron analogous to `send-settlement-reminders`, firing once
-`settlement_submitted_at` is set) -- deliberately not built blind, next
-once Greg has real sandbox credentials to test `createInvoice`/`getInvoice`
-against. Also still needed from Greg, external to this codebase:
-register a developer app at developer.intuit.com (once the QBO
-subscription is active) and get a sandbox company; set
+**Build status (2026-11-10): the invoice-creation trigger is built.**
+Greg connected the real sandbox company on 2026-11-09 (Settings >
+QuickBooks shows it live, `quickbooks_connection.realm_id` populated), so
+this is no longer blind. New cron, `/api/cron/create-commission-invoices`
+(`vercel.json`, `30 9 * * *` -- right after `send-settlement-reminders`),
+two phases:
+
+- **Phase 1** finds every `played` play with `settlement_submitted_at` set
+  and no `commission_invoices` row yet (`kind='booking'`), skips anything
+  Ridge doesn't book (`ridge_books`) or whose booking commission rate is
+  still unknown (never invoices a guessed amount -- already flagged
+  passively by the "rate not set" indicators on Revenue/Agent
+  Commissions), and otherwise computes the real commission via
+  `computePlayRevenue` (see the Walkout fix below) and inserts a `draft`
+  `commission_invoices` row with the amount captured once, not re-read
+  live later.
+- **Phase 2** pushes every `draft` row (new ones from phase 1, and any
+  from a prior run that didn't finish) through the provider: `createInvoice`
+  if it doesn't have a `provider_invoice_id` yet, then `sendInvoice` either
+  way, only setting `status='sent'`/`sent_at` once the send succeeds. A
+  failure at either step leaves the row as `draft` (with
+  `provider_invoice_id` saved if `createInvoice` got that far) so the next
+  run retries only the unfinished piece, never risking a duplicate QBO
+  invoice. The billing contact is always the artist's own `role='artist'`
+  contact (never the manager, per section 2's "Ridge invoices the artist")
+  -- if none has an email on file, or the provider call throws, the play
+  is logged and Greg gets a direct alert via the existing
+  `logEmailFailure`/`alertGregOfEmailFailure` path (new email kind,
+  `commission_invoice_blocked`) rather than silently stalling forever.
+  Known gap, not solved this pass: that alert has no de-dup/escalation
+  cadence of its own (unlike `send-settlement-reminders`), so an
+  unresolved block re-alerts every run until Greg fixes the underlying gap
+  (a missing contact, say) -- acceptable at today's volume, worth
+  revisiting if it gets noisy.
+
+**New provider method, `sendInvoice` (`src/lib/invoicing/types.ts`/
+`quickbooks.ts`).** `createInvoice` alone only creates the object at QBO;
+getting it in front of the customer needs Intuit's own
+`POST .../invoice/{id}/send?sendTo=<email>`, which is what actually emails
+QBO's own invoice template with a pay-online link -- this is the literal
+mechanics of "QBO owns sending" (section 2), not fully built until now.
+Kept as a separate interface method rather than folded into `createInvoice`
+so a send failure after a successful create is a retryable gap (phase 2
+above), not a half-finished invoice. NEEDS LIVE VERIFICATION, same caveat
+as the rest of `quickbooks.ts` -- not yet smoke-tested against the real
+sandbox connection.
+
+**Bug found and fixed along the way: `computePlayRevenue` never actually
+implemented the Walkout formula change from section 2 (2026-10-26).** The
+booking/management bases were still guarantee-only/guarantee+merch,
+silently ignoring `walkout_amount` three weeks after that decision was
+recorded -- caught by checking two real plays (Cody Webb, show dates
+2026-11-01 and 2026-11-07) that already have real `walkout_amount` values
+from testing the `/settle/[token]` form: the old formula would have
+invoiced half the correct amount on both ($250/$650 instead of the correct
+$500/$1,300 at a 10% booking rate). Fixed in `src/lib/revenue.ts`
+(`CommissionPlayInput` gained `walkoutAmount`, both bases now add it in)
+and the one caller, `src/app/(app)/revenue/page.tsx` (now selects/passes
+`walkout_amount`). This also quietly corrects the live Revenue and Agent
+Commissions pages, not just the new invoice trigger -- they were
+understating commission on any play with walkout dollars the whole time.
+
+Also still needed from Greg, external to this codebase (unchanged from the
+build note above): register a developer app at developer.intuit.com (done
+-- see the sandbox connection above) and get a sandbox company (done); set
 `QUICKBOOKS_CLIENT_ID`/`QUICKBOOKS_CLIENT_SECRET`/
 `QUICKBOOKS_WEBHOOK_VERIFIER_TOKEN` as Vercel env vars; create the
-"Booking Commission" Item in QBO itself; then use Settings > QuickBooks to
-click Connect. `tsc`/`eslint`/`next build` all clean (same unrelated
-`/login` prerender failure from missing Supabase env vars in this sandbox
-as every prior pass).
+"Booking Commission" Item in QBO itself -- **not yet confirmed one exists
+in the sandbox company**, and `createInvoice` throws a clear error if it
+doesn't. `tsc`/`eslint`/`next build` all clean. Not yet run against the
+real sandbox connection -- the first real invocation will actually call
+QBO's sandbox API and attempt to email Cody Webb's real address
+(`cwebb155@gmail.com`) via Resend, so that first run should be a deliberate,
+watched one, not an unattended cron firing blind.
 
 ## 7. Provider interface (draft)
 

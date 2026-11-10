@@ -16,6 +16,7 @@ type PlayRecord = {
   show_date: string | null;
   guarantee_amount: number | null;
   gross_merch_sales: number | null;
+  walkout_amount: number | null;
   management_commission_pct: number | null;
   booking_agent_commission_pct: number | null;
   booking_agent_user_id: string | null;
@@ -46,7 +47,7 @@ export default async function RevenuePage() {
     supabase
       .from("plays")
       .select(
-        "id, artist_id, status, show_date, guarantee_amount, gross_merch_sales, management_commission_pct, booking_agent_commission_pct, booking_agent_user_id, artists(name)"
+        "id, artist_id, status, show_date, guarantee_amount, gross_merch_sales, walkout_amount, management_commission_pct, booking_agent_commission_pct, booking_agent_user_id, artists(name)"
       )
       .not("status", "in", "(declined,cancelled)"),
     supabase
@@ -83,6 +84,7 @@ export default async function RevenuePage() {
         status: play.status,
         guaranteeAmount: play.guarantee_amount,
         grossMerchSales: play.gross_merch_sales,
+        walkoutAmount: play.walkout_amount,
         managementCommissionPctOverride: play.management_commission_pct,
         bookingAgentCommissionPctOverride: play.booking_agent_commission_pct,
       },

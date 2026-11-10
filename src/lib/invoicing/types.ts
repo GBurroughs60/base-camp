@@ -83,6 +83,16 @@ export interface InvoicingProvider {
 
   createInvoice(input: CreateInvoiceInput): Promise<CreateInvoiceResult>;
 
+  /** Hands the invoice to the provider's own send pipeline -- this is what
+   *  actually puts it in front of the customer (an emailed invoice with a
+   *  pay-online link, QBO's own template), same "provider owns sending"
+   *  split as the rest of docs/operations-accounting-plan.md section 2.
+   *  createInvoice alone only creates the object provider-side; a caller
+   *  must call this too before commission_invoices.sent_at is set. Kept as
+   *  its own step (not folded into createInvoice) so a send failure after
+   *  a successful create is a retryable gap, not a half-done invoice. */
+  sendInvoice(providerInvoiceId: string, email: string): Promise<void>;
+
   /** Fetch an invoice's current state by the provider's own id. This is
    *  the only reliable way to know if an invoice has actually been paid --
    *  QBO's webhook payload is thin (entity name/id/operation/timestamp,

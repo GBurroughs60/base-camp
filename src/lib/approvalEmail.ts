@@ -70,7 +70,8 @@ export async function logEmailFailure(
     | "settlement_request"
     | "settlement_received"
     | "settlement_escalation"
-    | "email_bounce",
+    | "email_bounce"
+    | "commission_invoice_blocked",
   recipient: string,
   context: Record<string, unknown>,
   errorDetail: string
