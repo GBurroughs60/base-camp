@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { PlayStatus } from "@/lib/playStatus";
-import { PLAY_STATUS_LABELS } from "@/lib/playStatus";
+import { PLAY_STATUS_LABELS, PLAY_STATUS_BADGE_CLASSES } from "@/lib/playStatus";
 import { StagesBarChart, YearlyRevenueChart } from "./RevenueCharts";
 import { SortIndicator } from "./DataTable";
+import Avatar from "./Avatar";
 
 type LiveSortKey = "artist" | "date" | "guarantee" | "booking" | "management" | "total";
 
@@ -31,6 +33,7 @@ export type LivePlayRow = {
   playId: string;
   artistId: string;
   artistName: string;
+  artistPhotoUrl: string | null;
   status: PlayStatus;
   stage: RevenueStage | null;
   showDate: string | null;
@@ -49,6 +52,7 @@ export type LivePlayRow = {
 export type HistoricalYearRow = {
   artistId: string;
   artistName: string;
+  artistPhotoUrl: string | null;
   year: number | null;
   guaranteeTotal: number;
   guaranteeMerchTotal: number;
@@ -185,7 +189,10 @@ export default function RevenueDashboard({
   }, [filteredLiveRows]);
 
   const historicalByArtist = useMemo(() => {
-    const map = new Map<string, { artistName: string; rows: HistoricalYearRow[] }>();
+    const map = new Map<
+      string,
+      { artistName: string; artistPhotoUrl: string | null; rows: HistoricalYearRow[] }
+    >();
     for (const row of historicalRows) {
       // Greg (2026-10-20): hide the "Undated" bucket from this view --
       // it's a secondary historical trend (not Ridge's owed revenue), and
@@ -193,7 +200,11 @@ export default function RevenueDashboard({
       // clutter here, both in the table and the by-year bar chart. The
       // underlying data isn't touched, just this display.
       if (row.year === null) continue;
-      const existing = map.get(row.artistId) ?? { artistName: row.artistName, rows: [] };
+      const existing = map.get(row.artistId) ?? {
+        artistName: row.artistName,
+        artistPhotoUrl: row.artistPhotoUrl,
+        rows: [],
+      };
       existing.rows.push(row);
       map.set(row.artistId, existing);
     }
@@ -363,11 +374,39 @@ export default function RevenueDashboard({
                   return (
                     <tr
                       key={r.playId}
-                      className={i > 0 ? "border-t border-black/10 dark:border-white/10" : ""}
+                      className={
+                        "hover:bg-black/[.03] dark:hover:bg-white/[.04] transition-colors " +
+                        (i > 0 ? "border-t border-black/10 dark:border-white/10" : "")
+                      }
                     >
-                      <td className="px-3 py-2">{r.artistName}</td>
-                      <td className="px-3 py-2">{PLAY_STATUS_LABELS[r.status]}</td>
-                      <td className="px-3 py-2">{r.showDate ?? "—"}</td>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-center gap-2">
+                          <Avatar src={r.artistPhotoUrl} name={r.artistName} size={24} />
+                          <Link
+                            href={`/artists/${r.artistId}`}
+                            className="hover:underline underline-offset-4"
+                          >
+                            {r.artistName}
+                          </Link>
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${
+                            PLAY_STATUS_BADGE_CLASSES[r.status] ?? ""
+                          }`}
+                        >
+                          {PLAY_STATUS_LABELS[r.status] ?? r.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Link
+                          href={`/plays/${r.playId}`}
+                          className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4 whitespace-nowrap"
+                        >
+                          {r.showDate ?? "View play"}
+                        </Link>
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.guaranteeAmount)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.bookingCommission)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.managementCommission)}</td>
@@ -400,7 +439,10 @@ export default function RevenueDashboard({
         </p>
         {historicalByArtist.map((group) => (
           <div key={group.artistName} className="mb-4">
-            <p className="text-sm font-medium mb-2">{group.artistName}</p>
+            <p className="text-sm font-medium mb-2 flex items-center gap-2">
+              <Avatar src={group.artistPhotoUrl} name={group.artistName} size={24} />
+              {group.artistName}
+            </p>
             <YearlyRevenueChart
               rows={group.rows.map((row) => ({
                 year: row.year,
@@ -426,7 +468,10 @@ export default function RevenueDashboard({
                   {group.rows.map((row, i) => (
                     <tr
                       key={`${row.artistId}-${row.year ?? "undated"}`}
-                      className={i > 0 ? "border-t border-black/10 dark:border-white/10" : ""}
+                      className={
+                        "hover:bg-black/[.03] dark:hover:bg-white/[.04] transition-colors " +
+                        (i > 0 ? "border-t border-black/10 dark:border-white/10" : "")
+                      }
                     >
                       <td className="px-3 py-2">{row.year ?? "Undated"}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{row.playCount}</td>

@@ -22,6 +22,7 @@ type PlayRecord = {
 type ArtistRecord = {
   id: string;
   name: string;
+  photo_url: string | null;
   ridge_manages: boolean;
   ridge_books: boolean;
   management_commission_pct: number | null;
@@ -48,7 +49,7 @@ export default async function RevenuePage() {
     supabase
       .from("artists")
       .select(
-        "id, name, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct"
+        "id, name, photo_url, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct"
       ),
   ]);
 
@@ -87,6 +88,7 @@ export default async function RevenuePage() {
     liveRows.push({
       ...result,
       artistName: artist.name,
+      artistPhotoUrl: artist.photo_url,
       status: play.status,
       showDate: play.show_date,
     });
@@ -95,7 +97,15 @@ export default async function RevenuePage() {
   // -- Historical by-year trend: every play with a show, legacy or not. --
   const yearBuckets = new Map<
     string,
-    { artistId: string; artistName: string; year: number | null; guaranteeTotal: number; guaranteeMerchTotal: number; playCount: number }
+    {
+      artistId: string;
+      artistName: string;
+      artistPhotoUrl: string | null;
+      year: number | null;
+      guaranteeTotal: number;
+      guaranteeMerchTotal: number;
+      playCount: number;
+    }
   >();
   for (const play of plays) {
     if (!play.artist_id) continue;
@@ -107,6 +117,7 @@ export default async function RevenuePage() {
     const existing = yearBuckets.get(key) ?? {
       artistId: artist.id,
       artistName: artist.name,
+      artistPhotoUrl: artist.photo_url,
       year,
       guaranteeTotal: 0,
       guaranteeMerchTotal: 0,
