@@ -155,39 +155,48 @@ export default async function DashboardPage() {
       .order("created_at", { ascending: false })
       .limit(6),
     // Remaining shows on the calendar this month -- "upcoming" and "this
-    // month" both apply, so the lower bound is today, not the 1st.
+    // month" both apply, so the lower bound is today, not the 1st. Legacy
+    // (bulk-imported historical/pre-Base Camp deals) excluded -- per Greg
+    // (2026-11-10): these stat tiles should measure what Ridge has booked
+    // through Base Camp itself, not the one-time historical import. The
+    // Upcoming Shows / Recently Added lists below are unaffected and keep
+    // showing legacy rows -- they're still real, useful context there.
     supabase
       .from("plays")
       .select("*", { count: "exact", head: true })
       .gte("show_date", today)
-      .lte("show_date", endOfMonth),
+      .lte("show_date", endOfMonth)
+      .neq("status", "legacy"),
     // Booking *pace*, not show dates -- plays created this calendar month
     // so far, regardless of when the show itself happens. A different
     // question from the tile above on purpose: one is "what's coming up,"
-    // the other is "how much are we closing lately."
+    // the other is "how much are we closing lately." Legacy excluded, same
+    // reasoning as above (in practice a no-op today since the import all
+    // landed on one day back in August, but correct going forward).
     supabase
       .from("plays")
       .select("*", { count: "exact", head: true })
-      .gte("created_at", startOfMonth.toISOString()),
+      .gte("created_at", startOfMonth.toISOString())
+      .neq("status", "legacy"),
     // Shows booked this year, to date -- show-date based (not created_at),
-    // so legacy/bulk-imported rows count correctly by when the show
-    // actually is, not when the row was entered. Declined/cancelled are
-    // excluded, same "never actually happened" rule as Revenue. Bounded by
-    // today, not the full year, so the YoY comparison below is a fair,
-    // same-point-in-the-calendar read rather than comparing a partial year
-    // to a complete one.
+    // so this doesn't depend on when the row was entered. Legacy and
+    // declined/cancelled excluded: legacy per the "measure ourselves" note
+    // above, declined/cancelled because those deals never actually
+    // happened (same rule as Revenue). Bounded by today, not the full
+    // year, so the YoY comparison below is a fair, same-point-in-the-
+    // calendar read rather than comparing a partial year to a complete one.
     supabase
       .from("plays")
       .select("*", { count: "exact", head: true })
       .gte("show_date", startOfThisYear)
       .lte("show_date", today)
-      .not("status", "in", "(declined,cancelled)"),
+      .not("status", "in", "(legacy,declined,cancelled)"),
     supabase
       .from("plays")
       .select("*", { count: "exact", head: true })
       .gte("show_date", startOfLastYear)
       .lte("show_date", sameDayLastYear)
-      .not("status", "in", "(declined,cancelled)"),
+      .not("status", "in", "(legacy,declined,cancelled)"),
     // Advance bookings for next year -- every play with a show_date out
     // that far has, by definition, already been booked, so this doesn't
     // need a created_at cutoff the way the pace metrics above do. Per
@@ -202,7 +211,7 @@ export default async function DashboardPage() {
       .select("*", { count: "exact", head: true })
       .gte("show_date", startOfNextYear)
       .lte("show_date", endOfNextYear)
-      .not("status", "in", "(declined,cancelled)"),
+      .not("status", "in", "(legacy,declined,cancelled)"),
   ]);
 
   const upcomingRows = (upcoming ?? []) as unknown as PlayRow[];
@@ -236,7 +245,11 @@ export default async function DashboardPage() {
         <StatTile
           label={`Shows Booked — ${thisYear} YTD`}
           value={showsYtdCount ?? 0}
-          sub={`vs ${showsYtdLastYearCount ?? 0} this time last year`}
+          sub={
+            showsYtdLastYearCount
+              ? `vs ${showsYtdLastYearCount} this time last year`
+              : "first year of live tracking"
+          }
         />
         <StatTile
           label={`Booked for ${nextYear}`}
