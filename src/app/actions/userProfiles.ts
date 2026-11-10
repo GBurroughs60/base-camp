@@ -52,6 +52,13 @@ export type TeamMember = {
    * foremost "deactivated" from an admin's point of view. */
   status: TeamMemberStatus;
   invitedAt: string | null;
+  /** This person's split of Ridge's own booking commission on a play
+   * they're credited for (docs/operations-accounting-plan.md section 11)
+   * -- whole-number percentage, null if never set. Never assumed to be 0
+   * or 100 when null -- see the Revenue page's Agent Commissions section
+   * for how a missing rate is surfaced rather than silently treated as
+   * either extreme. */
+  bookingCommissionSplitPct: number | null;
 };
 
 function computeStatus(
@@ -69,6 +76,44 @@ function computeStatus(
   return lastSignInAt ? "started" : "invited";
 }
 
+// Lightweight, non-admin-safe team listing (2026-11-10, per Greg -- a new
+// non-admin team member is about to need this). Deliberately NOT
+// listTeamMembers() above: that one is admin-gated (requireAdmin) and
+// reads through the Admin API for email/invite-status/is_admin, all of
+// which this app otherwise keeps strictly behind the Admin nav section
+// (see admin.ts's header comment: "hide the whole Admin section... not
+// just the Team page"). This function is for the opposite case --
+// picking a teammate to credit for something (who pitched an outreach
+// touch, who booked a play) from an ordinary, non-admin page. It reads
+// user_profiles via the normal session client (RLS there is
+// authenticated_full_access, so any logged-in user can already see every
+// row) and returns only id + display_name, nothing else -- no email, no
+// admin flag, no invite/active status. Every account created through the
+// invite flow gets a user_profiles row immediately (see inviteTeamMember
+// above), so this sees every real account from the moment they're
+// invited, even before they've set a display name or signed in once;
+// callers show a generic fallback for a still-null display_name (never an
+// email) rather than excluding that account from the picker.
+export type AttributableTeamMember = {
+  id: string;
+  displayName: string | null;
+};
+
+export async function listAttributableTeamMembers(): Promise<AttributableTeamMember[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .select("id, display_name")
+    .order("display_name");
+  if (error) {
+    throw new Error(`Couldn't list teammates: ${error.message}`);
+  }
+  return (data ?? []).map((p) => ({
+    id: p.id as string,
+    displayName: (p.display_name as string | null) ?? null,
+  }));
+}
+
 export async function listTeamMembers(): Promise<TeamMember[]> {
   await requireAdmin();
   const admin = createServiceRoleClient();
@@ -80,7 +125,7 @@ export async function listTeamMembers(): Promise<TeamMember[]> {
 
   const { data: profiles, error: profilesError } = await admin
     .from("user_profiles")
-    .select("id, display_name, is_admin, invite_status, invited_at");
+    .select("id, display_name, is_admin, invite_status, invited_at, booking_commission_split_pct");
   if (profilesError) {
     throw new Error(`Couldn't read account details: ${profilesError.message}`);
   }
@@ -98,9 +143,40 @@ export async function listTeamMembers(): Promise<TeamMember[]> {
         isAdmin: profile?.is_admin === true,
         status: computeStatus(inviteStatus, u.banned_until, u.last_sign_in_at),
         invitedAt: (profile?.invited_at as string | null | undefined) ?? null,
+        bookingCommissionSplitPct:
+          (profile?.booking_commission_split_pct as number | null | undefined) ?? null,
       };
     })
     .sort((a, b) => a.email.localeCompare(b.email));
+}
+
+// The agent's split of Ridge's own booking commission (docs/operations-
+// accounting-plan.md section 11) -- e.g. 50 means the agent gets 50% of
+// whatever Ridge earns on a play credited to them. Admin-only to set
+// (unlike updateDisplayName, which any account can set for itself) -- this
+// is compensation data, not a cosmetic preference. Same upsert reasoning
+// as updateDisplayName: a user_profiles row exists for every invited
+// account already (see inviteTeamMember), but this stays an upsert rather
+// than a plain update for the same robustness, not because it's expected
+// to hit a missing row in practice.
+export async function updateBookingCommissionSplitPct(
+  userId: string,
+  pct: number | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireAdmin();
+  if (pct !== null && (pct < 0 || pct > 100)) {
+    return { ok: false, error: "Enter a percentage between 0 and 100." };
+  }
+  const { error } = await createServiceRoleClient()
+    .from("user_profiles")
+    .upsert(
+      { id: userId, booking_commission_split_pct: pct, updated_at: new Date().toISOString() },
+      { onConflict: "id" }
+    );
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
 }
 
 export async function updateDisplayName(

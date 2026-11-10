@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/admin";
 import { listTeamMembers } from "@/app/actions/userProfiles";
 import InlineDisplayNameField from "@/components/inline/InlineDisplayNameField";
+import InlineCommissionSplitField from "@/components/inline/InlineCommissionSplitField";
 import InviteUserForm from "@/components/team/InviteUserForm";
 import TeamMemberActions from "@/components/team/TeamMemberActions";
 import StatusBadge from "@/components/team/StatusBadge";
@@ -23,6 +24,8 @@ export default async function TeamSettingsPage() {
         Invite a new Base Camp account, see where each invite is at, and manage admin access. Set
         a display name for each account -- shown instead of the email address wherever someone is
         credited for an action (e.g. who pitched an event). Leave it blank to just show the email.
+        Set a booking commission split for anyone who books shows -- their share of Ridge&apos;s own
+        booking commission on plays credited to them (see the Agent Commissions section on Revenue).
       </p>
 
       <div className="mb-8">
@@ -50,6 +53,13 @@ export default async function TeamSettingsPage() {
               </div>
               <div className="text-xs text-black/50 dark:text-white/50 truncate mt-0.5">
                 {member.email}
+              </div>
+              <div className="text-xs text-black/50 dark:text-white/50 mt-1 flex items-center gap-1">
+                <span>Booking commission split:</span>
+                <InlineCommissionSplitField
+                  userId={member.id}
+                  value={member.bookingCommissionSplitPct}
+                />
               </div>
             </div>
             <TeamMemberActions member={member} currentUserId={currentAdmin.id} />

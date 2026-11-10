@@ -118,6 +118,11 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "other_events_in_town",
     "promoter_notes",
     "would_play_again",
+    // Internal commission attribution (docs/operations-accounting-plan.md
+    // section 11) -- who at Ridge gets credit for this booking, never the
+    // artist's own external representation (that's contact_artists'
+    // "agent" role, a different concept entirely -- see that section).
+    "booking_agent_user_id",
   ]),
   artists: new Set([
     "name",
@@ -514,6 +519,41 @@ export async function createRecord(
         data.booking_agent_commission_pct === undefined
       ) {
         data.booking_agent_commission_pct = artist.booking_agent_commission_pct;
+      }
+
+      // Pre-fill the internal booking-agent attribution (section 11) from
+      // the artist's existing "Booking Agent" team-role contact -- per
+      // Greg (2026-11-10), reuse that rather than adding a new
+      // artists.default_booking_agent_user_id column. Matched by name,
+      // not email: resolving a contact to a real Base Camp account would
+      // otherwise need the Admin API (service-role, auth.admin.*), and
+      // this project deliberately keeps that to a short, named list (see
+      // serviceRole.ts's header comment) -- not worth expanding for a
+      // convenience pre-fill. A name match is good enough for that: it's
+      // always still a fully editable per-play field after, same as the
+      // commission %s above, so a miss here just means Greg sets it by
+      // hand, not a wrong charge.
+      if (data.booking_agent_user_id === undefined) {
+        const { data: agentContact } = await supabase
+          .from("contact_artists")
+          .select("contacts(full_name)")
+          .eq("artist_id", data.artist_id as string)
+          .eq("role", "agent")
+          .limit(1)
+          .maybeSingle();
+        const agentName = (
+          agentContact?.contacts as unknown as { full_name: string } | null
+        )?.full_name?.trim();
+        if (agentName) {
+          const { data: matchedProfile } = await supabase
+            .from("user_profiles")
+            .select("id")
+            .ilike("display_name", agentName)
+            .maybeSingle();
+          if (matchedProfile?.id) {
+            data.booking_agent_user_id = matchedProfile.id;
+          }
+        }
       }
     }
   }

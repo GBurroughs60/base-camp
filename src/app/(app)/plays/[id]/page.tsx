@@ -8,6 +8,7 @@ import InlineLocationField from "@/components/inline/InlineLocationField";
 import InlineRelationField from "@/components/inline/InlineRelationField";
 import InlineSelectField from "@/components/inline/InlineSelectField";
 import { listAllArtistOptions } from "@/app/actions/records";
+import { listAttributableTeamMembers } from "@/app/actions/userProfiles";
 import AdditionalContacts, {
   type LinkedContactItem,
 } from "@/components/inline/AdditionalContacts";
@@ -49,6 +50,7 @@ export default async function PlayDetailPage({
        gross_merch_sales, band_percentage, guarantee_amount, amount_due_to_agency,
        management_commission_pct, management_commission_amount,
        booking_agent_commission_pct, booking_agent_commission_amount,
+       booking_agent_user_id,
        contract_status, contract_due_date, deposit_status, deposit_amount, deposit_due_date,
        deposit_instructions,
        final_payment_received, capacity, age_limit, deal_terms, bill_position,
@@ -73,6 +75,17 @@ export default async function PlayDetailPage({
   if (!play) notFound();
 
   const artistOptions = await listAllArtistOptions();
+  const teamMembers = await listAttributableTeamMembers();
+  // "Unassigned" (empty-string value -> null, same InlineSelectField
+  // convention as every other optional select on this page) plus every
+  // Base Camp account, a teammate with no display name yet shown
+  // generically rather than by email -- see
+  // listAttributableTeamMembers' own comment for why no email is
+  // available here at all.
+  const bookingAgentOptions = [
+    { value: "", label: "Unassigned" },
+    ...teamMembers.map((m) => ({ value: m.id, label: m.displayName ?? "A teammate" })),
+  ];
 
   const artist = play.artists as unknown as { id: string; name: string } | null;
   const event = play.events as unknown as
@@ -264,6 +277,18 @@ export default async function PlayDetailPage({
             <dt className="text-black/50 dark:text-white/50">Guarantee</dt>
             <dd>
               <InlineEditField table="plays" id={play.id} field="guarantee_amount" value={play.guarantee_amount} type="number" format="money" placeholder="Add" />
+            </dd>
+            <dt className="text-black/50 dark:text-white/50" title="Who at Ridge gets commission credit for this booking -- not the artist's own outside representation (that's the Team card on the artist page).">
+              Booking agent (internal)
+            </dt>
+            <dd>
+              <InlineSelectField
+                table="plays"
+                id={play.id}
+                field="booking_agent_user_id"
+                value={play.booking_agent_user_id}
+                options={bookingAgentOptions}
+              />
             </dd>
             <dt className="text-black/50 dark:text-white/50">Deal terms</dt>
             <dd>

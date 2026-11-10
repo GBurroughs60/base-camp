@@ -4,7 +4,9 @@ import RevenueDashboard, {
   type LivePlayRow,
   type HistoricalYearRow,
 } from "@/components/RevenueDashboard";
+import AgentCommissions, { type AgentCommissionRow } from "@/components/AgentCommissions";
 import { computePlayRevenue, type ArtistCommissionDefaults } from "@/lib/revenue";
+import { listTeamMembers } from "@/app/actions/userProfiles";
 import type { PlayStatus } from "@/lib/playStatus";
 
 type PlayRecord = {
@@ -16,6 +18,7 @@ type PlayRecord = {
   gross_merch_sales: number | null;
   management_commission_pct: number | null;
   booking_agent_commission_pct: number | null;
+  booking_agent_user_id: string | null;
   artists: { name: string } | null;
 };
 
@@ -39,11 +42,11 @@ export default async function RevenuePage() {
   // they're not real revenue (live or historical) either way. Legacy IS
   // included here: it's excluded from Ridge's own live commission tracker
   // below, but it's exactly what feeds the historical by-year trend.
-  const [{ data: playsData }, { data: artistsData }] = await Promise.all([
+  const [{ data: playsData }, { data: artistsData }, teamMembers] = await Promise.all([
     supabase
       .from("plays")
       .select(
-        "id, artist_id, status, show_date, guarantee_amount, gross_merch_sales, management_commission_pct, booking_agent_commission_pct, artists(name)"
+        "id, artist_id, status, show_date, guarantee_amount, gross_merch_sales, management_commission_pct, booking_agent_commission_pct, booking_agent_user_id, artists(name)"
       )
       .not("status", "in", "(declined,cancelled)"),
     supabase
@@ -51,6 +54,7 @@ export default async function RevenuePage() {
       .select(
         "id, name, photo_url, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct"
       ),
+    listTeamMembers(),
   ]);
 
   const plays = (playsData ?? []) as unknown as PlayRecord[];
@@ -93,6 +97,60 @@ export default async function RevenuePage() {
       showDate: play.show_date,
     });
   }
+
+  // -- Agent Commissions (docs/operations-accounting-plan.md section 11):
+  // each internal booking agent's cut of Ridge's own booking commission,
+  // not the management leg -- an agent's split is specifically of the
+  // booking commission they personally earned Ridge, same scope as
+  // plays.booking_agent_user_id's own comment. Reuses liveRows above
+  // (same non-legacy, non-declined/cancelled scope, and the exact same
+  // computePlayRevenue results -- no second pass of the commission math)
+  // rather than recomputing, so there's only one place that logic lives.
+  const agentIdByPlayId = new Map(plays.map((p) => [p.id, p.booking_agent_user_id]));
+  const ridgeBooksByArtistId = new Map(artists.map((a) => [a.id, a.ridge_books]));
+  const agentById = new Map(teamMembers.map((m) => [m.id, m]));
+  const agentBuckets = new Map<
+    string, // agent user id, or "" for unassigned
+    { playCount: number; bookingCommissionTotal: number; hasUnknownBookingRate: boolean }
+  >();
+  for (const row of liveRows) {
+    if (!ridgeBooksByArtistId.get(row.artistId)) continue;
+    const key = agentIdByPlayId.get(row.playId) ?? "";
+    const existing = agentBuckets.get(key) ?? {
+      playCount: 0,
+      bookingCommissionTotal: 0,
+      hasUnknownBookingRate: false,
+    };
+    existing.playCount += 1;
+    if (row.bookingCommission == null) {
+      existing.hasUnknownBookingRate = true;
+    } else {
+      existing.bookingCommissionTotal += row.bookingCommission;
+    }
+    agentBuckets.set(key, existing);
+  }
+
+  const agentCommissionRows: AgentCommissionRow[] = Array.from(agentBuckets.entries())
+    .map(([agentId, bucket]) => {
+      const agent = agentId ? agentById.get(agentId) : null;
+      const splitPct = agent?.bookingCommissionSplitPct ?? null;
+      return {
+        agentId: agentId || null,
+        agentName: agent ? (agent.displayName ?? agent.email) : "Unassigned",
+        playCount: bucket.playCount,
+        bookingCommissionTotal: bucket.bookingCommissionTotal,
+        hasUnknownBookingRate: bucket.hasUnknownBookingRate,
+        splitPct,
+        agentShare: splitPct != null ? bucket.bookingCommissionTotal * (splitPct / 100) : null,
+      };
+    })
+    // Unassigned last regardless of its total, so it reads as a thing to
+    // go fix rather than competing for the top spot by dollar amount.
+    .sort((a, b) => {
+      if (a.agentId === null) return 1;
+      if (b.agentId === null) return -1;
+      return b.bookingCommissionTotal - a.bookingCommissionTotal;
+    });
 
   // -- Historical by-year trend: every play with a show, legacy or not. --
   const yearBuckets = new Map<
@@ -149,6 +207,8 @@ export default async function RevenuePage() {
       </p>
 
       <RevenueDashboard liveRows={liveRows} historicalRows={historicalRows} />
+
+      <AgentCommissions rows={agentCommissionRows} />
     </div>
   );
 }

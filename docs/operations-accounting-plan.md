@@ -864,6 +864,141 @@ in Vercel from Development to Production values once approved; a fresh
 deploy; retrying the real Connect flow against Ridge Music Group's actual
 QBO company.
 
+## 11. Internal agent commission tracking (2026-11-10)
+
+A different concern from everything above, worth being precise about: sections
+1-10 are all **money in** -- what the artist owes Ridge, and getting paid for
+it. This section is the opposite direction -- **money Ridge owes its own
+booking staff** -- but it's documented in this same file since it's built
+directly on top of the same booking-commission numbers (`computePlayRevenue`'s
+`bookingCommission`, never the management leg), not because the "money in
+only" boundary from section 2 has changed. That boundary is actually
+reaffirmed here, just applied to a new direction: Base Camp tracks who
+booked what and computes what's owed to them, the same way it tracks
+Earned/Collected for Ridge's own revenue -- it does not run payroll, cut a
+check, or send money anywhere. Actually paying an agent stays outside Base
+Camp entirely, same as expenses/payroll/P&L/taxes already do per section 2.
+
+**Trigger: Greg is onboarding Ridge's first non-owner booking agent this
+week**, and needs a clear, consistent way to know which agent booked which
+play so commission gets paid correctly -- including the case where an
+agent books outside their usual artist roster (Greg: "I will attempt to
+separate artists by agent... I expect there will be times when agents are
+booking for all of the artists"), so attribution has to be a real per-play
+fact, never just inferred from a static artist-to-agent mapping.
+
+**Commission structure (per Greg): a split of Ridge's own booking
+commission**, not a separate rate off the guarantee and not a flat fee.
+Standard "override" structure at talent agencies -- e.g. a 50/50 house
+split means the agent earns 50% of whatever `bookingCommission` Ridge
+itself already earns on a play, computed by the exact same function that
+drives the rest of this page's numbers. Deliberately not derived from a
+new, separate rate -- one commission number, two parties splitting it.
+
+**Data model, two new columns (migration `add_booking_agent_commission_tracking`,
+applied cleanly, no auto-mode block this time):**
+
+| Column | Purpose |
+|---|---|
+| `plays.booking_agent_user_id` | Who at Ridge gets commission credit for this booking. `uuid references auth.users(id) on delete set null`, mirrors `outreach_log.user_id` exactly -- nullable, editable per play, never locked in at creation. |
+| `user_profiles.booking_commission_split_pct` | This person's split, whole-number percentage (50 means 50%), same convention as `booking_agent_commission_pct` elsewhere. Null means "no rate set yet" and is never treated as 0 -- same missing-rate discipline `computePlayRevenue` already uses for the artist-facing rates. |
+
+**Not the same thing as the artist's own "Booking Agent" team-role contact.**
+`contact_artists.role = 'agent'` (shown on the Artist page's Team card,
+label "Booking Agent") is the artist's own outside representation -- a
+`contacts` row, not necessarily a Base Camp account, and in practice today
+it's sometimes Greg's own contact entry standing in for "who at Ridge
+handles this artist." `plays.booking_agent_user_id` is a different, new
+concept: which real Base Camp account gets paid for *this specific
+booking*. The two are related (see the pre-fill below) but not merged --
+one is artist-level external-facing contact info, the other is per-play
+internal payroll attribution.
+
+**Pre-fill from the existing artist contact, by name match -- not email,
+and not a new `artists.default_booking_agent_user_id` column.** Per Greg:
+"that work is really already built with the agent field on the artist
+profile," so a new play for an artist pre-fills `booking_agent_user_id`
+from that artist's `contact_artists` role=`'agent'` contact, matched to a
+Base Camp account by `full_name` against `user_profiles.display_name`
+(case-insensitive). Deliberately name-matched rather than email-matched:
+resolving a contact to a real auth account by email would need the Admin
+API (`auth.admin.*`, service-role-only), and this project keeps
+service-role use to a short, explicitly named list (see
+`serviceRole.ts`'s header comment) -- not worth expanding for a
+convenience pre-fill. A name-match miss just leaves the field blank, same
+as any other unset field; it's always still fully editable per play
+afterward, so a miss here costs a click, never a wrong commission.
+
+**Bug found and fixed along the way: `listTeamMembers()` was being used
+from a non-admin-safe page.** `app/actions/userProfiles.ts`'s
+`listTeamMembers()` is `requireAdmin()`-gated (it reads the Admin API for
+email/invite-status/is_admin, data this app otherwise keeps strictly
+behind the Admin nav section). The Event detail page was already calling
+it directly to resolve outreach "pitched by" names, despite that page
+itself being open to every Base Camp user, not just admins -- harmless
+today only because the two real accounts (Greg, Justin) are both admins,
+but it would have silently redirected the incoming non-admin agent to the
+Dashboard the moment they opened any Event page. Fixed by adding a second,
+non-admin-safe function, `listAttributableTeamMembers()` -- normal session
+client (no service role), returns only `id`/`display_name` (no email, no
+admin flag, no status), safe for any authenticated page to use for "pick a
+teammate to credit for something." The Event page and the new
+`booking_agent_user_id` picker on the Play detail page both use this one;
+`listTeamMembers()` stays reserved for the actual Settings > Team admin
+page. Going forward: any new "attribute this to a teammate" UI should use
+`listAttributableTeamMembers()`, never `listTeamMembers()`, unless it's
+genuinely admin-only.
+
+**UI, three places:**
+- **Play detail page, Deal card:** a new "Booking agent (internal)"
+  select (`InlineSelectField`, static options from
+  `listAttributableTeamMembers()`, "Unassigned" as the empty option) --
+  labeled and tooltipped to distinguish it from the artist's own outside
+  representation.
+- **Settings > Team:** a new inline-editable "Booking commission split"
+  percentage per account (`InlineCommissionSplitField`, mirrors
+  `InlineDisplayNameField`'s interaction exactly), admin-only to set
+  (`updateBookingCommissionSplitPct` calls `requireAdmin()` itself, unlike
+  the self-editable display name).
+- **Revenue page, new "Agent Commissions" section** (`AgentCommissions.tsx`,
+  plain server-rendered table, admin-only like the rest of the page): per
+  agent, plays booked, Ridge's booking commission total on those plays
+  (booking leg only), their split %, and their computed share -- grouped
+  from the exact same `liveRows`/`computePlayRevenue` results the table
+  above it already computes, not a second pass of the commission math.
+  Same live scope as the rest of the page (non-legacy,
+  non-declined/cancelled) -- an agent's pay tracks what's real right now,
+  not the historical backlog. A "rate not set" flag replaces a silent 0%
+  when an agent's split hasn't been configured yet, and an "Unassigned"
+  row (sorted last) surfaces plays with no agent credited yet, rather than
+  letting them quietly vanish from the rollup.
+
+**Build status (2026-11-10).** Built end to end: the migration (both
+columns, applied directly, not blocked this time -- see above), the
+`listTeamMembers()`/Events-page fix, the Play detail field with its
+name-matched pre-fill, the Team page's split-% field, and the Revenue
+page's Agent Commissions section. `tsc`/`eslint`/`next build` all clean.
+
+**Explicitly deferred / open:**
+- **Per-play override of an agent's split.** Mirrors how
+  `booking_agent_commission_pct` already supports a play-level override of
+  the artist's default rate -- the same shape would let Greg negotiate a
+  one-off split for a single booking without changing that agent's
+  standing rate. Not built this pass; add if a real case comes up.
+- **Year/date filtering on Agent Commissions.** The section reuses
+  Revenue's live-rows scope as-is (no year pills, unlike the Plays list) --
+  fine for a first pass with one new agent, but worth revisiting once
+  there's enough history to want a year-over-year agent view.
+- **No bridge to actually paying an agent.** Same boundary as section 2 --
+  this section computes and displays what's owed, it doesn't generate a
+  payroll run, a QBO vendor bill, or any payment. If Greg ever wants that
+  bridged (e.g. a QBO bill per agent per period), that's new scope, not
+  something this pass built toward.
+- **Multiple agents splitting one play** (e.g. a co-booked show) isn't
+  modeled -- `booking_agent_user_id` is a single value. Not raised as a
+  real need yet; would need its own design (a join table, most likely) if
+  it comes up.
+
 ## Keeping this in sync
 
 As pieces of this get implemented, update this file in the same commits as

@@ -15,8 +15,7 @@ import AdditionalContacts, {
 import RecordActionsMenu from "@/components/inline/RecordActionsMenu";
 import { websiteHref } from "@/lib/url";
 import { listDistinctGenreTags } from "@/app/actions/eventGenre";
-import { listTeamMembers } from "@/app/actions/userProfiles";
-import { resolveDisplayName } from "@/lib/displayName";
+import { listAttributableTeamMembers } from "@/app/actions/userProfiles";
 
 const VISIBILITY_OPTIONS = [
   { value: "true", label: "Public" },
@@ -135,11 +134,17 @@ export default async function EventDetailPage({
       .select("sent_at, user_id, artists(name)")
       .eq("event_id", id)
       .order("sent_at", { ascending: false }),
-    listTeamMembers(),
+    listAttributableTeamMembers(),
     listDistinctGenreTags(),
   ]);
 
-  const displayNameByUserId = new Map(teamMembers.map((m) => [m.id, resolveDisplayName(m)]));
+  // No email to fall back to here (listAttributableTeamMembers is the
+  // non-admin-safe listing -- see its own comment) -- a teammate who
+  // hasn't set a display name yet shows generically rather than leaking
+  // their email to a non-admin viewer.
+  const displayNameByUserId = new Map(
+    teamMembers.map((m) => [m.id, m.displayName ?? "A teammate"])
+  );
 
   const touchesBySentAt = new Map<string, OutreachTouch>();
   for (const row of outreachRows ?? []) {
