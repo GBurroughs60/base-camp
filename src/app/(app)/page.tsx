@@ -52,6 +52,40 @@ function PlayLocation({ play }: { play: PlayRow }) {
   if (!play.venue && !play.venue_name && !play.events) {
     return <span>No venue on file</span>;
   }
+
+  // Legacy data sometimes carries an Event whose name is just a copy of
+  // the (often unlinked) venue text -- "Private Party" as both the
+  // venue_name and the Event name, for instance. Showing both back to
+  // back then just repeats the same words twice. When they match, show
+  // it once, as the Event's own link (a real record with its own page),
+  // and keep flagging an unlinked venue with "needs match" so that stays
+  // visible for review instead of silently disappearing.
+  const venueLabel = play.venue?.name ?? play.venue_name ?? null;
+  const duplicatesEvent =
+    !!venueLabel &&
+    !!play.events &&
+    venueLabel.trim().toLowerCase() === play.events.name.trim().toLowerCase();
+
+  const needsMatchBadge = (
+    <span
+      className="text-[10px] leading-none px-1.5 py-1 rounded-full border border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 whitespace-nowrap"
+      title="No matching venue found — needs review"
+    >
+      needs match
+    </span>
+  );
+
+  if (duplicatesEvent && play.events) {
+    return (
+      <span className="inline-flex items-center gap-1.5 flex-wrap">
+        <Link href={`/events/${play.events.id}`} className="hover:underline underline-offset-4">
+          {play.events.name}
+        </Link>
+        {!play.venue && needsMatchBadge}
+      </span>
+    );
+  }
+
   return (
     <span className="inline-flex items-center gap-1 flex-wrap">
       {play.venue ? (
@@ -60,16 +94,12 @@ function PlayLocation({ play }: { play: PlayRow }) {
         </Link>
       ) : (
         play.venue_name && (
-          <Link
-            href={`/plays/${play.id}`}
-            className="inline-flex items-center gap-1.5 hover:underline underline-offset-4"
-            title="No matching venue found — needs review"
-          >
-            <span>{play.venue_name}</span>
-            <span className="text-[10px] leading-none px-1.5 py-1 rounded-full border border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 whitespace-nowrap">
-              needs match
-            </span>
-          </Link>
+          <span className="inline-flex items-center gap-1.5">
+            <Link href={`/plays/${play.id}`} className="hover:underline underline-offset-4">
+              {play.venue_name}
+            </Link>
+            {needsMatchBadge}
+          </span>
         )
       )}
       {(play.venue || play.venue_name) && play.events && <span>·</span>}
