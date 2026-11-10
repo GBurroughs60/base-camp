@@ -32,6 +32,7 @@ type PlayRow = {
   status: PlayStatus;
   artists: { name: string; photo_url: string | null } | null;
   venue: { id: string; name: string } | null;
+  venue_name: string | null;
   events: { id: string; name: string } | null;
 };
 
@@ -40,18 +41,38 @@ type PlayRow = {
 // exist, and the plain fallback only when neither does. Per Greg
 // (2026-11-10): the old version always said "No venue on file" whenever
 // venue_id was empty, even when the play *did* have an event attached.
+//
+// Per Greg (2026-11-10, round 2): that first fix still missed one case --
+// a play can have a venue_name (raw text, same as the Plays list's
+// "needs match" column) with no venue_id, because it was never linked to
+// an actual venue record. That's a venue on file, just an unmatched one,
+// so it shouldn't fall all the way to "No venue on file" either. Mirrors
+// the Plays list's own needs-match treatment.
 function PlayLocation({ play }: { play: PlayRow }) {
-  if (!play.venue && !play.events) {
+  if (!play.venue && !play.venue_name && !play.events) {
     return <span>No venue on file</span>;
   }
   return (
     <span className="inline-flex items-center gap-1 flex-wrap">
-      {play.venue && (
+      {play.venue ? (
         <Link href={`/companies/${play.venue.id}`} className="hover:underline underline-offset-4">
           {play.venue.name}
         </Link>
+      ) : (
+        play.venue_name && (
+          <Link
+            href={`/plays/${play.id}`}
+            className="inline-flex items-center gap-1.5 hover:underline underline-offset-4"
+            title="No matching venue found — needs review"
+          >
+            <span>{play.venue_name}</span>
+            <span className="text-[10px] leading-none px-1.5 py-1 rounded-full border border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 whitespace-nowrap">
+              needs match
+            </span>
+          </Link>
+        )
       )}
-      {play.venue && play.events && <span>·</span>}
+      {(play.venue || play.venue_name) && play.events && <span>·</span>}
       {play.events && (
         <Link href={`/events/${play.events.id}`} className="hover:underline underline-offset-4">
           {play.events.name}
@@ -105,7 +126,7 @@ export default async function DashboardPage() {
     supabase
       .from("plays")
       .select(
-        "id, show_date, status, artists(name, photo_url), venue:companies!plays_venue_id_fkey(id, name), events(id, name)"
+        "id, show_date, status, venue_name, artists(name, photo_url), venue:companies!plays_venue_id_fkey(id, name), events(id, name)"
       )
       .gte("show_date", today)
       .order("show_date", { ascending: true })
@@ -113,7 +134,7 @@ export default async function DashboardPage() {
     supabase
       .from("plays")
       .select(
-        "id, show_date, status, created_at, artists(name, photo_url), venue:companies!plays_venue_id_fkey(id, name), events(id, name)"
+        "id, show_date, status, created_at, venue_name, artists(name, photo_url), venue:companies!plays_venue_id_fkey(id, name), events(id, name)"
       )
       .order("created_at", { ascending: false })
       .limit(6),
