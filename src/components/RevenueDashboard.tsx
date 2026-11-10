@@ -137,15 +137,6 @@ export default function RevenueDashboard({
     return d.getTime() >= start.getTime() && d.getTime() <= end.getTime();
   };
 
-  // Missing-rate banner is deliberately NOT range-filtered -- a data gap
-  // needs fixing regardless of which window you're looking at. These rows
-  // are no longer excluded from the totals/table below (2026-10-20, per
-  // Greg re: Brittany Elise) -- a missing leg withholds only its own
-  // commission, never a different leg that's already known -- so this
-  // banner is now purely a "here's what's still incomplete" flag, not an
-  // "these dollars are missing from the numbers below" one.
-  const missingRateRows = liveRows.filter((r) => r.missingBookingRate || r.missingManagementRate);
-
   // A live play with no show_date can't be placed in any range -- including
   // "All Time," which otherwise reads as "no date restriction." Rather than
   // let it silently vanish from every total (the exact "blank treated as
@@ -211,31 +202,6 @@ export default function RevenueDashboard({
 
   return (
     <div className="space-y-8">
-      {/* Missing commission-rate warning -- always visible regardless of the
-          date filter below. */}
-      {missingRateRows.length > 0 && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-            {missingRateRows.length} play{missingRateRows.length === 1 ? "" : "s"} missing a
-            commission rate — the known leg is still counted below (flagged with *); the
-            missing leg isn&apos;t, until it&apos;s added
-          </p>
-          <ul className="mt-2 space-y-1 text-xs text-amber-700/80 dark:text-amber-400/80">
-            {missingRateRows.map((r) => (
-              <li key={r.playId}>
-                {r.artistName} — {PLAY_STATUS_LABELS[r.status]}
-                {r.showDate ? ` (${r.showDate})` : ""}: guarantee {formatMoney(r.guaranteeAmount)}.{" "}
-                {r.missingBookingRate && r.missingManagementRate
-                  ? "No booking or management rate on file, so this play currently contributes $0 below."
-                  : r.missingBookingRate
-                    ? `No booking rate on file -- only its management commission (${formatMoney(r.managementCommission)}) is counted below.`
-                    : `No management rate on file -- only its booking commission (${formatMoney(r.bookingCommission)}) is counted below.`}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {missingShowDateRows.length > 0 && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
           <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
@@ -409,8 +375,8 @@ export default function RevenueDashboard({
                         {formatMoney(r.totalRidgeRevenue)}
                         {isPartial && (
                           <span
-                            className="ml-1 text-amber-600 dark:text-amber-400"
-                            title="Partial -- a commission rate is still missing for this play; see the note above."
+                            className="ml-1 text-black/40 dark:text-white/40"
+                            title="Only the known commission leg is counted -- no rate is on file for the other one (expected if Ridge doesn't handle that side for this artist)."
                           >
                             *
                           </span>
