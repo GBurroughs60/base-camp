@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
 import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
 import PlaysBoard, { type BoardPlay } from "@/components/PlaysBoard";
+import Avatar from "@/components/Avatar";
 import {
   type PlayStatus,
   PLAY_STATUS_LABELS,
@@ -30,7 +31,8 @@ type PlayRow = {
   guarantee_amount: number | null;
   deal_terms: string | null;
   event_id: string | null;
-  artists: { name: string } | null;
+  artist_id: string | null;
+  artists: { name: string; photo_url: string | null } | null;
   events: { name: string } | null;
   venue: { id: string; name: string } | null;
 };
@@ -62,7 +64,17 @@ function toRow(t: PlayRow): DataRow {
           {t.show_date ?? "View play"}
         </Link>
       ),
-      artist: t.artists?.name ?? "—",
+      artist: t.artist_id ? (
+        <Link
+          href={`/artists/${t.artist_id}`}
+          className="inline-flex items-center gap-2 hover:underline underline-offset-4"
+        >
+          <Avatar src={t.artists?.photo_url} name={t.artists?.name ?? "?"} size={20} />
+          <span className="truncate">{t.artists?.name ?? "—"}</span>
+        </Link>
+      ) : (
+        t.artists?.name ?? "—"
+      ),
       status: (
         <span
           className={`text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${
@@ -175,7 +187,7 @@ export default async function PlaysPage({
   let query = supabase
     .from("plays")
     .select(
-      "id, show_date, status, venue_name, venue_id, city, state, set_type, attendance, tickets_sold, guarantee_amount, deal_terms, event_id, artists(name), events(name), venue:companies!plays_venue_id_fkey(id, name)"
+      "id, show_date, status, venue_name, venue_id, city, state, set_type, attendance, tickets_sold, guarantee_amount, deal_terms, event_id, artist_id, artists(name, photo_url), events(name), venue:companies!plays_venue_id_fkey(id, name)"
     )
     .order("show_date", { ascending: true });
 
@@ -198,7 +210,9 @@ export default async function PlaysPage({
     .map((p) => ({
       id: p.id,
       status: p.status,
+      artist_id: p.artist_id,
       artist_name: p.artists?.name ?? null,
+      artist_photo_url: p.artists?.photo_url ?? null,
       venue_label: p.venue?.name ?? p.venue_name,
       show_date: p.show_date,
       guarantee_amount: p.guarantee_amount,

@@ -13,6 +13,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { updateField } from "@/app/actions/records";
+import Avatar from "@/components/Avatar";
 import {
   type PlayStatus,
   LIVE_PIPELINE_STATUSES,
@@ -23,7 +24,9 @@ import {
 export type BoardPlay = {
   id: string;
   status: PlayStatus;
+  artist_id: string | null;
   artist_name: string | null;
+  artist_photo_url: string | null;
   venue_label: string | null;
   show_date: string | null;
   guarantee_amount: number | null;
@@ -52,13 +55,18 @@ function Card({ play }: { play: BoardPlay }) {
       style={style}
       {...listeners}
       {...attributes}
-      className={`rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing touch-none select-none ${
+      className={`rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing touch-none select-none transition-colors hover:border-ridge-orange/30 ${
         isDragging ? "opacity-40 z-10 relative" : ""
       }`}
     >
-      <div className="font-medium mb-0.5 truncate">{play.artist_name ?? "Play"}</div>
-      <div className="text-black/60 dark:text-white/60 text-xs mb-1.5 truncate">
-        {play.venue_label ?? "No venue"}
+      <div className="flex items-center gap-2 mb-1.5 min-w-0">
+        <Avatar src={play.artist_photo_url} name={play.artist_name ?? "?"} size={24} />
+        <div className="min-w-0">
+          <div className="font-medium truncate leading-tight">{play.artist_name ?? "Play"}</div>
+          <div className="text-black/60 dark:text-white/60 text-xs truncate leading-tight">
+            {play.venue_label ?? "No venue"}
+          </div>
+        </div>
       </div>
       <div className="flex items-center justify-between text-xs text-black/50 dark:text-white/50 gap-1">
         <span className="truncate">{play.show_date ?? "No date"}</span>
