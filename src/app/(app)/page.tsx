@@ -110,6 +110,19 @@ export default async function DashboardPage() {
   const today = now.toISOString().slice(0, 10);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const thisYear = now.getFullYear();
+  const lastYear = thisYear - 1;
+  const nextYear = thisYear + 1;
+  const startOfThisYear = `${thisYear}-01-01`;
+  const startOfLastYear = `${lastYear}-01-01`;
+  // Same month/day cutoff, one year back -- "as of the same point in the
+  // calendar" rather than the full prior year, so the comparison is apples
+  // to apples regardless of how far into the current year we are.
+  const sameDayLastYear = new Date(lastYear, now.getMonth(), now.getDate())
+    .toISOString()
+    .slice(0, 10);
+  const startOfNextYear = `${nextYear}-01-01`;
+  const endOfNextYear = `${nextYear}-12-31`;
 
   const [
     { data: artists },
@@ -117,6 +130,9 @@ export default async function DashboardPage() {
     { data: recentPlays },
     { count: showsThisMonthCount },
     { count: bookedMtdCount },
+    { count: showsYtdCount },
+    { count: showsYtdLastYearCount },
+    { count: nextYearBookedCount },
   ] = await Promise.all([
     supabase
       .from("artists")
@@ -153,6 +169,40 @@ export default async function DashboardPage() {
       .from("plays")
       .select("*", { count: "exact", head: true })
       .gte("created_at", startOfMonth.toISOString()),
+    // Shows booked this year, to date -- show-date based (not created_at),
+    // so legacy/bulk-imported rows count correctly by when the show
+    // actually is, not when the row was entered. Declined/cancelled are
+    // excluded, same "never actually happened" rule as Revenue. Bounded by
+    // today, not the full year, so the YoY comparison below is a fair,
+    // same-point-in-the-calendar read rather than comparing a partial year
+    // to a complete one.
+    supabase
+      .from("plays")
+      .select("*", { count: "exact", head: true })
+      .gte("show_date", startOfThisYear)
+      .lte("show_date", today)
+      .not("status", "in", "(declined,cancelled)"),
+    supabase
+      .from("plays")
+      .select("*", { count: "exact", head: true })
+      .gte("show_date", startOfLastYear)
+      .lte("show_date", sameDayLastYear)
+      .not("status", "in", "(declined,cancelled)"),
+    // Advance bookings for next year -- every play with a show_date out
+    // that far has, by definition, already been booked, so this doesn't
+    // need a created_at cutoff the way the pace metrics above do. Per
+    // Greg (2026-11-10): no YoY comparison here yet -- that would mean
+    // knowing how many 2026 shows were already on file this time last
+    // year, which needs real created_at history, and Base Camp's own
+    // pipeline tracking (as opposed to the one-time legacy import) has
+    // only been live a couple of months. Revisit once there's a real
+    // year of usage to compare against.
+    supabase
+      .from("plays")
+      .select("*", { count: "exact", head: true })
+      .gte("show_date", startOfNextYear)
+      .lte("show_date", endOfNextYear)
+      .not("status", "in", "(declined,cancelled)"),
   ]);
 
   const upcomingRows = (upcoming ?? []) as unknown as PlayRow[];
@@ -172,7 +222,7 @@ export default async function DashboardPage() {
         <NewRecordButton />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-8 max-w-md">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 max-w-3xl">
         <StatTile
           label="Shows This Month"
           value={showsThisMonthCount ?? 0}
@@ -182,6 +232,16 @@ export default async function DashboardPage() {
           label="Booked Month-to-Date"
           value={bookedMtdCount ?? 0}
           sub="new plays added this month"
+        />
+        <StatTile
+          label={`Shows Booked — ${thisYear} YTD`}
+          value={showsYtdCount ?? 0}
+          sub={`vs ${showsYtdLastYearCount ?? 0} this time last year`}
+        />
+        <StatTile
+          label={`Booked for ${nextYear}`}
+          value={nextYearBookedCount ?? 0}
+          sub="already on next year's calendar"
         />
       </div>
 
