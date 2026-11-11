@@ -26,6 +26,7 @@ const links = [
 // stop someone from typing the URL directly.
 const adminLinks = [
   { href: "/candidates", label: "Candidates" },
+  { href: "/pending-review", label: "Pending Review" },
   { href: "/revenue", label: "Revenue" },
   { href: "/settings/quickbooks", label: "QuickBooks" },
   { href: "/settings/team", label: "Team" },

@@ -19,6 +19,7 @@ export default async function AppLayout({
     { count: eventCount },
     { count: playCount },
     { count: candidateCount },
+    { count: pendingReviewCount },
     qbStatus,
   ] = await Promise.all([
     // Same visibility rule as the Action List page itself: open, and
@@ -51,6 +52,17 @@ export default async function AppLayout({
       .from("candidates")
       .select("*", { count: "exact", head: true })
       .or("status.is.null,status.eq.new"),
+    // Same pending set the Pending Review page itself lists. Admin-only
+    // nav link, same reasoning as qbStatus below -- skip the query for
+    // everyone else.
+    isAdmin
+      ? supabase
+          .from("events")
+          .select("*", { count: "exact", head: true })
+          .eq("archived", false)
+          .eq("pending_hard_delete", false)
+          .eq("pending_state_review", true)
+      : Promise.resolve({ count: 0 }),
     // Only admins see the QuickBooks nav link (and its status light), so
     // skip the query entirely for everyone else rather than running a
     // service-role read that nothing on the page uses.
@@ -65,6 +77,7 @@ export default async function AppLayout({
     "/events": eventCount ?? 0,
     "/plays": playCount ?? 0,
     "/candidates": candidateCount ?? 0,
+    "/pending-review": pendingReviewCount ?? 0,
   };
 
   return (
