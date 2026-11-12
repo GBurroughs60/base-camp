@@ -311,17 +311,17 @@ export default function RevenueDashboard({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <RevenueTile
+            title="Total Artist Revenue"
+            sub="Walkout (or guarantee) + merch -- for reference, not Ridge's cut"
+            total={artistTopLineTotal}
+            count={filteredLiveRows.length}
+          />
+          <RevenueTile
             title="Total"
             sub="Booked + Earned + Settled"
             total={totals.booked.total + totals.earned.total + totals.settled.total}
             count={totals.booked.count + totals.earned.count + totals.settled.count}
             highlight
-          />
-          <RevenueTile
-            title="Total Artist Revenue"
-            sub="Walkout (or guarantee) + merch -- for reference, not Ridge's cut"
-            total={artistTopLineTotal}
-            count={filteredLiveRows.length}
           />
           <RevenueTile title="Booked" sub="Projected — not yet played" total={totals.booked.total} count={totals.booked.count} />
           <RevenueTile title="Earned" sub="Played — show happened" total={totals.earned.total} count={totals.earned.count} />
