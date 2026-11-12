@@ -147,8 +147,8 @@ export default function CommissionInvoiceApprovals({
                   ✓ Show report received {formatReceivedDate(row.settlementSubmittedAt)}
                 </span>{" "}
                 &middot; To {row.billingEmail ?? "no contact on file"}
-                {row.ccEmailCount > 0 &&
-                  ` · CC ${row.ccEmailCount} manager${row.ccEmailCount === 1 ? "" : "s"}`}
+                {row.managerNoticeCount > 0 &&
+                  ` · ${row.managerNoticeCount} manager${row.managerNoticeCount === 1 ? "" : "s"} notified`}
               </p>
               {errors[row.id] && (
                 <p className="text-xs text-red-500 mt-1">{errors[row.id]}</p>

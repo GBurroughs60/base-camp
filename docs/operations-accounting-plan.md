@@ -822,44 +822,55 @@ above), not a half-finished invoice. NEEDS LIVE VERIFICATION, same caveat
 as the rest of `quickbooks.ts` -- not yet smoke-tested against the real
 sandbox connection.
 
-**Management CC on invoice send (2026-11-12, per Greg: "let's add artist
-and management to the invoice send so multiple people are on copy").**
-`CreateInvoiceInput` (`types.ts`) gained an optional `ccEmail`; the cron
-route now also looks up every `role='manager'` contact on the artist
-(same pattern as the existing `role='artist'` billing-contact lookup,
-just a second query) and joins all of their emails into one
-comma-separated string, passed through as `ccEmail` -- optional and
-best-effort, same as the billing contact is required: no manager on file
-is never a reason to block the artist's own invoice. Checked against real
-data while building this: Cody Webb actually has *three* management
-contacts on file (Alex Kidd, Renee McClure, Matt McClure, all
-@bowtosterngroup.com) -- the comma-separated join (QBO's Cc field takes
-multiple addresses the same way its own "Send" dialog does) is what makes
-"multiple people are on copy" literally true for his two invoices, not
-just the first manager found. `quickbooks.ts`'s `createInvoice` sets
-`BillEmail` (the primary,
-matching whatever's already passed as `customer.email`), `BillEmailCc`
-(only when `ccEmail` is given), and `ToBeEmailed: true` on the Invoice
-object itself at create time -- all three are documented fields on the
-Invoice/SalesTransaction entity (Intuit's legacy SDK reference), with
-CC/BCC behavior gated behind `ToBeEmailed`. Deliberately set at *create*
-time, on the invoice object, rather than passed to the later `sendInvoice`
-call: Intuit's own `sendTo=<email>` query param is documented (a
-third-party GitHub issue, since Intuit's own help-center pages wouldn't
-render for a fetch) to overwrite `BillEmail.Address` with whatever it's
-given, but nothing documents it touching CC/BCC at all -- so CC has to
-ride on the invoice record itself, independent of that override. **NEEDS
-LIVE VERIFICATION, more so than the rest of this file**: documentation on
-whether `BillEmailCc` actually survives through to the real email QBO
-sends via the `/send` endpoint was inconclusive (an Intuit community
-thread titled exactly "Email Cc and Bcc are not updated through api while
-creating invoice" exists but wouldn't render for a fetch either) -- watch
-the first real send (Cody Webb's two invoices, which will CC all three of
-his management contacts) to confirm they actually receive it. If they
-don't,
-the fallback is a second, Base-Camp-sent notification email to the
-manager rather than relying on QBO's own CC -- not built, since there's
-no evidence yet that it's needed.
+**Management notice on invoice send (2026-11-12, per Greg: "let's add
+artist and management to the invoice send so multiple people are on
+copy") -- superseded same day once the first live test actually ran.**
+First attempt: `CreateInvoiceInput` gained `ccEmail`, and `createInvoice`
+set `BillEmailCc` on the Invoice object at create time (documented fields,
+per Intuit's legacy SDK reference, with CC/BCC gated behind
+`ToBeEmailed`). Flagged **NEEDS LIVE VERIFICATION** since documentation on
+whether `BillEmailCc` actually survives via the real Accounting API v3 was
+inconclusive either way.
+
+**It didn't survive at all.** The very first live `createInvoice` call
+against the real sandbox connection (Cody Webb's 11/1 invoice, triggered
+from the new review-gate UI) came back a 400 `ValidationFault`:
+`"Request has invalid or unsupported property"`, naming the failing
+property as an unresolved placeholder in QBO's own error body --
+consistent with a field QBO's schema doesn't recognize at all, not a
+value-validation complaint on a field it does. Nothing was sent (create
+failed before `sendInvoice` ever ran), so this cost nothing except
+answering the open question for good: `BillEmailCc` is not usable via
+this endpoint. **Resolved by dropping it entirely** rather than continuing
+to guess at the correct shape -- `createInvoice` now only sets `BillEmail`
+and `ToBeEmailed` (both far more standard/commonly used than
+`BillEmailCc` ever was, and neither was named in the error, though they
+remain unverified themselves until a create call actually succeeds end to
+end). `ccEmail` was removed from `CreateInvoiceInput` -- it never did
+anything else.
+
+**In its place: a separate, Base-Camp-sent notice**, exactly the fallback
+this section had already floated as a contingency.
+`sendCommissionInvoiceManagerNotice` (`lib/approvalEmail.ts`, same
+Resend-based pattern/trust level as every other automated email in this
+file) fires from `pushCommissionInvoiceRow` once `sendInvoice` has
+already succeeded -- best-effort, never unwinding or retrying the real
+invoice send if the notice itself fails (logged via the existing
+`logEmailFailure`, new kind `commission_invoice_manager_notice`).
+Deliberately not the invoice or a payable document -- that stays
+exclusively QBO's own email to the artist, same "the artist is who's
+billed" split as section 2 -- just a plain "an invoice for $X was just
+sent to so-and-so" FYI to every `role='manager'` contact on file. The
+review card's "CC N managers" became "N manager(s) notified" to match
+(`PendingCommissionInvoiceRow.managerNoticeCount`, renamed from
+`ccEmailCount`) -- this is Base Camp's own notification now, not a
+literal email CC, and the UI should say so. Greg separately asked
+whether his own email should be CC'd on every send too -- recommended
+against it as a standing feature (redundant with the review gate's own
+confirmation and the existing failure alerts; would just get noisier as
+volume grows) in favor of a one-time manual test: temporarily add
+himself as a `role='manager'` contact on Cody's profile, confirm he
+receives this same notice, then remove it.
 
 **Bug found and fixed along the way: `computePlayRevenue` never actually
 implemented the Walkout formula change from section 2 (2026-10-26).** The

@@ -30,19 +30,6 @@ export type CreateInvoiceInput = {
    *  this is never null again for the same artist. */
   existingProviderCustomerId: string | null;
   customer: InvoiceRecipient;
-  /** Management-role contact email(s), if any are on file -- CC'd on the
-   *  invoice so they're on copy alongside the artist (Greg, 2026-11-12:
-   *  "let's add artist and management to the invoice send so multiple
-   *  people are on copy"). More than one management contact (e.g. a duo
-   *  of managers) is passed as a single comma-separated string -- QBO's
-   *  Cc field takes multiple addresses the same way its own "Send" dialog
-   *  does. Optional and best-effort: an artist with no management
-   *  contact on file still gets invoiced normally, just without a CC.
-   *  NEEDS LIVE VERIFICATION (see this file's own header note, and
-   *  quickbooks.ts's createInvoice) -- QBO's BillEmailCc field is
-   *  documented, but whether it survives alongside the later
-   *  /send?sendTo= call hasn't been confirmed against a real send yet. */
-  ccEmail?: string | null;
   /** What shows up on the invoice line -- e.g. "Booking commission --
    *  Cody Webb at Eudora Wildlife Safari Park, 11/1/2026". */
   description: string;

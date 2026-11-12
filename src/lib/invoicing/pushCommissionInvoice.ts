@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InvoicingProvider } from "./types";
-import { logEmailFailure } from "@/lib/approvalEmail";
+import { logEmailFailure, sendCommissionInvoiceManagerNotice } from "@/lib/approvalEmail";
 
 // Pulled out of api/cron/create-commission-invoices/route.ts (2026-11-12)
 // so the exact same "actually talk to QuickBooks" logic has only one
@@ -71,9 +71,10 @@ export async function pushCommissionInvoiceRow(
   try {
     // The artist is who Ridge invoices (section 2) -- never the manager,
     // even though a manager contact is often also on file. Per Greg
-    // (2026-11-12), the manager (when one's on file) now also rides
-    // along as a CC on the send itself, below -- they're on copy, not a
-    // second billing party.
+    // (2026-11-12), the manager (when one's on file) now also gets
+    // notified once the send succeeds, below -- informed, not a second
+    // billing party (and not a literal CC on the QBO invoice itself --
+    // see sendCommissionInvoiceManagerNotice's own comment for why).
     const [{ data: artistContacts }, { data: managerContacts }] = await Promise.all([
       supabase
         .from("contact_artists")
@@ -89,18 +90,17 @@ export async function pushCommissionInvoiceRow(
     const billingContact = (artistContacts ?? [])
       .map((r) => r.contacts as unknown as { full_name: string; email: string | null } | null)
       .find((c): c is { full_name: string; email: string } => !!c?.email);
-    // Optional and best-effort -- no manager on file just means no CC,
-    // never a reason to block the artist's own invoice. Every
-    // role='manager' contact with an email is included, joined into one
-    // comma-separated string -- QBO's Cc field (same as its own "Send"
-    // dialog in the UI) takes a single address field that accepts
-    // multiple comma-separated recipients, and some artists (e.g. Cody
-    // Webb) have more than one management contact on file.
+    // Optional and best-effort -- no manager on file just means no notice
+    // goes out, never a reason to block the artist's own invoice. Every
+    // role='manager' contact with an email is included -- some artists
+    // (e.g. Cody Webb) have more than one. Not a literal CC on the QBO
+    // invoice anymore (see the note on sendCommissionInvoiceManagerNotice
+    // below) -- just the list of who gets Base Camp's own separate notice
+    // once the real invoice send succeeds.
     const managerEmails = (managerContacts ?? [])
       .map((r) => r.contacts as unknown as { full_name: string; email: string | null } | null)
       .filter((c): c is { full_name: string; email: string } => !!c?.email)
       .map((c) => c.email);
-    const managerCcEmail = managerEmails.length > 0 ? managerEmails.join(",") : null;
 
     if (!billingContact) {
       await logEmailFailure(
@@ -130,7 +130,6 @@ export async function pushCommissionInvoiceRow(
           name: artist.legal_entity_name ?? artist.name,
           email: billingContact.email,
         },
-        ccEmail: managerCcEmail,
         description: `Booking commission -- ${artist.name} at ${venueLabel}, ${formatShowDate(row.plays?.show_date ?? null)}`,
         amount: row.amount,
       });
@@ -153,6 +152,23 @@ export async function pushCommissionInvoiceRow(
       .from("commission_invoices")
       .update({ status: "sent", sent_at: new Date().toISOString() })
       .eq("id", row.id);
+
+    // Best-effort, after the fact -- the artist's invoice already went
+    // out successfully above, which is the thing that actually matters;
+    // a failure notifying management (logged via logEmailFailure inside
+    // sendCommissionInvoiceManagerNotice itself) never unwinds or retries
+    // the invoice send, same "don't let a secondary notice jeopardize the
+    // primary obligation" reasoning as everywhere else in this file.
+    if (managerEmails.length > 0) {
+      await sendCommissionInvoiceManagerNotice({
+        managerEmails,
+        artistName: artist.name,
+        venueLabel: row.plays?.venue?.name ?? row.plays?.venue_name ?? "venue TBD",
+        showDate: row.plays?.show_date ?? null,
+        amount: row.amount,
+        billingEmail: billingContact.email,
+      });
+    }
 
     return { ok: true, created };
   } catch (err) {

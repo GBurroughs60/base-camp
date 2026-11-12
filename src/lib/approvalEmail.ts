@@ -71,7 +71,8 @@ export async function logEmailFailure(
     | "settlement_received"
     | "settlement_escalation"
     | "email_bounce"
-    | "commission_invoice_blocked",
+    | "commission_invoice_blocked"
+    | "commission_invoice_manager_notice",
   recipient: string,
   context: Record<string, unknown>,
   errorDetail: string
@@ -743,6 +744,87 @@ export async function sendSettlementReceivedEmail(details: SettlementReceivedEma
     await logEmailFailure(
       "settlement_received",
       details.to,
+      { artistName: details.artistName, venueLabel: details.venueLabel },
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+}
+
+export type CommissionInvoiceManagerNoticeDetails = {
+  managerEmails: string[];
+  artistName: string;
+  venueLabel: string;
+  showDate: string | null;
+  amount: number;
+  billingEmail: string;
+};
+
+// Replaces trying to CC management natively on the QuickBooks invoice
+// itself (2026-11-12, first live test): QBO's Invoice create rejected
+// BillEmailCc outright ("Property Name ... unsupported or invalid",
+// ValidationFault) on the very first real call, which answers the
+// "NEEDS LIVE VERIFICATION" question this plan had been carrying since
+// the CC feature was built -- it doesn't survive at all, not even
+// partially. Rather than keep fighting an undocumented/unsupported QBO
+// property, management now gets a separate, plain FYI from Base Camp
+// itself (same channel, same trust level as every other automated
+// notification in this file) once the real invoice has actually gone
+// out to the artist. Deliberately not the invoice or a payable
+// document -- that stays exclusively QBO's own email to the artist (the
+// artist is who's billed, per docs/operations-accounting-plan.md
+// section 2 -- the manager is informed, not CC'd on the thing itself).
+// Best-effort: called only after sendInvoice already succeeded
+// (pushCommissionInvoiceRow), so a failure here never blocks or
+// unwinds the invoice that already went out.
+export async function sendCommissionInvoiceManagerNotice(
+  details: CommissionInvoiceManagerNoticeDetails
+): Promise<void> {
+  if (details.managerEmails.length === 0) return;
+  if (!resend) {
+    console.warn(
+      `RESEND_API_KEY is not set -- skipping commission-invoice manager notice (would have gone to: ${details.managerEmails.join(", ")})`
+    );
+    return;
+  }
+
+  const html = `
+    <div style="font-family: -apple-system, sans-serif; max-width: 480px; color: #1a1a1a;">
+      <h2 style="margin-bottom: 4px;">Invoice sent: ${escapeHtml(details.artistName)}</h2>
+      <p style="color: #555;">
+        The Ridge Music Group just sent a booking-commission invoice to
+        <strong>${escapeHtml(details.artistName)}</strong> (${escapeHtml(details.billingEmail)})
+        ${details.showDate ? `for the ${escapeHtml(details.showDate)} show` : ""} at
+        ${escapeHtml(details.venueLabel)} -- <strong>${escapeHtml(formatMoney(details.amount) ?? "")}</strong>.
+        You're receiving this as their management contact on file; no action needed.
+      </p>
+      <p style="color: #999; font-size: 12px; margin-top: 24px;">
+        Sent automatically by Base Camp, The Ridge Music Group.
+      </p>
+    </div>
+  `;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL ?? "Base Camp <onboarding@resend.dev>",
+      to: details.managerEmails,
+      subject: `Invoice sent: ${details.artistName}${details.showDate ? ` (${details.showDate})` : ""}`,
+      html,
+    });
+
+    if (error) {
+      console.error("Commission-invoice manager notice failed to send:", error);
+      await logEmailFailure(
+        "commission_invoice_manager_notice",
+        details.managerEmails.join(", "),
+        { artistName: details.artistName, venueLabel: details.venueLabel },
+        JSON.stringify(error)
+      );
+    }
+  } catch (err) {
+    console.error("Commission-invoice manager notice threw while sending:", err);
+    await logEmailFailure(
+      "commission_invoice_manager_notice",
+      details.managerEmails.join(", "),
       { artistName: details.artistName, venueLabel: details.venueLabel },
       err instanceof Error ? err.message : String(err)
     );

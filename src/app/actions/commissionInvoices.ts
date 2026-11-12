@@ -42,7 +42,11 @@ export type PendingCommissionInvoiceRow = {
   // cron's Phase 1), so this is a freshness check, not a live gate.
   settlementSubmittedAt: string | null;
   billingEmail: string | null;
-  ccEmailCount: number;
+  // Not a literal CC anymore (see pushCommissionInvoice.ts's 2026-11-12
+  // note -- QBO's Invoice API rejected BillEmailCc outright on the first
+  // live attempt) -- this is how many management contacts will get a
+  // separate Base-Camp-sent notice once the real invoice goes out.
+  managerNoticeCount: number;
 };
 
 type PendingQueryRow = {
@@ -122,7 +126,7 @@ export async function getPendingCommissionInvoiceApprovals(): Promise<PendingCom
         agentName: agent ? (agent.displayName ?? agent.email) : null,
         settlementSubmittedAt: r.plays?.settlement_submitted_at ?? null,
         billingEmail: billingEmailByArtist.get(r.artist_id) ?? null,
-        ccEmailCount: ccCountByArtist.get(r.artist_id) ?? 0,
+        managerNoticeCount: ccCountByArtist.get(r.artist_id) ?? 0,
       };
     })
     .sort((a, b) => (a.showDate ?? "").localeCompare(b.showDate ?? ""));
