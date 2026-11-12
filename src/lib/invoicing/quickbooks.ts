@@ -299,30 +299,30 @@ export class QuickBooksProvider implements InvoicingProvider {
 
     const itemId = await findCommissionItemId();
 
-    // BillEmail/ToBeEmailed are documented, widely-used fields on the
-    // Invoice entity, set here at create time. BillEmailCc used to be set
-    // alongside them (the CC-management feature, 2026-11-12) but QBO's
-    // real Accounting API v3 rejected it outright on the very first live
-    // create call -- a 400 ValidationFault, "Property Name ... unsupported
-    // or invalid" -- which settles the "NEEDS LIVE VERIFICATION" question
-    // this file had been carrying: BillEmailCc doesn't survive at all via
-    // this endpoint, not even partially (consistent with the one Intuit
-    // community thread found on this during research, which also
-    // suggested CC isn't reliably settable through the API). Management
-    // now gets a separate notice from Base Camp itself instead -- see
-    // sendCommissionInvoiceManagerNotice in lib/approvalEmail.ts, called
-    // from pushCommissionInvoiceRow once sendInvoice below has actually
-    // succeeded. BillEmail/ToBeEmailed themselves are untouched by that
-    // failure (they weren't named in the error, and are far more
-    // standard/commonly used than BillEmailCc ever was) but are still
-    // technically NEEDS LIVE VERIFICATION like the rest of this file until
-    // a create call actually succeeds end to end.
+    // Correction (2026-11-12, second live attempt): the first fix here
+    // removed BillEmailCc, blaming it for the 400 ValidationFault below --
+    // wrong guess. The error text never actually names a field ("Property
+    // Name:failed to parse json object; a property specified is
+    // unsupported or invalid" is Intuit's fixed boilerplate for this
+    // class of error, not a real field name), and the SAME error came
+    // back again on a retry with BillEmailCc already gone. Checked the
+    // real Invoice entity reference this time instead of guessing from
+    // recency: BillEmail/BillEmailCc/BillEmailBcc/EmailStatus are all
+    // documented fields on SalesTransaction (which Invoice inherits from)
+    // -- but "ToBeEmailed" is not a field on the Invoice entity at all,
+    // under any name. That's an unrecognized property, which is exactly
+    // what this error class means. Removed below; BillEmail is kept (it's
+    // real, and harmless even though sendInvoice below is what actually
+    // triggers the send). Worth reconsidering whether BillEmailCc should
+    // come back instead of the separate sendCommissionInvoiceManagerNotice
+    // path now that it's cleared -- that's a product call for Greg, not
+    // reopened here, since the notice path already works and this fix is
+    // only about getting ToBeEmailed's bogus property out of the request.
     const res = await qboFetch("/invoice", {
       method: "POST",
       body: JSON.stringify({
         CustomerRef: { value: customerId },
         BillEmail: { Address: input.customer.email },
-        ToBeEmailed: true,
         Line: [
           {
             Amount: input.amount,

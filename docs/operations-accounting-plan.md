@@ -1106,6 +1106,35 @@ a new file and flipping a config value, not touching call sites.
   same action and button serve both a fresh approval and a retry. The
   nav badge count (`(app)/layout.tsx`) was broadened the same way, so it
   reflects the true "needs attention" total, not just fresh drafts.
+
+  **Correction (2026-11-12, second live attempt): the actual cause of the
+  400 was never `BillEmailCc` -- it was `ToBeEmailed`.** Greg clicked
+  "Retry send" on Cody's 11/1 invoice right after the fix above shipped,
+  with `BillEmailCc` already removed, and got the exact same 400
+  `ValidationFault` back. The earlier diagnosis had assumed the newest
+  field was the guilty one, but the error text never actually names a
+  field at all -- `"Property Name:failed to parse json object; a
+  property specified is unsupported or invalid"` is Intuit's fixed
+  boilerplate for "the request body doesn't deserialize into an Invoice,"
+  not a per-field message, as confirmed by a community thread hitting the
+  same code (2010) from a genuine JSON syntax error, nothing to do with
+  any specific property. Checked the real Invoice entity reference this
+  time instead of going by recency: `BillEmail`/`BillEmailCc`/
+  `BillEmailBcc`/`EmailStatus` are all real, documented fields on
+  `SalesTransaction` (which Invoice inherits from) -- but `ToBeEmailed`,
+  which this file had been setting alongside `BillEmail` since the very
+  first version, is not a field on the Invoice entity under any name.
+  That's the unrecognized property that was tripping this error the
+  whole time; `BillEmailCc` was very likely innocent and got removed on
+  a bad guess. **Fixed**: `ToBeEmailed: true` dropped from `createInvoice`'s
+  payload in `quickbooks.ts`; `BillEmail` kept (it's real, and
+  `sendInvoice`'s own dedicated endpoint call is what actually triggers
+  the send regardless). Left for Greg to decide, not reopened here: now
+  that `BillEmailCc` looks like it may actually have been usable after
+  all, it's worth considering bringing it back instead of (or alongside)
+  `sendCommissionInvoiceManagerNotice` -- but the notice path already
+  works end to end, so this fix stays scoped to clearing the one field
+  that's confirmed bogus. `tsc`/`eslint` clean.
 - Where "would you play this venue again?" actually lives (2026-10-31).
   It's captured per-play on the settlement form (section 4), but is a
   per-play answer the right home for it, or should a "yes"/"no" also
