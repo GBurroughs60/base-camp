@@ -1135,6 +1135,32 @@ a new file and flipping a config value, not touching call sites.
   `sendCommissionInvoiceManagerNotice` -- but the notice path already
   works end to end, so this fix stays scoped to clearing the one field
   that's confirmed bogus. `tsc`/`eslint` clean.
+
+  **Third live attempt, same day: invoice create started succeeding, but
+  `sendInvoice` started failing with a QBO-side 500.** With `ToBeEmailed`
+  gone, Cody's two invoices finally got created in QBO -- but retrying
+  then hit `"System Failure Error: java.lang.NullPointerException"` (code
+  10000) from `POST .../invoice/{id}/send`, a QBO-side crash, not a
+  validation error. Cause: `qboFetch` was unconditionally sending
+  `Content-Type: application/json` on every call, including this one --
+  which takes no request body at all, only query params. Declaring a
+  JSON body that never arrives is a known trigger for this exact NPE on
+  Intuit's side (matches a developer-forum report with this literal
+  symptom). **Fixed**: `qboFetch` now only sets `Content-Type` when
+  `init.body` is actually present. `createInvoice`'s and the Customer
+  create call's bodies are unaffected (they still send one); the
+  query/`getInvoice` GET calls and `sendInvoice` itself now go out
+  without it, which is the more correct shape for a bodyless request
+  anyway. `tsc`/`eslint` clean.
+
+  Net effect of all three fixes this session, in order: the review-gate
+  UI was always right, the first create failure was a real bug
+  (`ToBeEmailed`) misdiagnosed as a different real bug (`BillEmailCc`,
+  innocent) before being correctly identified on a second live attempt,
+  and the send failure uncovered right after was a third, independent
+  bug in the shared `qboFetch` helper rather than anything specific to
+  commission invoices -- so it would have hit *any* future bodyless QBO
+  call (none existed yet) the same way.
 - Where "would you play this venue again?" actually lives (2026-10-31).
   It's captured per-play on the settlement form (section 4), but is a
   per-play answer the right home for it, or should a "yes"/"no" also

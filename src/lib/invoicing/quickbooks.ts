@@ -231,7 +231,18 @@ async function qboFetch(path: string, init: RequestInit = {}): Promise<Response>
     ...init,
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+      // Only declared when there's actually a body. Found (2026-11-12,
+      // third live attempt) sending it unconditionally on a bodyless
+      // POST -- specifically sendInvoice's /invoice/{id}/send, which
+      // takes no request body at all, only a query string -- triggers a
+      // 500 "System Failure Error: java.lang.NullPointerException" on
+      // QBO's own side: it declares a JSON body that never arrives, and
+      // something in Intuit's request handling NPEs trying to parse the
+      // empty stream as JSON. Matches a known Intuit developer-forum
+      // report with this exact title ("500 from invoice/send endpoint
+      // with Content-Type: application/json"). createInvoice's POST
+      // (which does have a body) is unaffected either way.
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
       Accept: "application/json",
       ...init.headers,
     },
