@@ -20,6 +20,7 @@ export default async function AppLayout({
     { count: playCount },
     { count: candidateCount },
     { count: pendingReviewCount },
+    { count: pendingCommissionInvoiceCount },
     qbStatus,
   ] = await Promise.all([
     // Same visibility rule as the Action List page itself: open, and
@@ -63,6 +64,18 @@ export default async function AppLayout({
           .eq("pending_hard_delete", false)
           .eq("pending_state_review", true)
       : Promise.resolve({ count: 0 }),
+    // Same admin-only gate as Revenue itself (only admins see that nav
+    // link at all) -- drives the orange "needs attention" badge on it
+    // (2026-11-12, per Greg), not a plain count, so it's queried
+    // separately from the neutral counts above.
+    isAdmin
+      ? supabase
+          .from("commission_invoices")
+          .select("*", { count: "exact", head: true })
+          .eq("kind", "booking")
+          .eq("status", "draft")
+          .is("approved_at", null)
+      : Promise.resolve({ count: 0 }),
     // Only admins see the QuickBooks nav link (and its status light), so
     // skip the query entirely for everyone else rather than running a
     // service-role read that nothing on the page uses.
@@ -86,6 +99,7 @@ export default async function AppLayout({
         counts={counts}
         isAdmin={isAdmin}
         statusDots={qbStatus ? { "/settings/quickbooks": qbStatus.health } : undefined}
+        alertCounts={{ "/revenue": pendingCommissionInvoiceCount ?? 0 }}
       />
       <div className="flex-1 min-w-0">
         {/* Extra top padding on mobile only, clearing the fixed nav

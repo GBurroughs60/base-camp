@@ -1043,10 +1043,37 @@ a new file and flipping a config value, not touching call sites.
   (the 2026-11-11 Walkout-basis error, section 6) was a silent formula
   mistake that would have kept invoicing wrong amounts indefinitely with
   zero human in the loop to catch it -- the same failure mode a review
-  gate exists to prevent. **Not yet built -- pending Greg's decision** on
-  whether to add it now (before Cody Webb's two invoices go out) or treat
-  the process as trusted for now and revisit if a wrong amount ever
-  actually goes out.
+  gate exists to prevent. **Resolved (2026-11-12): built, exactly as
+  recommended above.** `commission_invoices.approved_at` (new column) is
+  the gate -- Phase 1 of the daily cron is unchanged, but Phase 2 now only
+  pushes a row through the provider once `approved_at` is set
+  (`.not("approved_at", "is", null)` added to its query), so an unreviewed
+  draft just sits there instead of auto-sending on the next run. The
+  actual create/send logic was pulled out of the cron route into
+  `src/lib/invoicing/pushCommissionInvoice.ts` (`pushCommissionInvoiceRow`)
+  so it has exactly one home, called both by the cron (retrying anything
+  approved-but-not-yet-sent) and by the new review UI. That UI --
+  `CommissionInvoiceApprovals.tsx`, backed by
+  `src/app/actions/commissionInvoices.ts` -- sits above The Ridge Revenue
+  section on `/revenue` (a to-do, not a report) and lists every drafted,
+  unapproved row: artist, show date/venue, the booking agent, a "show
+  report received [date]" freshness note, and who's on the email (to/CC
+  count) -- deliberately *not* the commission math or a "booking
+  commission" label, both redundant once you already know the rate is
+  fixed and management-commission invoicing isn't built yet (every row
+  here is booking, full stop). "Approve & send" (single row, two-step
+  confirm, same pattern as `ContractReviewActions`) sets `approved_at`
+  and immediately calls the shared push function -- no waiting for
+  tomorrow's 9:30am run. "Approve & send all" does the same for the whole
+  list, one confirmation instead of one per row. `Nav.tsx` gained a
+  second badge type, `alertCounts` (solid orange, vs. the existing muted
+  `counts`), shown on the Revenue link whenever this queue isn't empty --
+  computed admin-only in `(app)/layout.tsx`, same gate as the Revenue
+  link itself. Direct consequence Greg flagged in the moment: Cody Webb's
+  two already-drafted rows ($650/$250, corrected earlier this session)
+  show up in this exact queue the moment it ships -- approving them there
+  is now the intended way to send them, not the `curl`/`CRON_SECRET`
+  workaround used before this existed.
 - Where "would you play this venue again?" actually lives (2026-10-31).
   It's captured per-play on the settlement form (section 4), but is a
   per-play answer the right home for it, or should a "yes"/"no" also

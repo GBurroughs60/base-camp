@@ -5,8 +5,10 @@ import RevenueDashboard, {
   type HistoricalYearRow,
 } from "@/components/RevenueDashboard";
 import AgentCommissions, { type AgentCommissionRow } from "@/components/AgentCommissions";
+import CommissionInvoiceApprovals from "@/components/CommissionInvoiceApprovals";
 import { computePlayRevenue, type ArtistCommissionDefaults } from "@/lib/revenue";
 import { listTeamMembers } from "@/app/actions/userProfiles";
+import { getPendingCommissionInvoiceApprovals } from "@/app/actions/commissionInvoices";
 import type { PlayStatus } from "@/lib/playStatus";
 
 type PlayRecord = {
@@ -43,7 +45,7 @@ export default async function RevenuePage() {
   // they're not real revenue (live or historical) either way. Legacy IS
   // included here: it's excluded from Ridge's own live commission tracker
   // below, but it's exactly what feeds the historical by-year trend.
-  const [{ data: playsData }, { data: artistsData }, teamMembers] = await Promise.all([
+  const [{ data: playsData }, { data: artistsData }, teamMembers, pendingInvoiceApprovals] = await Promise.all([
     supabase
       .from("plays")
       .select(
@@ -56,6 +58,7 @@ export default async function RevenuePage() {
         "id, name, photo_url, ridge_manages, ridge_books, management_commission_pct, booking_agent_commission_pct"
       ),
     listTeamMembers(),
+    getPendingCommissionInvoiceApprovals(),
   ]);
 
   const plays = (playsData ?? []) as unknown as PlayRecord[];
@@ -207,6 +210,8 @@ export default async function RevenuePage() {
         has created. Historical totals below include everything on file, including the legacy
         import.
       </p>
+
+      <CommissionInvoiceApprovals rows={pendingInvoiceApprovals} />
 
       <RevenueDashboard liveRows={liveRows} historicalRows={historicalRows} />
 

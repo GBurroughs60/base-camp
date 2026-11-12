@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/serviceRole";
 import { getInvoicingProvider } from "@/lib/invoicing";
 import { computePlayRevenue } from "@/lib/revenue";
-import { logEmailFailure } from "@/lib/approvalEmail";
+import {
+  pushCommissionInvoiceRow,
+  type DraftInvoiceRow,
+} from "@/lib/invoicing/pushCommissionInvoice";
 import type { PlayStatus } from "@/lib/playStatus";
 
 // Daily job that turns settled plays into real QuickBooks invoices --
@@ -23,15 +26,32 @@ import type { PlayStatus } from "@/lib/playStatus";
 //   captured once, here, not re-read live later (mirrors
 //   action_items.occurrence_date's same reasoning).
 //
-//   Phase 2 -- push every 'draft' row (new ones from phase 1, and any from
-//   a prior run that didn't finish) through the provider: createInvoice if
-//   it doesn't have a providerInvoiceId yet, then sendInvoice either way --
+//   Phase 2 -- push every 'draft' row that's also been *approved*
+//   (approved_at set -- new ones from phase 1 never qualify on their own;
+//   see the review gate below) through the provider: createInvoice if it
+//   doesn't have a providerInvoiceId yet, then sendInvoice either way --
 //   QBO itself emails the actual invoice to the customer (section 2, "QBO
 //   owns sending"), and only a successful send sets sent_at/status='sent'.
 //   A failure at either step leaves the row exactly as it was (with
 //   providerInvoiceId saved if createInvoice got that far) so the next run
 //   retries just the piece that didn't finish, rather than risking a
-//   duplicate QBO invoice.
+//   duplicate QBO invoice. The actual push (contact resolution, the
+//   createInvoice/sendInvoice calls, the status update, the failure alert)
+//   lives in pushCommissionInvoiceRow (lib/invoicing/pushCommissionInvoice.ts)
+//   -- shared with the "Approve & send" server action below, since this
+//   phase is also what that action calls to fire a row immediately rather
+//   than waiting for tomorrow's run.
+//
+// Review gate (2026-11-12, per Greg -- docs/operations-accounting-plan.md
+// section 9): the exact kind of mistake this cron could ship unreviewed is
+// the one that already happened once (the Walkout-basis formula bug) --
+// a silent wrong amount, with nobody looking before QBO emailed it. So
+// Phase 2 here is deliberately passive: it only picks up rows a human
+// already approved on the Revenue page's review card (approved_at set),
+// which in practice means this phase mostly just retries anything that
+// was approved but didn't fully go through last time -- a human visiting
+// that card and clicking "Approve & send" is what actually triggers a
+// *new* send, immediately, not this cron.
 //
 // Triggered by Vercel Cron (see vercel.json), which sends
 // `Authorization: Bearer $CRON_SECRET` automatically. A `?secret=` query
@@ -47,12 +67,6 @@ function isAuthorized(req: NextRequest): boolean {
 
   const url = new URL(req.url);
   return url.searchParams.get("secret") === secret;
-}
-
-function formatShowDate(showDate: string | null): string {
-  if (!showDate) return "date TBD";
-  const parsed = new Date(showDate + "T00:00:00Z");
-  return `${parsed.getUTCMonth() + 1}/${parsed.getUTCDate()}/${parsed.getUTCFullYear()}`;
 }
 
 type ArtistRow = {
@@ -78,21 +92,6 @@ type CandidatePlayRow = {
   venue_name: string | null;
   artists: ArtistRow | null;
   venue: { name: string | null } | null;
-};
-
-type DraftInvoiceRow = {
-  id: string;
-  play_id: string;
-  artist_id: string;
-  amount: number;
-  provider_invoice_id: string | null;
-  provider_customer_id: string | null;
-  plays: {
-    show_date: string | null;
-    venue_name: string | null;
-    venue: { name: string | null } | null;
-    artists: ArtistRow | null;
-  } | null;
 };
 
 export async function GET(req: NextRequest) {
@@ -195,7 +194,9 @@ export async function GET(req: NextRequest) {
     drafted += 1;
   }
 
-  // -- Phase 2: push every outstanding draft through the provider. --
+  // -- Phase 2: push every draft that's already been approved. A draft
+  // still waiting on a human (approved_at null) is deliberately left
+  // alone here -- see the review-gate comment above. --
   const { data: draftRows, error: draftsError } = await supabase
     .from("commission_invoices")
     .select(
@@ -206,6 +207,7 @@ export async function GET(req: NextRequest) {
     )
     .eq("kind", "booking")
     .eq("status", "draft")
+    .not("approved_at", "is", null)
     .returns<DraftInvoiceRow[]>();
 
   if (draftsError) {
@@ -221,101 +223,13 @@ export async function GET(req: NextRequest) {
   let blocked = 0;
 
   for (const row of draftRows ?? []) {
-    const artist = row.plays?.artists;
-    if (!artist) continue;
-
-    try {
-      // The artist is who Ridge invoices (section 2) -- never the manager,
-      // even though a manager contact is often also on file. Per Greg
-      // (2026-11-12), the manager (when one's on file) now also rides
-      // along as a CC on the send itself, below -- they're on copy, not a
-      // second billing party.
-      const [{ data: artistContacts }, { data: managerContacts }] = await Promise.all([
-        supabase
-          .from("contact_artists")
-          .select("contacts(full_name, email)")
-          .eq("artist_id", artist.id)
-          .eq("role", "artist"),
-        supabase
-          .from("contact_artists")
-          .select("contacts(full_name, email)")
-          .eq("artist_id", artist.id)
-          .eq("role", "manager"),
-      ]);
-      const billingContact = (artistContacts ?? [])
-        .map((r) => r.contacts as unknown as { full_name: string; email: string | null } | null)
-        .find((c): c is { full_name: string; email: string } => !!c?.email);
-      // Optional and best-effort -- no manager on file just means no CC,
-      // never a reason to block the artist's own invoice. Every
-      // role='manager' contact with an email is included, joined into one
-      // comma-separated string -- QBO's Cc field (same as its own "Send"
-      // dialog in the UI) takes a single address field that accepts
-      // multiple comma-separated recipients, and some artists (e.g. Cody
-      // Webb) have more than one management contact on file.
-      const managerEmails = (managerContacts ?? [])
-        .map((r) => r.contacts as unknown as { full_name: string; email: string | null } | null)
-        .filter((c): c is { full_name: string; email: string } => !!c?.email)
-        .map((c) => c.email);
-      const managerCcEmail = managerEmails.length > 0 ? managerEmails.join(",") : null;
-
-      if (!billingContact) {
-        blocked += 1;
-        await logEmailFailure(
-          "commission_invoice_blocked",
-          artist.name,
-          { playId: row.play_id, artistId: artist.id, reason: "no artist contact email on file" },
-          `Can't invoice ${artist.name} for the ${formatShowDate(row.plays?.show_date ?? null)} play -- ` +
-            `no artist contact with an email is on file. Add one on the artist's profile; this will pick ` +
-            `it up on tomorrow's run.`
-        );
-        continue;
-      }
-
-      let providerInvoiceId = row.provider_invoice_id;
-      let providerCustomerId = row.provider_customer_id;
-
-      if (!providerInvoiceId) {
-        const venueLabel = row.plays?.venue?.name ?? row.plays?.venue_name ?? "venue TBD";
-        const result = await provider.createInvoice({
-          existingProviderCustomerId: artist.qbo_customer_id,
-          customer: {
-            name: artist.legal_entity_name ?? artist.name,
-            email: billingContact.email,
-          },
-          ccEmail: managerCcEmail,
-          description: `Booking commission -- ${artist.name} at ${venueLabel}, ${formatShowDate(row.plays?.show_date ?? null)}`,
-          amount: row.amount,
-        });
-        providerInvoiceId = result.providerInvoiceId;
-        providerCustomerId = result.providerCustomerId;
-
-        await supabase
-          .from("commission_invoices")
-          .update({ provider_invoice_id: providerInvoiceId, provider_customer_id: providerCustomerId })
-          .eq("id", row.id);
-
-        if (!artist.qbo_customer_id) {
-          await supabase.from("artists").update({ qbo_customer_id: providerCustomerId }).eq("id", artist.id);
-        }
-        created += 1;
-      }
-
-      await provider.sendInvoice(providerInvoiceId, billingContact.email);
-      await supabase
-        .from("commission_invoices")
-        .update({ status: "sent", sent_at: new Date().toISOString() })
-        .eq("id", row.id);
+    if (!row.plays?.artists) continue;
+    const result = await pushCommissionInvoiceRow(supabase, provider, row);
+    if (result.ok) {
       sent += 1;
-    } catch (err) {
+      if (result.created) created += 1;
+    } else {
       blocked += 1;
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`create-commission-invoices: failed for commission_invoices row ${row.id}`, err);
-      await logEmailFailure(
-        "commission_invoice_blocked",
-        artist.name,
-        { playId: row.play_id, artistId: artist.id, commissionInvoiceId: row.id },
-        `QuickBooks invoice creation/send failed for ${artist.name}'s ${formatShowDate(row.plays?.show_date ?? null)} play: ${message}`
-      );
     }
   }
 

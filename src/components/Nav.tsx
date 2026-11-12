@@ -53,10 +53,18 @@ export default function Nav({
   counts,
   isAdmin,
   statusDots,
+  alertCounts,
 }: {
   counts?: Record<string, number>;
   isAdmin: boolean;
   statusDots?: Record<string, DotStatus>;
+  // Same shape as `counts`, keyed by href, but rendered as a solid orange
+  // "needs attention" badge instead of a muted number -- for something
+  // that's actually waiting on a person, not just a neutral list size.
+  // Only Revenue uses this today (commission invoices awaiting approval,
+  // 2026-11-12, per Greg), but any link can opt in the same way `counts`
+  // does. Zero/undefined renders nothing, same as `counts`.
+  alertCounts?: Record<string, number>;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -108,6 +116,14 @@ export default function Nav({
             />
           )}
         </span>
+        {!!alertCounts?.[link.href] && (
+          <span
+            title={`${alertCounts[link.href]} waiting on you`}
+            className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 mr-1 rounded-full bg-ridge-orange text-white text-[10px] font-bold tabular-nums shrink-0"
+          >
+            {alertCounts[link.href]}
+          </span>
+        )}
         {counts?.[link.href] !== undefined && (
           <span
             className={
