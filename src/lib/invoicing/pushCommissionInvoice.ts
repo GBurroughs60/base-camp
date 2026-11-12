@@ -103,6 +103,8 @@ export async function pushCommissionInvoiceRow(
       .map((c) => c.email);
 
     if (!billingContact) {
+      const noContactError = "No artist contact with an email is on file -- add one on the artist's profile.";
+      await supabase.from("commission_invoices").update({ last_error: noContactError }).eq("id", row.id);
       await logEmailFailure(
         "commission_invoice_blocked",
         artist.name,
@@ -111,11 +113,7 @@ export async function pushCommissionInvoiceRow(
           `no artist contact with an email is on file. Add one on the artist's profile; this will pick ` +
           `it up on tomorrow's run.`
       );
-      return {
-        ok: false,
-        reason: "no_billing_contact",
-        error: "No artist contact with an email is on file -- add one on the artist's profile.",
-      };
+      return { ok: false, reason: "no_billing_contact", error: noContactError };
     }
 
     let providerInvoiceId = row.provider_invoice_id;
@@ -150,7 +148,10 @@ export async function pushCommissionInvoiceRow(
     await provider.sendInvoice(providerInvoiceId, billingContact.email);
     await supabase
       .from("commission_invoices")
-      .update({ status: "sent", sent_at: new Date().toISOString() })
+      // last_error cleared on a successful send -- it should only ever
+      // describe the *most recent* attempt, never linger after a retry
+      // fixes things.
+      .update({ status: "sent", sent_at: new Date().toISOString(), last_error: null })
       .eq("id", row.id);
 
     // Best-effort, after the fact -- the artist's invoice already went
@@ -174,6 +175,15 @@ export async function pushCommissionInvoiceRow(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`pushCommissionInvoiceRow: failed for commission_invoices row ${row.id}`, err);
+    // Stored on the row itself (not just the commission_invoice_blocked
+    // alert below) so a failed-after-approval row shows its actual reason
+    // right on the review card -- see
+    // PendingCommissionInvoiceRow.needsRetry/lastError in
+    // app/actions/commissionInvoices.ts for why that matters (2026-11-12:
+    // this is exactly what Cody Webb's first live BillEmailCc failure
+    // surfaced -- a row that was approved, still draft, and otherwise
+    // invisible).
+    await supabase.from("commission_invoices").update({ last_error: message }).eq("id", row.id);
     await logEmailFailure(
       "commission_invoice_blocked",
       artist.name,

@@ -67,14 +67,16 @@ export default async function AppLayout({
     // Same admin-only gate as Revenue itself (only admins see that nav
     // link at all) -- drives the orange "needs attention" badge on it
     // (2026-11-12, per Greg), not a plain count, so it's queried
-    // separately from the neutral counts above.
+    // separately from the neutral counts above. Every 'draft' row counts,
+    // not just ones never yet approved -- an approved-but-failed row
+    // (needsRetry in app/actions/commissionInvoices.ts) needs attention
+    // too, same as a fresh one.
     isAdmin
       ? supabase
           .from("commission_invoices")
           .select("*", { count: "exact", head: true })
           .eq("kind", "booking")
           .eq("status", "draft")
-          .is("approved_at", null)
       : Promise.resolve({ count: 0 }),
     // Only admins see the QuickBooks nav link (and its status light), so
     // skip the query entirely for everyone else rather than running a

@@ -138,6 +138,11 @@ export default function CommissionInvoiceApprovals({
               >
                 {row.artistName}
               </Link>
+              {row.needsRetry && (
+                <span className="ml-2 inline-block text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-500/15 text-red-500">
+                  Didn&apos;t send last time
+                </span>
+              )}
               <p className="text-xs text-black/50 dark:text-white/50 mt-0.5">
                 {formatDate(row.showDate)} &middot; {row.venueLabel} &middot; Agent:{" "}
                 {row.agentName ?? "Unassigned"}
@@ -150,15 +155,18 @@ export default function CommissionInvoiceApprovals({
                 {row.managerNoticeCount > 0 &&
                   ` · ${row.managerNoticeCount} manager${row.managerNoticeCount === 1 ? "" : "s"} notified`}
               </p>
-              {errors[row.id] && (
-                <p className="text-xs text-red-500 mt-1">{errors[row.id]}</p>
+              {(errors[row.id] || row.lastError) && (
+                <p className="text-xs text-red-500 mt-1">
+                  {errors[row.id] || `Last attempt: ${row.lastError}`}
+                </p>
               )}
             </div>
             <div className="text-right shrink-0">
               <p className="font-display text-lg font-medium mb-1.5">{formatMoney(row.amount)}</p>
               {confirmingId === row.id ? (
                 <span className="text-xs whitespace-nowrap">
-                  Send {formatMoney(row.amount)} to {row.billingEmail ?? "?"}?{" "}
+                  {row.needsRetry ? "Retry sending" : "Send"} {formatMoney(row.amount)} to{" "}
+                  {row.billingEmail ?? "?"}?{" "}
                   <button
                     onClick={() => approveOne(row.id)}
                     disabled={pending}
@@ -180,7 +188,7 @@ export default function CommissionInvoiceApprovals({
                   disabled={pending}
                   className="bg-ridge-orange hover:bg-ridge-orange-dark text-white text-xs font-medium rounded-md px-3 py-1.5 disabled:opacity-50"
                 >
-                  Approve &amp; send
+                  {row.needsRetry ? "Retry send" : "Approve & send"}
                 </button>
               )}
             </div>

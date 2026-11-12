@@ -1085,6 +1085,27 @@ a new file and flipping a config value, not touching call sites.
   show up in this exact queue the moment it ships -- approving them there
   is now the intended way to send them, not the `curl`/`CRON_SECRET`
   workaround used before this existed.
+
+  **Bug in the gate itself, found the same day it shipped: a failed
+  approval used to vanish instead of surfacing.** `approveAndSendCommissionInvoice`
+  sets `approved_at` *before* attempting the push (deliberately -- so a
+  crash mid-send still shows it was a reviewed decision, not an accident),
+  but the review query originally only listed rows where `approved_at`
+  was still null. Cody Webb's 11/1 invoice hit exactly this: the
+  `BillEmailCc` failure (just above) left it `status='draft'`,
+  `approved_at` set, `provider_invoice_id` still null -- approved,
+  attempted, failed, and invisible to the card Greg was looking at (only
+  the 11/7 row showed). **Fixed**: the query now lists every `'draft'`
+  row regardless of `approved_at`, a new `commission_invoices.last_error`
+  column stores the actual failure reason (cleared on a successful
+  send), and `PendingCommissionInvoiceRow` gained `needsRetry`/`lastError`
+  so the card shows a "Didn't send last time" tag, the real error inline,
+  and a "Retry send" button instead of silently dropping the row.
+  `approveAndSendCommissionInvoice` itself became idempotent on
+  `approved_at` (sets it only if unset, then always runs the push) so the
+  same action and button serve both a fresh approval and a retry. The
+  nav badge count (`(app)/layout.tsx`) was broadened the same way, so it
+  reflects the true "needs attention" total, not just fresh drafts.
 - Where "would you play this venue again?" actually lives (2026-10-31).
   It's captured per-play on the settlement form (section 4), but is a
   per-play answer the right home for it, or should a "yes"/"no" also

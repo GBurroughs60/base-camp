@@ -7,15 +7,19 @@
 // relying on the UI alone to hide this).
 //
 // getPendingCommissionInvoiceApprovals() feeds the review card on the
-// Revenue page: every commission_invoices row that's drafted but not yet
-// approved. approveAndSendCommissionInvoice() is what "Approve & send"
-// actually calls -- sets approved_at, then runs the exact same
-// create/send logic the daily cron's Phase 2 does (pushCommissionInvoiceRow,
-// shared rather than duplicated), so the invoice goes out immediately
-// instead of waiting for tomorrow's 9:30am run. approveAndSendAllCommissionInvoices()
-// is the bulk version behind "Approve & send all," one row at a time
-// through the same function -- no separate bulk code path to drift from
-// the single-row one.
+// Revenue page: every commission_invoices row still in 'draft' -- both
+// ones genuinely awaiting a first decision (approved_at null) and ones
+// already approved that failed to actually send last time (needsRetry;
+// see that field's own comment -- this used to only be the first kind,
+// which silently hid a real failure). approveAndSendCommissionInvoice()
+// is what "Approve & send"/"Retry send" both call -- sets approved_at if
+// it isn't already, then runs the exact same create/send logic the daily
+// cron's Phase 2 does (pushCommissionInvoiceRow, shared rather than
+// duplicated), so the invoice goes out immediately instead of waiting for
+// tomorrow's 9:30am run. approveAndSendAllCommissionInvoices() is the
+// bulk version behind "Approve & send all," one row at a time through
+// the same function -- no separate bulk code path to drift from the
+// single-row one.
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/admin";
@@ -47,12 +51,29 @@ export type PendingCommissionInvoiceRow = {
   // live attempt) -- this is how many management contacts will get a
   // separate Base-Camp-sent notice once the real invoice goes out.
   managerNoticeCount: number;
+  // True when this row was already approved (and attempted) on a prior
+  // visit but didn't actually go out -- a retry candidate, not a fresh
+  // decision. Found the hard way (2026-11-12): approveAndSendCommissionInvoice
+  // sets approved_at *before* attempting the send, on purpose, so a crash
+  // mid-send still shows it was a deliberate approval -- but that meant a
+  // failed send (Cody Webb's first live BillEmailCc error) left a row
+  // that was approved, still draft, and invisible to this list, since it
+  // used to filter on approved_at being null. Now surfaced instead of
+  // silently dropped.
+  needsRetry: boolean;
+  // The actual reason the last attempt failed, straight from
+  // commission_invoices.last_error -- so this is visible right here
+  // instead of requiring a dig through the commission_invoice_blocked
+  // email alert.
+  lastError: string | null;
 };
 
 type PendingQueryRow = {
   id: string;
   artist_id: string;
   amount: number;
+  approved_at: string | null;
+  last_error: string | null;
   plays: {
     show_date: string | null;
     venue_name: string | null;
@@ -67,17 +88,19 @@ export async function getPendingCommissionInvoiceApprovals(): Promise<PendingCom
   await requireAdmin();
   const supabase = await createClient();
 
+  // Deliberately every 'draft' row, not just approved_at IS NULL ones --
+  // see needsRetry's doc comment above for why that used to hide a real
+  // failure instead of surfacing it.
   const { data } = await supabase
     .from("commission_invoices")
     .select(
-      `id, artist_id, amount,
+      `id, artist_id, amount, approved_at, last_error,
        plays(show_date, venue_name, booking_agent_user_id, settlement_submitted_at,
          venue:companies!plays_venue_id_fkey(name),
          artists(id, name, photo_url))`
     )
     .eq("kind", "booking")
     .eq("status", "draft")
-    .is("approved_at", null)
     .returns<PendingQueryRow[]>();
 
   const rows = (data ?? []).filter((r) => r.plays?.artists);
@@ -127,6 +150,8 @@ export async function getPendingCommissionInvoiceApprovals(): Promise<PendingCom
         settlementSubmittedAt: r.plays?.settlement_submitted_at ?? null,
         billingEmail: billingEmailByArtist.get(r.artist_id) ?? null,
         managerNoticeCount: ccCountByArtist.get(r.artist_id) ?? 0,
+        needsRetry: r.approved_at != null,
+        lastError: r.last_error,
       };
     })
     .sort((a, b) => (a.showDate ?? "").localeCompare(b.showDate ?? ""));
@@ -151,10 +176,15 @@ async function fetchDraftRowForPush(
   return (data as unknown as DraftInvoiceRow) ?? null;
 }
 
-// The one real action behind "Approve & send." Sets approved_at first
-// (so a crash mid-send still leaves a trail that this was a deliberate,
-// reviewed approval, not an accident) and then runs the exact same push
-// logic the cron uses -- same reasoning as sendContractToBuyer regenerating
+// The one real action behind "Approve & send" -- and, unchanged, behind
+// "Retry send" on a row that was already approved but didn't go out last
+// time (needsRetry above): approving is idempotent, so the same action
+// handles both without the caller needing to know which case it is.
+// Sets approved_at first if it isn't already set (so a crash mid-send
+// still leaves a trail that this was a deliberate, reviewed approval, not
+// an accident -- and so a retry never re-asks "are you sure" on
+// something already approved) and then runs the exact same push logic
+// the cron uses -- same reasoning as sendContractToBuyer regenerating
 // before it sends: whatever actually goes out should come from one code
 // path, not a UI-only approximation of it.
 export async function approveAndSendCommissionInvoice(id: string): Promise<ApproveResult> {
@@ -172,15 +202,14 @@ export async function approveAndSendCommissionInvoice(id: string): Promise<Appro
       error: "This invoice isn't in a draft state anymore -- refresh the page to see its current status.",
     };
   }
-  if (existing.approved_at) {
-    return { ok: false, error: "Already approved -- refresh the page to see its current status." };
-  }
 
-  const { error: approveError } = await supabase
-    .from("commission_invoices")
-    .update({ approved_at: new Date().toISOString() })
-    .eq("id", id);
-  if (approveError) return { ok: false, error: approveError.message };
+  if (!existing.approved_at) {
+    const { error: approveError } = await supabase
+      .from("commission_invoices")
+      .update({ approved_at: new Date().toISOString() })
+      .eq("id", id);
+    if (approveError) return { ok: false, error: approveError.message };
+  }
 
   const row = await fetchDraftRowForPush(supabase, id);
   if (!row || !row.plays?.artists) {
