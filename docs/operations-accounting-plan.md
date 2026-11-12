@@ -595,6 +595,24 @@ column. Fixed with a small badge on the card (e.g. "Invoice sent"),
 sourced from `commission_invoices.sent_at` being set with no `paid_at`
 yet -- purely cosmetic, no new column, no new filter/grouping logic.
 
+**Two display additions (2026-11-12, per Greg):**
+- **A fourth "Total" tile**, ahead of Booked/Earned/Settled, summing all
+  three stages together (`booked.total + earned.total + settled.total`).
+  Deliberately the grand-pipeline-total reading Greg asked for, not an
+  "actual revenue only" figure -- it mixes still-projected Booked dollars
+  with confirmed Earned/Settled ones on purpose, so it reads "everything
+  on the books right now," not "cash in hand." Visually distinguished
+  (a tinted border/background) so it doesn't get mistaken for a fourth
+  equal peer of the other three.
+- **The live per-play table is capped, not unbounded.** Per Greg: a full
+  running list of every booked show was going to get unwieldy fast as the
+  pipeline grows. `RevenueDashboard.tsx` now shows only the first 10 rows
+  of the current sort (`LIVE_TABLE_DISPLAY_CAP`), with a "Showing X of Y
+  plays -- View all in Plays →" link to the existing `/plays` list (which
+  already has its own filtering/sorting) for everything beyond that. No
+  new page or component -- just points at the list that already does this
+  job, rather than growing Revenue into a second copy of it.
+
 ## 6. Data model (draft)
 
 One new table, `commission_invoices`, modeled directly on
@@ -1113,6 +1131,26 @@ columns, applied directly, not blocked this time -- see above), the
 `listTeamMembers()`/Events-page fix, the Play detail field with its
 name-matched pre-fill, the Team page's split-% field, and the Revenue
 page's Agent Commissions section. `tsc`/`eslint`/`next build` all clean.
+
+**Not a sync bug (2026-11-12) -- a one-time attribution gap, now backfilled.**
+Greg saw Agent Commissions showing "rate not set" despite having set
+70% splits for all three team members on Settings → Team, and asked how
+to "sync" the two. Checked the real data rather than assumed: the splits
+were never out of sync -- all 20 live plays simply had
+`booking_agent_user_id` still `null`, because the pre-fill above only
+ever applied to *new* plays created after that feature shipped; these 20
+predate it. Every artist with a live play (Brittany Elise, Cody Webb,
+Lindstrom) has "Greg Burroughs" as their `contact_artists` role=`'agent'`
+contact, which name-matches his own `user_profiles.display_name` exactly
+-- so, per Greg, backfilled `booking_agent_user_id` on all 20 directly
+(same name-match logic the pre-fill already uses, just run once against
+existing rows instead of only at play-creation time). Agent Commissions
+now shows a real Greg Burroughs row at his 70% split instead of an
+all-Unassigned table. No code changed for this -- it was purely a data
+gap, not a logic bug -- so there's no future-proofing here against the
+same gap recurring for a *new* agent's pre-existing plays if one ever
+needs a retroactive assignment; that'd be the same one-off backfill
+again, by hand.
 
 **Explicitly deferred / open:**
 - **Per-play override of an agent's split.** Mirrors how

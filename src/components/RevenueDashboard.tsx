@@ -152,6 +152,13 @@ export default function RevenueDashboard({
 
   const filteredLiveRows = liveRows.filter((r) => inRange(r.showDate));
 
+  // Per Greg (2026-11-12): a full running list of every booked show gets
+  // unwieldy fast as the pipeline grows. This page stays a quick glance --
+  // a capped table here, with a link out to the full /plays list (which
+  // already has its own filtering/sorting) for everything else, rather
+  // than growing this page into a second copy of that list.
+  const LIVE_TABLE_DISPLAY_CAP = 10;
+
   // Same null-last, numeric-aware comparator DataTable uses elsewhere in
   // the app, so sorting behaves the same way here as it does on every
   // other list page.
@@ -166,6 +173,9 @@ export default function RevenueDashboard({
     const ordered = withKeys.map((x) => x.r);
     return liveSortDir === "desc" ? ordered.reverse() : ordered;
   }, [filteredLiveRows, liveSortKey, liveSortDir]);
+
+  const visibleLiveRows = sortedLiveRows.slice(0, LIVE_TABLE_DISPLAY_CAP);
+  const hiddenLiveRowCount = sortedLiveRows.length - visibleLiveRows.length;
 
   const totals = useMemo(() => {
     const t = {
@@ -282,7 +292,14 @@ export default function RevenueDashboard({
           By show date — {label}
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <RevenueTile
+            title="Total"
+            sub="Booked + Earned + Settled"
+            total={totals.booked.total + totals.earned.total + totals.settled.total}
+            count={totals.booked.count + totals.earned.count + totals.settled.count}
+            highlight
+          />
           <RevenueTile title="Booked" sub="Projected — not yet played" total={totals.booked.total} count={totals.booked.count} />
           <RevenueTile title="Earned" sub="Played — show happened" total={totals.earned.total} count={totals.earned.count} />
           <RevenueTile title="Settled" sub="Manually closed out" total={totals.settled.total} count={totals.settled.count} />
@@ -369,7 +386,7 @@ export default function RevenueDashboard({
                 </tr>
               </thead>
               <tbody>
-                {sortedLiveRows.map((r, i) => {
+                {visibleLiveRows.map((r, i) => {
                   const isPartial = r.missingBookingRate || r.missingManagementRate;
                   return (
                     <tr
@@ -427,6 +444,15 @@ export default function RevenueDashboard({
               </tbody>
             </table>
           </div>
+        )}
+
+        {hiddenLiveRowCount > 0 && (
+          <p className="mt-2 text-xs text-black/50 dark:text-white/50">
+            Showing {visibleLiveRows.length} of {sortedLiveRows.length} plays.{" "}
+            <Link href="/plays" className="text-ridge-orange-dark dark:text-ridge-orange hover:underline underline-offset-4">
+              View all in Plays →
+            </Link>
+          </p>
         )}
       </section>
 
@@ -497,14 +523,23 @@ function RevenueTile({
   sub,
   total,
   count,
+  highlight,
 }: {
   title: string;
   sub: string;
   total: number;
   count: number;
+  highlight?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 px-4 py-3">
+    <div
+      className={
+        "rounded-lg border px-4 py-3 " +
+        (highlight
+          ? "border-ridge-orange/40 bg-ridge-orange/5"
+          : "border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900")
+      }
+    >
       <p className="text-xs font-medium text-black/50 dark:text-white/50">{title}</p>
       <p className="text-2xl font-display font-medium mt-1">{formatMoney(total)}</p>
       <p className="text-xs text-black/50 dark:text-white/50 mt-1">
