@@ -2,9 +2,12 @@
 // (docs/operations-accounting-plan.md section 4) -- day-of costs the artist
 // paid out of pocket (sound engineer tips, etc.), the thing the old paper
 // show report's "Net Walkaway" field was actually capturing before this
-// plan separated that out from walkout_amount (real overage beyond the
-// guarantee). Deliberately informational only: nothing here ever feeds the
-// commission formula, which only ever adds guarantee + walkout + merch.
+// plan separated that out from walkout_amount (the real, reconciled total
+// the artist walked out with that night, excluding merch -- see section 2,
+// corrected 2026-11-11). Deliberately informational only: nothing here
+// ever feeds the commission formula, which uses walkout_amount (falling
+// back to the guarantee estimate only when walkout isn't known yet) plus
+// merch for the management leg.
 //
 // Mirrors ticketTiers.ts's TierDraft/SavedPriceTier split exactly (string
 // draft while editing so a blank input isn't coerced to 0, filtered/typed

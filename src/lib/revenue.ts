@@ -43,12 +43,13 @@ export type CommissionPlayInput = {
   status: PlayStatus;
   guaranteeAmount: number | null;
   grossMerchSales: number | null;
-  // Post-show actual, artist-reported overage beyond the guarantee (see
-  // docs/operations-accounting-plan.md section 4, "Walkout"). Null until
-  // settlement data comes in -- treated as 0 in the basis below, same
-  // convention as grossMerchSales, never a "missing rate" flag of its own
-  // since an un-settled play legitimately has no walkout yet rather than a
-  // gap in a known number.
+  // Post-show actual: the real, reconciled/settled amount between artist
+  // and venue at the end of the night (see docs/operations-accounting-plan.md
+  // section 4, "Walkout"). Null until settlement data comes in, in which
+  // case the guarantee estimate is used as the commission basis instead --
+  // see computePlayRevenue. Never a "missing rate" flag of its own, since
+  // an un-settled play legitimately has no Walkout yet rather than a gap
+  // in a known number.
   walkoutAmount: number | null;
   // Play-level overrides -- whole-number percentages (10 means 10%), same
   // convention as the artist-level defaults they fall back to. Never the
@@ -92,16 +93,24 @@ export type PlayRevenueResult = {
 };
 
 /**
- * Computes Ridge's own commission revenue for one play. Booking commission
- * is based on guarantee + Walkout (merch excluded) -- a booking agent's cut
- * is conventionally of the deal, not the merch table. Management
- * commission (only for artists Ridge manages) is based on guarantee PLUS
- * Walkout PLUS merch, since a manager's commission conventionally covers
- * everything the artist earns from the show. Walkout -- the artist's real
- * post-show bonus/overage beyond the guarantee -- was added to both bases
- * per docs/operations-accounting-plan.md section 2 (2026-10-26); before
- * settlement data comes in it's simply unknown/zero, same as merch, not a
- * missing-rate gap.
+ * Computes Ridge's own commission revenue for one play. Per Greg
+ * (2026-11-11), superseding the 2026-10-26 "guarantee + Walkout" formula:
+ * Walkout is the real, reconciled/settled amount between artist and venue
+ * at the end of the night -- once it's known, it IS the commissionable
+ * number, not an add-on to the guarantee. The guarantee is only a
+ * pre-show estimate, used as the commission basis solely in the absence
+ * of a Walkout figure (i.e. before settlement data comes in). So the
+ * basis is `walkoutAmount` when set, else `guaranteeAmount` -- never both
+ * summed. Booking commission excludes merch either way -- a booking
+ * agent's cut is conventionally of the deal, not the merch table.
+ * Management commission (only for artists Ridge manages) adds merch on
+ * top of that same basis, since a manager's commission conventionally
+ * covers everything the artist earns from the show.
+ *
+ * Each leg is computed at most once per play, and only when it actually
+ * applies to this artist (ridgeBooks / ridgeManages) -- there is no path
+ * here that double-counts a leg or applies both legs' rates to the same
+ * dollar twice.
  *
  * A play-level commission percentage always overrides the artist's
  * default when present; when neither is present and that commission type
@@ -119,6 +128,10 @@ export function computePlayRevenue(
   const stage = revenueStageForStatus(play.status);
   const missingGuaranteeAmount = play.guaranteeAmount == null;
 
+  // The settled/reconciled number once it's known; the guarantee estimate
+  // until then. Never both added together -- see the function doc above.
+  const settledBasis = play.walkoutAmount != null ? play.walkoutAmount : (play.guaranteeAmount ?? 0);
+
   let bookingCommission: number | null = 0;
   let missingBookingRate = false;
   if (artist.ridgeBooks) {
@@ -127,7 +140,7 @@ export function computePlayRevenue(
       bookingCommission = null;
       missingBookingRate = true;
     } else {
-      bookingCommission = ((play.guaranteeAmount ?? 0) + (play.walkoutAmount ?? 0)) * (pct / 100);
+      bookingCommission = settledBasis * (pct / 100);
     }
   }
 
@@ -139,8 +152,7 @@ export function computePlayRevenue(
       managementCommission = null;
       missingManagementRate = true;
     } else {
-      const basis =
-        (play.guaranteeAmount ?? 0) + (play.walkoutAmount ?? 0) + (play.grossMerchSales ?? 0);
+      const basis = settledBasis + (play.grossMerchSales ?? 0);
       managementCommission = basis * (pct / 100);
     }
   }

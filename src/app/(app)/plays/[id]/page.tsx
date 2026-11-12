@@ -334,7 +334,7 @@ export default async function PlayDetailPage({
             Settlement
           </h2>
           <dl className="text-sm grid grid-cols-2 gap-y-2">
-            <dt className="text-black/50 dark:text-white/50">Walkout (back end)</dt>
+            <dt className="text-black/50 dark:text-white/50">Walkout (total, excl. merch)</dt>
             <dd>
               <InlineEditField table="plays" id={play.id} field="walkout_amount" value={play.walkout_amount} type="number" format="money" placeholder="Add" />
             </dd>
@@ -372,9 +372,10 @@ export default async function PlayDetailPage({
             </dd>
           </dl>
           <p className="text-xs text-black/40 dark:text-white/40 mt-2">
-            Walkout is the artist&apos;s reported overage beyond the Guarantee
-            (set on the Deal card above) -- commissioned on both legs
-            together, per the formula in the operations plan.
+            Walkout is the real, reconciled total the artist walked out with
+            that night, excluding merch -- once it&apos;s set, it replaces the
+            Guarantee (set on the Deal card above) as the commission basis,
+            per the formula in the operations plan.
           </p>
           <div className="mt-4 pt-4 border-t border-black/10 dark:border-white/10">
             <div className="text-xs font-medium text-black/50 dark:text-white/50 mb-2 uppercase tracking-wide">

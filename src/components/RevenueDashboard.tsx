@@ -223,7 +223,7 @@ export default function RevenueDashboard({
             {missingShowDateRows.map((r) => (
               <li key={r.playId}>
                 {r.artistName} — {PLAY_STATUS_LABELS[r.status]}: guarantee {formatMoney(r.guaranteeAmount)},
-                Ridge total {formatMoney(r.totalRidgeRevenue)}.
+                The Ridge total {formatMoney(r.totalRidgeRevenue)}.
               </li>
             ))}
           </ul>
@@ -233,7 +233,7 @@ export default function RevenueDashboard({
       {/* Ridge's own revenue -- Booked / Earned / Settled */}
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <h2 className="font-display text-xl font-medium">Ridge&apos;s revenue</h2>
+          <h2 className="font-display text-xl font-medium">The Ridge Revenue</h2>
           <div className="flex items-center gap-2 text-sm">
             {(
               [
@@ -362,7 +362,7 @@ export default function RevenueDashboard({
                       onClick={() => toggleLiveSort("total")}
                       className="inline-flex items-center gap-1 hover:text-black dark:hover:text-white transition-colors"
                     >
-                      <span>Ridge total</span>
+                      <span>The Ridge total</span>
                       <SortIndicator active={liveSortKey === "total"} dir={liveSortDir} />
                     </button>
                   </th>
@@ -415,7 +415,7 @@ export default function RevenueDashboard({
                         {isPartial && (
                           <span
                             className="ml-1 text-black/40 dark:text-white/40"
-                            title="Only the known commission leg is counted -- no rate is on file for the other one (expected if Ridge doesn't handle that side for this artist)."
+                            title="Only the known commission leg is counted -- no rate is on file for the other one (expected if The Ridge doesn't handle that side for this artist)."
                           >
                             *
                           </span>
@@ -434,8 +434,8 @@ export default function RevenueDashboard({
       <section>
         <h2 className="font-display text-xl font-medium mb-1">Artist gross revenue by year</h2>
         <p className="text-xs text-black/50 dark:text-white/50 mb-3">
-          What each show actually paid the artist — guarantee, and guarantee plus merch. No Ridge
-          commission applied. Includes every play on file, including the historical import.
+          What each show actually paid the artist — guarantee, and guarantee plus merch. No
+          commission to The Ridge applied. Includes every play on file, including the historical import.
         </p>
         {historicalByArtist.map((group) => (
           <div key={group.artistName} className="mb-4">

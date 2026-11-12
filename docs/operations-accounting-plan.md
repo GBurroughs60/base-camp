@@ -59,17 +59,23 @@ plan; see section 2.
   how the buyer's money moves. Building the invoice-the-artist piece
   first means the design doesn't have to wait on settling the buyer-side
   question.
-- **Commission formula, updated to include Walkout (2026-10-26).**
-  `computePlayRevenue` already does the right thing with merch -- booking
-  commission is `guarantee_amount × booking%` only, management commission
-  is `(guarantee_amount + gross_merch_sales) × management%` -- merch was
-  already excluded from booking, included only in management, confirmed
-  by reading the function rather than assumed. The new post-show actual,
-  **Walkout** (see section 4 -- the artist's real bonus/overage beyond
-  guarantee, a field that doesn't exist in the schema yet), gets added to
-  *both* bases per Greg: booking becomes
-  `(guarantee_amount + walkout_amount) × booking%`, management becomes
-  `(guarantee_amount + walkout_amount + gross_merch_sales) × management%`.
+- **Commission formula, updated to include Walkout (2026-10-26), then
+  corrected (2026-11-11) -- see the amendment at the end of section 6 for
+  the full story.** Net result, current as of 2026-11-11: booking
+  commission is `settled_basis × booking%`, management commission is
+  `(settled_basis + gross_merch_sales) × management%`, where
+  `settled_basis` is `walkout_amount` when it's known, else
+  `guarantee_amount` -- **never both summed.** Walkout is the real,
+  reconciled/settled amount between artist and venue at the end of the
+  night; once it's known, it *is* the commissionable number. The
+  guarantee is only a pre-show estimate, used as the basis solely in the
+  absence of a Walkout figure. (The original 2026-10-26 version of this
+  decision had booking as `(guarantee_amount + walkout_amount) ×
+  booking%` -- i.e. summing both -- which Greg caught as wrong on
+  2026-11-11: see section 6.) Each leg (booking/management) is still
+  computed at most once per play, and only when it actually applies to
+  that artist (`ridge_books` / `ridge_manages`) -- confirmed by reading
+  `computePlayRevenue`, not assumed.
 - **Invoice generation/sending goes through QuickBooks Online, not
   built natively.** Same reasoning as the e-signature decision
   (SignWell): invoicing an external party, collecting payment, and
@@ -213,17 +219,22 @@ assuming anything was missing:
   ships); leave the column and its historical data alone, same
   active-pipeline-only convention as section 2.
 
-**Naming, settled against a real example (2026-10-31).** A real historical
-artist show report (a PDF Greg has used for years) surfaced a naming
-collision worth recording: that report's "Net Walkaway" field is gross
-pay *minus* day-of expenses (a deduction), not the same concept as
-Walkout at all (overage *above* the guarantee). The new intake form
-(below) avoids that ambiguity by never asking for one combined number: it
-shows the artist their **Guarantee** back (Base Camp already knows it,
-read-only) and asks only for the delta, framed to the artist as
-"Guarantee plus back end" -- which writes directly and unambiguously into
-`walkout_amount`. `gross_merch_sales` stays a single total; per Greg, no
-hard/soft split, not worth the added structure.
+**Naming, settled against a real example (2026-10-31, revised 2026-11-11).**
+A real historical artist show report (a PDF Greg has used for years)
+surfaced a naming collision worth recording: that report's "Net Walkaway"
+field is gross pay *minus* day-of expenses (a deduction), not the same
+concept as Walkout at all. The intake form shows the artist their
+**Guarantee** back (Base Camp already knows it, read-only) for context,
+then asks for `walkout_amount` directly. **Revised 2026-11-11, per
+Greg:** `walkout_amount` is the full reconciled/settled total the artist
+walked out with that night, excluding merch -- not a delta added on top
+of the Guarantee (the original 2026-10-31 framing asked only for the
+delta, "Guarantee plus back end"; see section 6's 2026-11-11 correction
+for why that didn't match the commission formula and was changed). The
+form's actual prompt is now "Walkout -- what was the total amount you
+walked out with tonight, excluding merch?" `gross_merch_sales` stays a
+single total; per Greg, no hard/soft split, not worth the added
+structure.
 
 **Manual entry UI.** A new "Settlement" section on the Play detail page,
 same pattern as the existing Deposit section, but structured fields from
@@ -785,6 +796,70 @@ and the one caller, `src/app/(app)/revenue/page.tsx` (now selects/passes
 `walkout_amount`). This also quietly corrects the live Revenue and Agent
 Commissions pages, not just the new invoice trigger -- they were
 understating commission on any play with walkout dollars the whole time.
+
+**Correction (2026-11-11): the above "fix" was itself wrong -- Walkout
+replaces the guarantee as the commission basis, it doesn't add to it.**
+Caught by Greg looking at the two real Cody Webb commission_invoices rows
+the fix above produced ($1,300 for the 11/1 show, $500 for 11/7) and
+recognizing them as double what they should be. Walkout is the real,
+reconciled/settled amount between artist and venue at the end of the
+night -- once it's known, *it's* the commissionable number, full stop; the
+guarantee is only a pre-show estimate, used as the basis solely in the
+absence of a Walkout figure. The 2026-10-26 "add Walkout to the guarantee"
+formula was never right; it happened to go undetected until now because
+Cody Webb's two test plays had `walkout_amount` set equal to
+`guarantee_amount`, which made `guarantee + walkout` compute to exactly
+double the guarantee -- read as "20% instead of 10%" when it was actually
+a basis bug, not a rate bug. Fixed in `src/lib/revenue.ts`:
+`computePlayRevenue` now uses `settledBasis = walkoutAmount ?? guaranteeAmount`
+(never summed) for both legs, merch still added on top for management
+only. `tsc`/`eslint` clean. Confirmed while fixing this: each leg is
+already computed at most once per play and only when `ridge_books`/
+`ridge_manages` actually applies -- no double-counting there, nothing to
+change.
+
+Data fix, same sitting: Cody Webb's two draft `commission_invoices` rows
+corrected to the right amounts under the new formula --
+`392f0506-a672-45a4-8317-3d16b8ff6b3f` (11/1 show) from $1,300 to **$650**
+(10% of the $6,500 walkout alone), `c4636930-5067-448f-a36b-f9341f77e62a`
+(11/7 show) from $500 to **$250** (10% of the $2,500 walkout alone). Both
+rows' `provider_invoice_id` was also cleared (they'd already been created
+in the QBO sandbox at the old, wrong amount, but never sent --
+`sent_at`/`status` were still `draft`) so the next invoicing-cron run
+creates a fresh, correctly-priced sandbox invoice rather than sending the
+stale one. The two original wrong-amount sandbox invoices are orphaned in
+QBO's sandbox company -- harmless (sandbox only, never emailed to Cody),
+but not auto-deleted, since no `voidInvoice`/update method exists in
+`src/lib/invoicing/` yet; Greg can delete them by hand in the sandbox if
+he wants the company file tidy.
+
+**Resolved same sitting (2026-11-11): `walkout_amount` now means the full
+settled total, excluding merch -- not the delta beyond guarantee.** The
+open question above (whether the delta-collecting form from section 4
+matched the new basis-replacement formula) went to Greg directly: his
+call is total settled payout, excluding merch. Section 4's original
+framing ("asks only for the delta... writes directly and unambiguously
+into walkout_amount") is superseded by this. Updated to match, same
+sitting:
+- `/settle/[token]`'s form label (`src/app/settle/[token]/page.tsx`) now
+  reads "Walkout -- what was the total amount you walked out with
+  tonight, excluding merch?" -- replacing the old "Walkout (overage above
+  guarantee, if any)."
+- The Play detail page's Settlement card (`src/app/(app)/plays/[id]/page.tsx`)
+  label changed from "Walkout (back end)" to "Walkout (total, excl.
+  merch)," and its explanatory note now says Walkout replaces the
+  Guarantee as the commission basis once set, rather than describing it
+  as an overage "commissioned on both legs together."
+- `src/lib/settlementExpenses.ts`'s header comment updated to match (no
+  functional change -- Expenses stays purely informational, never feeding
+  the commission formula either way).
+
+Nothing in the data model changed -- `walkout_amount` is still one nullable
+numeric column; only what Base Camp asks for and tells Greg it means
+changed. Historical/already-submitted `walkout_amount` values from before
+today keep whatever an artist actually entered under the old delta
+framing; no retrofit sweep, same active-pipeline-only convention as
+section 2. `tsc`/`eslint` clean on all three files.
 
 Also still needed from Greg, external to this codebase (unchanged from the
 build note above): register a developer app at developer.intuit.com (done

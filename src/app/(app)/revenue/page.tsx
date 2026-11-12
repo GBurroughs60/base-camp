@@ -203,7 +203,7 @@ export default async function RevenuePage() {
     <div>
       <h1 className="font-display text-3xl font-medium mb-1">Revenue</h1>
       <p className="text-black/60 dark:text-white/60 mb-6">
-        Ridge&apos;s own booking/management commission, tracked from the plays Base Camp itself
+        The Ridge&apos;s own booking/management commission, tracked from the plays Base Camp itself
         has created. Historical totals below include everything on file, including the legacy
         import.
       </p>

@@ -35,13 +35,13 @@ export default function AgentCommissions({ rows }: { rows: AgentCommissionRow[] 
     <section className="mt-10">
       <h2 className="font-display text-xl font-medium mb-1">Agent Commissions</h2>
       <p className="text-xs text-black/50 dark:text-white/50 mb-3">
-        Each booking agent&apos;s split of Ridge&apos;s own booking commission (never the
-        management leg) on the live plays credited to them -- same scope as Ridge&apos;s revenue
+        Each booking agent&apos;s split of The Ridge&apos;s own booking commission (never the
+        management leg) on the live plays credited to them -- same scope as The Ridge Revenue
         table above. Set a split % per person on Settings &rarr; Team.
       </p>
       {!hasAnyRows ? (
         <p className="text-sm text-black/60 dark:text-white/60">
-          No plays Ridge books yet in the live pipeline.
+          No plays The Ridge books yet in the live pipeline.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
@@ -50,7 +50,7 @@ export default function AgentCommissions({ rows }: { rows: AgentCommissionRow[] 
               <tr className="bg-black/[.03] dark:bg-white/[.06] text-xs text-black/50 dark:text-white/50">
                 <th className="text-left font-medium px-3 py-2">Agent</th>
                 <th className="text-right font-medium px-3 py-2">Plays</th>
-                <th className="text-right font-medium px-3 py-2">Ridge&apos;s booking commission</th>
+                <th className="text-right font-medium px-3 py-2">The Ridge&apos;s booking commission</th>
                 <th className="text-right font-medium px-3 py-2">Split</th>
                 <th className="text-right font-medium px-3 py-2">Agent&apos;s share</th>
               </tr>

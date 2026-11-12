@@ -174,7 +174,7 @@ function SettleForm({
 
         <div>
           <label className="block text-xs text-black/50 dark:text-white/50 mb-1">
-            Walkout (overage above guarantee, if any)
+            Walkout -- what was the total amount you walked out with tonight, excluding merch?
           </label>
           <input type="number" step="0.01" name="walkoutAmount" placeholder="$0.00" className={textInput} />
         </div>
