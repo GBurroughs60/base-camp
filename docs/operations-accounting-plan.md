@@ -613,6 +613,21 @@ yet -- purely cosmetic, no new column, no new filter/grouping logic.
   new page or component -- just points at the list that already does this
   job, rather than growing Revenue into a second copy of it.
 
+**A fifth "Total Artist Revenue" tile (2026-11-12, per Greg).** Sits
+alongside the "Total" (Ridge) tile above -- a for-reference top-line
+figure, *not* Ridge's own commission revenue: Walkout (or the guarantee
+estimate, before it's known) plus merch, summed across every filtered
+live play (`computePlayRevenue`'s new `artistTopLineAmount` field; see
+section 6). Deliberately a flat sum, not broken out Booked/Earned/Settled
+like the Ridge tiles -- every play has a real top-line number (no
+missing-rate gap is possible the way a commission leg can be missing), so
+a stage split wouldn't be protecting against anything here. Also
+deliberately not filterable by artist yet -- Greg: "eventually I want to
+be able to filter by artist, but what we have below works perfectly for
+that for now" (i.e. the live per-play table itself already lets you scan
+one artist at a time) -- a dedicated per-artist filter/view is a later
+pass, not part of this change.
+
 ## 6. Data model (draft)
 
 One new table, `commission_invoices`, modeled directly on
@@ -777,11 +792,18 @@ two phases:
   `provider_invoice_id` saved if `createInvoice` got that far) so the next
   run retries only the unfinished piece, never risking a duplicate QBO
   invoice. The billing contact is always the artist's own `role='artist'`
-  contact (never the manager, per section 2's "Ridge invoices the artist")
-  -- if none has an email on file, or the provider call throws, the play
-  is logged and Greg gets a direct alert via the existing
+  contact (never the manager, per section 2's "Ridge invoices the artist"
+  -- the manager rides along as a CC, see below, but is never the billed
+  party) -- if none has an email on file, or the provider call throws, the
+  play is logged and Greg gets a direct alert via the existing
   `logEmailFailure`/`alertGregOfEmailFailure` path (new email kind,
   `commission_invoice_blocked`) rather than silently stalling forever.
+  Confirmed (2026-11-12, re: Greg's "if this email send fails, please
+  notify my email like we do on the others"): this already covers a
+  `sendInvoice` failure too, not just a blocked/missing-contact case --
+  the try/catch in Phase 2 wraps both `createInvoice` and `sendInvoice`,
+  and either one throwing lands in the same `commission_invoice_blocked`
+  alert to `FALLBACK_NOTIFY_EMAIL`. Nothing needed building here.
   Known gap, not solved this pass: that alert has no de-dup/escalation
   cadence of its own (unlike `send-settlement-reminders`), so an
   unresolved block re-alerts every run until Greg fixes the underlying gap
@@ -799,6 +821,45 @@ so a send failure after a successful create is a retryable gap (phase 2
 above), not a half-finished invoice. NEEDS LIVE VERIFICATION, same caveat
 as the rest of `quickbooks.ts` -- not yet smoke-tested against the real
 sandbox connection.
+
+**Management CC on invoice send (2026-11-12, per Greg: "let's add artist
+and management to the invoice send so multiple people are on copy").**
+`CreateInvoiceInput` (`types.ts`) gained an optional `ccEmail`; the cron
+route now also looks up every `role='manager'` contact on the artist
+(same pattern as the existing `role='artist'` billing-contact lookup,
+just a second query) and joins all of their emails into one
+comma-separated string, passed through as `ccEmail` -- optional and
+best-effort, same as the billing contact is required: no manager on file
+is never a reason to block the artist's own invoice. Checked against real
+data while building this: Cody Webb actually has *three* management
+contacts on file (Alex Kidd, Renee McClure, Matt McClure, all
+@bowtosterngroup.com) -- the comma-separated join (QBO's Cc field takes
+multiple addresses the same way its own "Send" dialog does) is what makes
+"multiple people are on copy" literally true for his two invoices, not
+just the first manager found. `quickbooks.ts`'s `createInvoice` sets
+`BillEmail` (the primary,
+matching whatever's already passed as `customer.email`), `BillEmailCc`
+(only when `ccEmail` is given), and `ToBeEmailed: true` on the Invoice
+object itself at create time -- all three are documented fields on the
+Invoice/SalesTransaction entity (Intuit's legacy SDK reference), with
+CC/BCC behavior gated behind `ToBeEmailed`. Deliberately set at *create*
+time, on the invoice object, rather than passed to the later `sendInvoice`
+call: Intuit's own `sendTo=<email>` query param is documented (a
+third-party GitHub issue, since Intuit's own help-center pages wouldn't
+render for a fetch) to overwrite `BillEmail.Address` with whatever it's
+given, but nothing documents it touching CC/BCC at all -- so CC has to
+ride on the invoice record itself, independent of that override. **NEEDS
+LIVE VERIFICATION, more so than the rest of this file**: documentation on
+whether `BillEmailCc` actually survives through to the real email QBO
+sends via the `/send` endpoint was inconclusive (an Intuit community
+thread titled exactly "Email Cc and Bcc are not updated through api while
+creating invoice" exists but wouldn't render for a fetch either) -- watch
+the first real send (Cody Webb's two invoices, which will CC all three of
+his management contacts) to confirm they actually receive it. If they
+don't,
+the fallback is a second, Base-Camp-sent notification email to the
+manager rather than relying on QBO's own CC -- not built, since there's
+no evidence yet that it's needed.
 
 **Bug found and fixed along the way: `computePlayRevenue` never actually
 implemented the Walkout formula change from section 2 (2026-10-26).** The
@@ -959,6 +1020,33 @@ a new file and flipping a config value, not touching call sites.
 - Whether `commission_invoices.amount` should be editable/adjustable
   after creation (e.g. Greg catches an error before the invoice is sent)
   or should always exactly mirror the formula's output once computed.
+  **Sharpened into a concrete decision (2026-11-12), per Greg: "should we
+  treat the invoice send in the same manner we treat the contract send
+  with a simple review step by a human in the loop or do we trust the
+  process we've built here?"** For contrast, contract sending
+  (`sendContractToBuyer`/`ContractReviewActions.tsx`) is never automatic:
+  a human opens one specific play, reads the generated document, and
+  clicks a two-step "Send to buyer" confirmation -- a real, hard-to-
+  reverse action gated behind an explicit per-document human decision
+  every time. Today's commission-invoice cron is the opposite: fully
+  unattended, batch, no human ever looks at an amount or recipient before
+  QBO emails it. Recommendation given to Greg: add a lightweight review
+  gate before Phase 2's provider calls -- rather than mirroring
+  `ContractReviewActions`'s full per-document click-through (invoices are
+  batched/scheduled, not one-at-a-time the way a contract is), the
+  simplest version is an `approved_at` gate on `commission_invoices`: Phase
+  1 keeps drafting rows exactly as now, but Phase 2 only pushes a row
+  through `createInvoice`/`sendInvoice` once `approved_at` is set, via a
+  short review list (artist, play, amount, drafted date) with an
+  "Approve & send" action -- reusing Phase 2's existing per-row logic, not
+  duplicating it. Reasoning: the exact bug this plan already caught once
+  (the 2026-11-11 Walkout-basis error, section 6) was a silent formula
+  mistake that would have kept invoicing wrong amounts indefinitely with
+  zero human in the loop to catch it -- the same failure mode a review
+  gate exists to prevent. **Not yet built -- pending Greg's decision** on
+  whether to add it now (before Cody Webb's two invoices go out) or treat
+  the process as trusted for now and revisit if a wrong amount ever
+  actually goes out.
 - Where "would you play this venue again?" actually lives (2026-10-31).
   It's captured per-play on the settlement form (section 4), but is a
   per-play answer the right home for it, or should a "yes"/"no" also

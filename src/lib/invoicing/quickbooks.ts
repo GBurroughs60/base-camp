@@ -299,10 +299,26 @@ export class QuickBooksProvider implements InvoicingProvider {
 
     const itemId = await findCommissionItemId();
 
+    // BillEmail/BillEmailCc/ToBeEmailed are documented on the Invoice
+    // entity (Intuit's legacy SDK reference) and are set here, at create
+    // time, rather than on the later send call -- sendInvoice's own
+    // ?sendTo= override is documented to overwrite BillEmail.Address with
+    // whatever address it's given, but says nothing about CC, so CC has to
+    // live on the invoice object itself. ToBeEmailed is set whenever
+    // there's a primary recipient at all (which is always, since
+    // input.customer.email is required) -- QBO's CC/BCC behavior is
+    // documented as gated behind it. NEEDS LIVE VERIFICATION, same caveat
+    // as the rest of this file -- this is the "should be right per the
+    // docs" version, not yet confirmed against a real send (see
+    // docs/operations-accounting-plan.md section 6 for the follow-up once
+    // the first real send goes out).
     const res = await qboFetch("/invoice", {
       method: "POST",
       body: JSON.stringify({
         CustomerRef: { value: customerId },
+        BillEmail: { Address: input.customer.email },
+        ...(input.ccEmail ? { BillEmailCc: { Address: input.ccEmail } } : {}),
+        ToBeEmailed: true,
         Line: [
           {
             Amount: input.amount,

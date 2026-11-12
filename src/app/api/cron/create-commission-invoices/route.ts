@@ -226,15 +226,37 @@ export async function GET(req: NextRequest) {
 
     try {
       // The artist is who Ridge invoices (section 2) -- never the manager,
-      // even though a manager contact is often also on file.
-      const { data: artistContacts } = await supabase
-        .from("contact_artists")
-        .select("contacts(full_name, email)")
-        .eq("artist_id", artist.id)
-        .eq("role", "artist");
+      // even though a manager contact is often also on file. Per Greg
+      // (2026-11-12), the manager (when one's on file) now also rides
+      // along as a CC on the send itself, below -- they're on copy, not a
+      // second billing party.
+      const [{ data: artistContacts }, { data: managerContacts }] = await Promise.all([
+        supabase
+          .from("contact_artists")
+          .select("contacts(full_name, email)")
+          .eq("artist_id", artist.id)
+          .eq("role", "artist"),
+        supabase
+          .from("contact_artists")
+          .select("contacts(full_name, email)")
+          .eq("artist_id", artist.id)
+          .eq("role", "manager"),
+      ]);
       const billingContact = (artistContacts ?? [])
         .map((r) => r.contacts as unknown as { full_name: string; email: string | null } | null)
         .find((c): c is { full_name: string; email: string } => !!c?.email);
+      // Optional and best-effort -- no manager on file just means no CC,
+      // never a reason to block the artist's own invoice. Every
+      // role='manager' contact with an email is included, joined into one
+      // comma-separated string -- QBO's Cc field (same as its own "Send"
+      // dialog in the UI) takes a single address field that accepts
+      // multiple comma-separated recipients, and some artists (e.g. Cody
+      // Webb) have more than one management contact on file.
+      const managerEmails = (managerContacts ?? [])
+        .map((r) => r.contacts as unknown as { full_name: string; email: string | null } | null)
+        .filter((c): c is { full_name: string; email: string } => !!c?.email)
+        .map((c) => c.email);
+      const managerCcEmail = managerEmails.length > 0 ? managerEmails.join(",") : null;
 
       if (!billingContact) {
         blocked += 1;
@@ -260,6 +282,7 @@ export async function GET(req: NextRequest) {
             name: artist.legal_entity_name ?? artist.name,
             email: billingContact.email,
           },
+          ccEmail: managerCcEmail,
           description: `Booking commission -- ${artist.name} at ${venueLabel}, ${formatShowDate(row.plays?.show_date ?? null)}`,
           amount: row.amount,
         });

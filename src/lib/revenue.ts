@@ -90,6 +90,14 @@ export type PlayRevenueResult = {
   missingBookingRate: boolean;
   missingManagementRate: boolean;
   missingGuaranteeAmount: boolean;
+  // The artist's own top-line on this play -- Walkout (or the guarantee
+  // estimate, before it's known) plus merch. Per Greg (2026-11-12): a
+  // for-reference total alongside Ridge's own commission revenue, so the
+  // Revenue page can show "what The Ridge earned" and "what artists
+  // grossed" side by side without a second query. Always a real number --
+  // unlike the commission legs, there's no missing-rate concept here, so
+  // nothing is ever withheld from it.
+  artistTopLineAmount: number;
 };
 
 /**
@@ -158,6 +166,7 @@ export function computePlayRevenue(
   }
 
   const totalRidgeRevenue = (bookingCommission ?? 0) + (managementCommission ?? 0);
+  const artistTopLineAmount = settledBasis + (play.grossMerchSales ?? 0);
 
   return {
     playId: play.id,
@@ -170,6 +179,7 @@ export function computePlayRevenue(
     missingBookingRate,
     missingManagementRate,
     missingGuaranteeAmount,
+    artistTopLineAmount,
   };
 }
 

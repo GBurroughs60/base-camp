@@ -47,6 +47,13 @@ export type LivePlayRow = {
   missingBookingRate: boolean;
   missingManagementRate: boolean;
   missingGuaranteeAmount: boolean;
+  // Artist's own top line (Walkout, or guarantee before it's known, plus
+  // merch) -- see computePlayRevenue's doc comment. Shown as a second
+  // reference tile alongside The Ridge's own total, not broken out by
+  // artist yet (Greg, 2026-11-12: "eventually I want to be able to filter
+  // by artist" -- a later pass, once there's a per-artist filter on this
+  // page generally).
+  artistTopLineAmount: number;
 };
 
 export type HistoricalYearRow = {
@@ -198,6 +205,16 @@ export default function RevenueDashboard({
     return t;
   }, [filteredLiveRows]);
 
+  // Artist top-line total -- for-reference only, so it's a flat sum over
+  // every filtered row rather than broken out by stage like the Ridge
+  // tiles above: every row has a real top-line figure (no missing-rate
+  // gap possible), so there's nothing a per-stage split would protect
+  // against here.
+  const artistTopLineTotal = useMemo(
+    () => filteredLiveRows.reduce((sum, r) => sum + (r.artistTopLineAmount ?? 0), 0),
+    [filteredLiveRows]
+  );
+
   const historicalByArtist = useMemo(() => {
     const map = new Map<
       string,
@@ -292,13 +309,19 @@ export default function RevenueDashboard({
           By show date — {label}
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <RevenueTile
             title="Total"
             sub="Booked + Earned + Settled"
             total={totals.booked.total + totals.earned.total + totals.settled.total}
             count={totals.booked.count + totals.earned.count + totals.settled.count}
             highlight
+          />
+          <RevenueTile
+            title="Total Artist Revenue"
+            sub="Walkout (or guarantee) + merch -- for reference, not Ridge's cut"
+            total={artistTopLineTotal}
+            count={filteredLiveRows.length}
           />
           <RevenueTile title="Booked" sub="Projected — not yet played" total={totals.booked.total} count={totals.booked.count} />
           <RevenueTile title="Earned" sub="Played — show happened" total={totals.earned.total} count={totals.earned.count} />
