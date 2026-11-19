@@ -144,13 +144,9 @@ export default async function DashboardPage() {
   const lastYear = thisYear - 1;
   const nextYear = thisYear + 1;
   const startOfThisYear = `${thisYear}-01-01`;
+  const endOfThisYear = `${thisYear}-12-31`;
   const startOfLastYear = `${lastYear}-01-01`;
-  // Same month/day cutoff, one year back -- "as of the same point in the
-  // calendar" rather than the full prior year, so the comparison is apples
-  // to apples regardless of how far into the current year we are.
-  const sameDayLastYear = new Date(lastYear, now.getMonth(), now.getDate())
-    .toISOString()
-    .slice(0, 10);
+  const endOfLastYear = `${lastYear}-12-31`;
   const startOfNextYear = `${nextYear}-01-01`;
   const endOfNextYear = `${nextYear}-12-31`;
 
@@ -208,24 +204,31 @@ export default async function DashboardPage() {
       .select("*", { count: "exact", head: true })
       .gte("created_at", startOfMonth.toISOString())
       .neq("status", "legacy"),
-    // Shows booked this year, to date -- show-date based (not created_at),
-    // so this doesn't depend on when the row was entered. Legacy and
-    // declined/cancelled excluded: legacy per the "measure ourselves" note
+    // Shows booked for this calendar year -- show-date based (not
+    // created_at), so this doesn't depend on when the row was entered, and
+    // spans the full year (past and future show dates alike), not just
+    // dates that have already happened. Per Greg (2026-11-19): the
+    // to-date-only version read as "2" when 7 real dates are on the books
+    // for the year, because 5 of those 7 are confirmed-but-upcoming --
+    // this tile answers "how many shows has Ridge booked for this year,"
+    // not "how many have happened so far" (that's what Earned/Settled on
+    // /revenue already covers). Legacy and declined/cancelled still
+    // excluded: legacy per the "measure ourselves through Base Camp" note
     // above, declined/cancelled because those deals never actually
-    // happened (same rule as Revenue). Bounded by today, not the full
-    // year, so the YoY comparison below is a fair, same-point-in-the-
-    // calendar read rather than comparing a partial year to a complete one.
+    // happened (same rule as Revenue). The YoY comparison below matches --
+    // full last year, not just "as of the same day" -- so both sides of
+    // the comparison mean the same thing.
     supabase
       .from("plays")
       .select("*", { count: "exact", head: true })
       .gte("show_date", startOfThisYear)
-      .lte("show_date", today)
+      .lte("show_date", endOfThisYear)
       .not("status", "in", "(legacy,declined,cancelled)"),
     supabase
       .from("plays")
       .select("*", { count: "exact", head: true })
       .gte("show_date", startOfLastYear)
-      .lte("show_date", sameDayLastYear)
+      .lte("show_date", endOfLastYear)
       .not("status", "in", "(legacy,declined,cancelled)"),
     // Advance bookings for next year -- every play with a show_date out
     // that far has, by definition, already been booked, so this doesn't
@@ -273,11 +276,11 @@ export default async function DashboardPage() {
           sub="new plays added this month"
         />
         <StatTile
-          label={`Shows Booked — ${thisYear} YTD`}
+          label={`Shows Booked — ${thisYear}`}
           value={showsYtdCount ?? 0}
           sub={
             showsYtdLastYearCount
-              ? `vs ${showsYtdLastYearCount} this time last year`
+              ? `vs ${showsYtdLastYearCount} all of last year`
               : "first year of live tracking"
           }
         />
