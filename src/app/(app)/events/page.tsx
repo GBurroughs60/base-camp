@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
 import DedupRowActions from "@/components/inline/DedupRowActions";
 import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 type EventRow = {
   id: string;
@@ -170,31 +171,43 @@ export default async function EventsPage({
   const activeVisibility = visibility ?? "all";
   const activeStatus = status ?? "active";
 
-  let query = supabase
-    .from("events")
-    .select(
-      "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, dedup_match_id, refresh_flagged, catchup_drafted, genre_tags, typical_performance_days, submission_notes, notes, research_log, companies(id, name), contacts(id, full_name)"
-    )
-    .order("name");
+  // Built fresh per page (see fetchAllRows) rather than as a single query
+  // object reused across .range() calls -- this table is well past the
+  // 1000-row single-request cap (see fetchAllRows.ts), the same class of
+  // "list page shows fewer rows than the sidebar's exact count" symptom as
+  // the events_needing_attention fix below, just a different root cause
+  // (PostgREST's per-request row cap here, vs. a swallowed URL-length
+  // error there).
+  const buildQuery = (from: number, to: number) => {
+    let query = supabase
+      .from("events")
+      .select(
+        "id, name, is_public, city, state, country, archived, pending_state_review, dedup_uncertain, dedup_match_id, refresh_flagged, catchup_drafted, genre_tags, typical_performance_days, submission_notes, notes, research_log, companies(id, name), contacts(id, full_name)"
+      )
+      .order("name")
+      .range(from, to);
 
-  if (activeVisibility === "public") query = query.eq("is_public", true);
-  if (activeVisibility === "private") query = query.eq("is_public", false);
-  if (activeStatus === "archived") query = query.eq("archived", true);
-  else if (activeStatus === "active") {
-    query = query.eq("archived", false).eq("pending_state_review", false);
-  } else if (activeStatus === "dedup-check") {
-    // Surfaces flagged near-misses regardless of review state, so nothing
-    // waits on a state being approved before it can be resolved.
-    query = query.eq("dedup_uncertain", true).eq("archived", false);
-  } else if (activeStatus === "refresh-check") {
-    // Refresh (see events.refresh_flagged) couldn't confidently verify
-    // these -- surfaced the same way dedup-check is.
-    query = query.eq("refresh_flagged", true).eq("archived", false);
-  } else if (activeStatus === "catchup-drafted") {
-    // Crawl-stage Catch-up (see events.catchup_drafted) already has a
-    // Gmail draft waiting -- one place to glance at without opening Gmail.
-    query = query.eq("catchup_drafted", true).eq("archived", false);
-  } // "all" applies no archived/pending-review filter
+    if (activeVisibility === "public") query = query.eq("is_public", true);
+    if (activeVisibility === "private") query = query.eq("is_public", false);
+    if (activeStatus === "archived") query = query.eq("archived", true);
+    else if (activeStatus === "active") {
+      query = query.eq("archived", false).eq("pending_state_review", false);
+    } else if (activeStatus === "dedup-check") {
+      // Surfaces flagged near-misses regardless of review state, so nothing
+      // waits on a state being approved before it can be resolved.
+      query = query.eq("dedup_uncertain", true).eq("archived", false);
+    } else if (activeStatus === "refresh-check") {
+      // Refresh (see events.refresh_flagged) couldn't confidently verify
+      // these -- surfaced the same way dedup-check is.
+      query = query.eq("refresh_flagged", true).eq("archived", false);
+    } else if (activeStatus === "catchup-drafted") {
+      // Crawl-stage Catch-up (see events.catchup_drafted) already has a
+      // Gmail draft waiting -- one place to glance at without opening Gmail.
+      query = query.eq("catchup_drafted", true).eq("archived", false);
+    } // "all" applies no archived/pending-review filter
+
+    return query;
+  };
 
   // "Needs Date" -- events with nothing live for the catch-up/standing-
   // cadence engines to act on: no occurrence row at all, or every one on
@@ -235,17 +248,32 @@ export default async function EventsPage({
   let queryError: string | null = null;
 
   if (activeStatus === "needs-date") {
-    const { data: needsAttention, error } = await supabase
-      .from("events_needing_attention")
-      .select("id, name, city, state, country, venue_id, primary_contact_id")
-      .order("name");
+    // Already past the original URL-length failure mode (see the comment
+    // above), but still a plain unranged .select() -- fetchAllRows guards
+    // against the *other* way this could silently under-count as the
+    // backlog grows past 1000 rows (see fetchAllRows.ts).
+    const { rows: needsAttention, error } = await fetchAllRows<{
+      id: string;
+      name: string;
+      city: string | null;
+      state: string | null;
+      country: string | null;
+      venue_id: string | null;
+      primary_contact_id: string | null;
+    }>((from, to) =>
+      supabase
+        .from("events_needing_attention")
+        .select("id, name, city, state, country, venue_id, primary_contact_id")
+        .order("name")
+        .range(from, to)
+    );
 
     if (error) {
       console.error("events/page: events_needing_attention query failed", error);
-      queryError = error.message;
+      queryError = error;
       events = [];
     } else {
-      const rows = needsAttention ?? [];
+      const rows = needsAttention;
       const venueIds = Array.from(
         new Set(rows.map((r) => r.venue_id as string | null).filter((v): v is string => !!v))
       );
@@ -296,12 +324,12 @@ export default async function EventsPage({
       });
     }
   } else {
-    const { data, error } = await query;
+    const { rows, error } = await fetchAllRows<unknown>(buildQuery);
     if (error) {
       console.error("events/page: events query failed", error);
-      queryError = error.message;
+      queryError = error;
     }
-    events = (data ?? []) as unknown as EventRow[];
+    events = rows as unknown as EventRow[];
   }
 
   // Matched events aren't a declared FK the DataRow embed can follow

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
 import CopyButton from "@/components/inline/CopyButton";
 import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 type Company = { id: string; name: string; city: string | null; state: string | null };
 type ContactRow = {
@@ -85,11 +86,17 @@ function toRow(c: ContactRow): DataRow {
 
 export default async function ContactsPage() {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("contacts")
-    .select("id, full_name, email, phone, title, companies(id, name, city, state)")
-    .order("full_name");
-  const contacts = (data ?? []) as unknown as ContactRow[];
+  // Past the 1000-row single-request cap (see fetchAllRows.ts) -- a plain
+  // .select() here was silently truncating the list at 1000 while the
+  // sidebar's exact count correctly showed every row.
+  const { rows: contactsData } = await fetchAllRows<unknown>((from, to) =>
+    supabase
+      .from("contacts")
+      .select("id, full_name, email, phone, title, companies(id, name, city, state)")
+      .order("full_name")
+      .range(from, to)
+  );
+  const contacts = contactsData as unknown as ContactRow[];
 
   return (
     <div>

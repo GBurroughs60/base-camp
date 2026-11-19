@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import NewRecordButton from "@/components/inline/NewRecordButton";
 import DedupRowActions from "@/components/inline/DedupRowActions";
 import DataTable, { type ColumnMeta, type DataRow } from "@/components/DataTable";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 type CompanyRow = {
   id: string;
@@ -147,23 +148,32 @@ export default async function CompaniesPage({
   const activeFilter = status ?? "active";
 
   const supabase = await createClient();
-  let query = supabase
-    .from("companies")
-    .select(
-      "id, name, type, city, state, capacity, is_indoor, is_outdoor, archived, pending_state_review, dedup_uncertain, dedup_match_id, contacts(id, full_name)"
-    )
-    .order("name");
 
-  // Discovery-sourced rows still pending their state's sample review stay
-  // hidden here, same treatment as archived -- see companies.pending_state_review.
-  if (activeFilter === "active")
-    query = query.eq("archived", false).eq("pending_state_review", false);
-  if (activeFilter === "archived") query = query.eq("archived", true);
-  if (activeFilter === "dedup-check")
-    query = query.eq("dedup_uncertain", true).eq("archived", false);
+  // Built fresh per page (see fetchAllRows) rather than as a single query
+  // object reused across .range() calls -- this table is well past the
+  // 1000-row single-request cap (see fetchAllRows.ts), which is exactly
+  // what was showing "1000 records" here while the sidebar's exact count
+  // said 2233.
+  const { rows: companiesData } = await fetchAllRows<unknown>((from, to) => {
+    let query = supabase
+      .from("companies")
+      .select(
+        "id, name, type, city, state, capacity, is_indoor, is_outdoor, archived, pending_state_review, dedup_uncertain, dedup_match_id, contacts(id, full_name)"
+      )
+      .order("name")
+      .range(from, to);
 
-  const { data } = await query;
-  const companies = (data ?? []) as unknown as CompanyRow[];
+    // Discovery-sourced rows still pending their state's sample review stay
+    // hidden here, same treatment as archived -- see companies.pending_state_review.
+    if (activeFilter === "active")
+      query = query.eq("archived", false).eq("pending_state_review", false);
+    if (activeFilter === "archived") query = query.eq("archived", true);
+    if (activeFilter === "dedup-check")
+      query = query.eq("dedup_uncertain", true).eq("archived", false);
+
+    return query;
+  });
+  const companies = companiesData as unknown as CompanyRow[];
 
   // Matched companies aren't a declared FK the DataRow embed can follow
   // (dedup_match_id is a plain uuid, same reasoning as candidates.
