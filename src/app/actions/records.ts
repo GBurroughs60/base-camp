@@ -106,6 +106,10 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "governing_law_state",
     "show_time",
     "show_length",
+    "load_in",
+    "soundcheck_time",
+    "doors_time",
+    "curfew",
     "radius_clause",
     // Settlement report (docs/operations-accounting-plan.md section 4).
     // settlement_expenses is deliberately NOT here -- it's a jsonb array,

@@ -18,10 +18,12 @@ const TEMPLATE_PATH = path.join(
 export type ContractMergeData = Record<string, string>;
 
 // Shown in the generated contract for any field Base Camp doesn't collect
-// yet (day-of schedule details like soundcheck/doors/curfew have no
-// structured field on plays today) -- left visibly unresolved rather than
-// silently blank or guessed, so whoever reviews the contract before it
-// goes out catches it and fills it in by hand.
+// at all, or that's genuinely missing -- left visibly unresolved rather
+// than silently blank or guessed, so whoever reviews the contract before
+// it goes out catches it and fills it in by hand. Not used for the Section
+// 2 schedule fields (soundcheck/doors/curfew/etc) -- those fall back to
+// SCHEDULE_PER_ADVANCE when blank instead, since "Per Advance" is itself a
+// normal, sendable value, not a placeholder (see contractData.ts).
 export const CONTRACT_TBD = "[TO BE FILLED IN BEFORE SENDING]";
 
 export async function generateContractDocx(data: ContractMergeData): Promise<Buffer> {

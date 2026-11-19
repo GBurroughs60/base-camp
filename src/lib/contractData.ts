@@ -78,6 +78,10 @@ export type ContractPlay = {
   governing_law_state: string | null;
   show_time: string | null;
   show_length: string | null;
+  load_in: string | null;
+  soundcheck_time: string | null;
+  doors_time: string | null;
+  curfew: string | null;
   radius_clause: string | null;
   artist_id: string;
   venue_id: string | null;
@@ -140,7 +144,8 @@ export async function fetchContractContext(playId: string): Promise<ContractCont
        guarantee_amount, ticket_price, ticket_price_tiers, deal_terms, deposit_amount, deposit_due_date, deposit_instructions,
        production_contact_name, production_contact_info, production_provided,
        food_provided, drinks_provided, hotel_provided, travel_provided,
-       governing_law_state, show_time, show_length, radius_clause, artist_id, venue_id,
+       governing_law_state, show_time, show_length, load_in, soundcheck_time, doors_time, curfew,
+       radius_clause, artist_id, venue_id,
        status, contract_file_path, contract_file_name, contract_uploaded_at, contract_sent_to_buyer_at,
        artists(id, name, legal_entity_name, signatory_contact_id),
        venue:companies!plays_venue_id_fkey(id, name, city, state),
@@ -217,6 +222,10 @@ export async function fetchContractContext(playId: string): Promise<ContractCont
     governing_law_state: play.governing_law_state,
     show_time: play.show_time,
     show_length: play.show_length,
+    load_in: play.load_in,
+    soundcheck_time: play.soundcheck_time,
+    doors_time: play.doors_time,
+    curfew: play.curfew,
     radius_clause: play.radius_clause,
     artist_id: play.artist_id,
     venue_id: play.venue_id,
@@ -275,19 +284,19 @@ export function buildContractMergeData(ctx: ContractContext): ContractMergeData 
     // /book form (or entered manually) when there is one.
     radius_clause: play.radius_clause?.trim() ? play.radius_clause : "N/A",
     contract_due_date: fmtDate(play.contract_due_date),
-    // Performance time and duration are real fields (collected on the
-    // /book form, or editable manually) -- used when filled in, falling
-    // back to "Per Advance" otherwise. Load-in, soundcheck, doors, and
-    // curfew still have no structured field anywhere in Base Camp, so
-    // those always read "Per Advance" -- the standard live-music
-    // convention that these get nailed down on the pre-show advance call,
-    // matching Section 2's own closing line.
-    load_in: SCHEDULE_PER_ADVANCE,
-    soundcheck_time: SCHEDULE_PER_ADVANCE,
-    doors_time: SCHEDULE_PER_ADVANCE,
+    // Performance time/duration and the four day-of schedule fields below
+    // are all real, editable columns -- used when filled in, falling back
+    // to "Per Advance" otherwise, the standard live-music convention that
+    // these get nailed down on the pre-show advance call, matching Section
+    // 2's own closing line. Nothing requires any of them to be filled in --
+    // "Per Advance" is a perfectly normal thing to send in a contract, not
+    // a placeholder that blocks sending the way CONTRACT_TBD does.
     show_time: play.show_time?.trim() ? play.show_time : SCHEDULE_PER_ADVANCE,
     show_length: play.show_length?.trim() ? play.show_length : SCHEDULE_PER_ADVANCE,
-    curfew: SCHEDULE_PER_ADVANCE,
+    load_in: play.load_in?.trim() ? play.load_in : SCHEDULE_PER_ADVANCE,
+    soundcheck_time: play.soundcheck_time?.trim() ? play.soundcheck_time : SCHEDULE_PER_ADVANCE,
+    doors_time: play.doors_time?.trim() ? play.doors_time : SCHEDULE_PER_ADVANCE,
+    curfew: play.curfew?.trim() ? play.curfew : SCHEDULE_PER_ADVANCE,
     guarantee_amount: fmtMoney(play.guarantee_amount),
     ticket_price: fmtTicketPriceTiers(play.ticket_price_tiers, play.ticket_price),
     deal_terms: orTbd(play.deal_terms),

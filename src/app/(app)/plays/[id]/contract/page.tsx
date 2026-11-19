@@ -222,33 +222,17 @@ export default async function ContractReviewPage({
         <FieldRow label="Performance duration" resolved={merged.show_length}>
           <InlineEditField table="plays" id={play.id} field="show_length" value={play.show_length} placeholder="Per Advance" />
         </FieldRow>
-        <FieldRow
-          label="Load-in"
-          resolved={merged.load_in}
-          note="No field for this yet -- always Per Advance."
-        >
-          <span className="text-black/40 dark:text-white/40">—</span>
+        <FieldRow label="Load-in" resolved={merged.load_in}>
+          <InlineEditField table="plays" id={play.id} field="load_in" value={play.load_in} placeholder="Per Advance" />
         </FieldRow>
-        <FieldRow
-          label="Soundcheck"
-          resolved={merged.soundcheck_time}
-          note="No field for this yet -- always Per Advance."
-        >
-          <span className="text-black/40 dark:text-white/40">—</span>
+        <FieldRow label="Soundcheck" resolved={merged.soundcheck_time}>
+          <InlineEditField table="plays" id={play.id} field="soundcheck_time" value={play.soundcheck_time} placeholder="Per Advance" />
         </FieldRow>
-        <FieldRow
-          label="Doors"
-          resolved={merged.doors_time}
-          note="No field for this yet -- always Per Advance."
-        >
-          <span className="text-black/40 dark:text-white/40">—</span>
+        <FieldRow label="Doors" resolved={merged.doors_time}>
+          <InlineEditField table="plays" id={play.id} field="doors_time" value={play.doors_time} placeholder="Per Advance" />
         </FieldRow>
-        <FieldRow
-          label="Curfew"
-          resolved={merged.curfew}
-          note="No field for this yet -- always Per Advance."
-        >
-          <span className="text-black/40 dark:text-white/40">—</span>
+        <FieldRow label="Curfew" resolved={merged.curfew}>
+          <InlineEditField table="plays" id={play.id} field="curfew" value={play.curfew} placeholder="Per Advance" />
         </FieldRow>
       </SectionTable>
 
