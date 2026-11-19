@@ -28,6 +28,7 @@ const adminLinks = [
   { href: "/candidates", label: "Candidates" },
   { href: "/pending-review", label: "Pending Review" },
   { href: "/revenue", label: "Revenue" },
+  { href: "/pitch-activity", label: "Pitch Activity" },
   { href: "/settings/quickbooks", label: "QuickBooks" },
   { href: "/settings/team", label: "Team" },
 ];
