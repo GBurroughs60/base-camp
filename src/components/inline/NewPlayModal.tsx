@@ -8,6 +8,7 @@ import {
   updateTierField,
   searchRecords,
   fuzzyMatchCompanies,
+  getVenueDefaults,
   type CompanyFuzzyMatch,
   type SearchTable,
 } from "@/app/actions/records";
@@ -397,6 +398,27 @@ export default function NewPlayModal({ onClose }: { onClose: () => void }) {
   const [event, setEvent] = useState<{ id: string; label: string } | null>(null);
   const [capacity, setCapacity] = useState("");
   const [ageLimit, setAgeLimit] = useState("");
+  const [address, setAddress] = useState("");
+
+  // Capacity/age limit/address almost always live at the venue and rarely
+  // change show to show, so picking a venue here carries those over as a
+  // starting point -- each stays its own field on the play (see
+  // EDITABLE_FIELDS.plays in records.ts), so this is just a convenience
+  // prefill, never a lock: edit any of the three below and that becomes
+  // this single play's override, the venue record is untouched either way.
+  // Only non-null venue values are applied, so switching to a venue that
+  // hasn't had its own capacity/age limit/address filled in yet doesn't
+  // blank out something already typed here.
+  function handleVenueChange(v: { id: string; label: string } | null) {
+    setVenue(v);
+    if (!v) return;
+    getVenueDefaults(v.id).then((defaults) => {
+      if (!defaults) return;
+      if (defaults.capacity !== null) setCapacity(String(defaults.capacity));
+      if (defaults.age_limit !== null) setAgeLimit(defaults.age_limit);
+      if (defaults.address !== null) setAddress(defaults.address);
+    });
+  }
 
   // "Show type" is free text (same as the public /book form), not a fixed
   // dropdown, so this is a loose substring match rather than an exact-value
@@ -463,6 +485,7 @@ export default function NewPlayModal({ onClose }: { onClose: () => void }) {
       show_length: showLength || null,
       capacity: capacity.trim() !== "" ? Number(capacity) : null,
       age_limit: ageLimit || null,
+      address: address || null,
       guarantee_amount: guaranteeAmount.trim() !== "" ? Number(guaranteeAmount) : null,
       deal_terms: dealTerms || null,
       radius_clause: radiusClause || null,
@@ -577,7 +600,7 @@ export default function NewPlayModal({ onClose }: { onClose: () => void }) {
                 <PickerSlot
                   table="companies"
                   selected={venue}
-                  onChange={setVenue}
+                  onChange={handleVenueChange}
                   websiteRequired={!isPrivateShow}
                 />
               </Field>
@@ -608,6 +631,21 @@ export default function NewPlayModal({ onClose }: { onClose: () => void }) {
                 />
               </Field>
             </div>
+            <Field label="Address">
+              <input
+                type="text"
+                placeholder="Street address for this show"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            {venue && (capacity || ageLimit || address) && (
+              <p className="text-xs text-black/40 dark:text-white/40 -mt-1">
+                Capacity, age limit, and address are carried over from the venue — edit any of
+                them for just this play without changing the venue record.
+              </p>
+            )}
           </SectionCard>
 
           <SectionCard title="The Offer">

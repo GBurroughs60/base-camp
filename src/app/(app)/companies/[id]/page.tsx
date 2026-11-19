@@ -36,7 +36,7 @@ export default async function VenueDetailPage({
   const { data: venue } = await supabase
     .from("companies")
     .select(
-      "id, name, type, city, state, country, phone, email, website, notes, capacity, is_indoor, is_outdoor, archived"
+      "id, name, type, city, state, country, phone, email, website, notes, capacity, address, age_limit, is_indoor, is_outdoor, archived"
     )
     .eq("id", id)
     .maybeSingle();
@@ -186,6 +186,25 @@ export default async function VenueDetailPage({
                 value={venue.capacity}
                 type="number"
                 placeholder="Add capacity"
+              />
+            </div>
+            <div>
+              <span className="text-black/40 dark:text-white/40">Age limit: </span>
+              <InlineEditField
+                table="companies"
+                id={venue.id}
+                field="age_limit"
+                value={venue.age_limit}
+                placeholder="All ages, 21+…"
+              />
+            </div>
+            <div>
+              <InlineEditField
+                table="companies"
+                id={venue.id}
+                field="address"
+                value={venue.address}
+                placeholder="Add street address"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-1">

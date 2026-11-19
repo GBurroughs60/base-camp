@@ -29,6 +29,8 @@ const EDITABLE_FIELDS: Record<TableName, Set<string>> = {
     "website",
     "notes",
     "capacity",
+    "address",
+    "age_limit",
     "is_indoor",
     "is_outdoor",
     "archived",
@@ -1014,6 +1016,29 @@ export async function searchRecords(
         : null;
     return { id: r.id as string, label: r[nameCol] as string, sublabel: sub };
   });
+}
+
+// Capacity/age_limit/address usually live once at the venue and rarely
+// change play to play, so the New Play modal calls this right after a
+// venue is picked to carry those over as a starting point -- plays has its
+// own capacity/age_limit/address columns (set here, same as venue_name/
+// city/state) specifically so a one-off difference at that venue (a
+// private buyout with a lower cap, a seated-vs-standing age policy, a
+// different load-in address for one show) can still be overridden per
+// play without touching the venue record itself. Null venue fields are
+// left for the caller to leave alone rather than overwrite with blanks.
+export async function getVenueDefaults(id: string): Promise<{
+  capacity: number | null;
+  age_limit: string | null;
+  address: string | null;
+} | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("companies")
+    .select("capacity, age_limit, address")
+    .eq("id", id)
+    .maybeSingle();
+  return data ?? null;
 }
 
 // Small, curated list (not a growing search-as-you-type table like
