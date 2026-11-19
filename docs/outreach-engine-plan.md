@@ -2028,10 +2028,35 @@ enough for a conversion rate to mean anything.
   indefinitely.
 - The actual invoice-sending step `settled` is meant to set up — not
   designed yet, per Greg: "more to come though."
-- Effectiveness metrics (outreach conversion, pipeline velocity, Discovery
-  efficiency, Action List throughput) — deferred until there's enough
-  volume in `outreach_log`/`action_items` for a conversion rate to be
-  meaningful.
+- Deeper effectiveness metrics (outreach *conversion* — pitches that
+  turned into booked plays, pipeline velocity, Discovery efficiency,
+  Action List throughput) are still deferred until there's enough
+  volume for a conversion rate to be meaningful. Raw weekly *volume*
+  shipped 2026-11-19 (see below) — that only needed a count of rows,
+  not a conversion rate, so the original blocker didn't apply to it.
+
+**Pitch Activity report (shipped 2026-11-19):** per Greg — "curious if
+we can show a report of total pitches every week and how that compares
+to the week prior by percent, and then break that out by each artist."
+`/pitch-activity` (Admin nav) reads `outreach_log` directly — one row
+per artist actually pitched, written by `completeActionItem`
+(`src/app/actions/actionItems.ts`) whenever a staffer marks an `auto`
+(event-linked) Action List item complete, per section 2a above. 977
+rows on file as of this build, spanning 2026-09-25 onward across all 4
+roster artists. Monday-start week buckets (UTC), zero-filled for weeks
+with no activity so a real gap reads as a gap rather than being
+skipped; the current week is shown dashed/dimmed and labeled "so far"
+since it's still filling in. Stacked bar chart (artist = series, fixed
+categorical color per artist, validated 4-slot palette) plus a full
+per-week/per-artist data table — every number in the chart is also in
+the table, same rule `/revenue`'s charts follow. A caption calls out
+that volume here tracks *when a staffer cleared an Action List item*,
+not a steady daily pitch cadence — a week-over-week jump usually means
+a Discovery/Catch-up/Refresh batch surfaced a run of opportunities at
+once and several got pitched in one sitting, not that the underlying
+pace of outreach changed that much. This is a volume report, not a
+conversion/effectiveness report — see the open item above for what's
+still missing (whether a pitch led to a booked play).
 
 ## Keeping this in sync
 
