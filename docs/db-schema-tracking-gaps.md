@@ -714,3 +714,100 @@ it through the Supabase CLI (`supabase migration new
 add_user_admin_and_invite_tracking`) from a machine with it set up, rather
 than the dashboard's SQL editor. Once applied, this is purely
 bookkeeping -- the live table will already match.
+
+---
+
+## `address_rules` table + one `domain_rules` row (2026-11-23)
+
+**What's untracked:** A new `public.address_rules` table -- the
+address-level counterpart to the existing `domain_rules` table, for
+excluding one specific email from the weekly contact scan
+(`src/app/api/cron/scan-contacts/route.ts`) rather than a whole domain.
+Added per Greg: two leaks domain-level exclusion can't catch --
+`jmayotte@theridgemusicgroup.co` (a typo'd `.co` forward of Justin's real
+`.com` address -- the hardcoded `RIDGE_DOMAIN` check and `domain_rules`
+both only had the real `.com` domain on file, not this typo), and
+personal addresses that regularly show up on gig calendar invites (a band
+member, a family member) where excluding their whole domain would be
+wrong since it's a shared consumer provider. Also included: one
+`domain_rules` row excluding `theridgemusicgroup.co` itself, the same way
+every other noise domain already is, so the *domain* typo stops leaking
+regardless of which address sends from it.
+
+The app code change that reads this table (`address_rules` queried
+alongside `domain_rules` in step 2 of `scan-contacts/route.ts`,
+`src/lib/gmailScan.ts`'s comments updated to mention it) is tracked
+normally through git -- only the table/row below needed a human to run it
+directly.
+
+**Why it's untracked:** By Greg's own choice for this one, not a tooling
+block -- he asked to run this table creation himself via the Supabase
+dashboard's SQL editor rather than have it applied automatically, same as
+how `domain_rules` itself is a Greg-curated, dashboard-maintained list
+with no app UI.
+
+**Symptom if this is missing:** None of the address_rules filtering
+happens -- the scan route's `address_rules` query comes back empty (the
+query is written to degrade silently if the table doesn't exist yet, same
+tolerant pattern as every other lookup in that `Promise.all`), so
+candidates keep getting created for any address Greg would have put on
+this list. Not a crash, just the gap this table exists to close staying
+open. The `theridgemusicgroup.co` row specifically: skipping it means that
+typo'd domain keeps generating candidates, same as before this fix.
+
+**The exact SQL to run, in order** (table, its read policy, the comment,
+then the one domain_rules row) -- tested end to end in a transaction and
+rolled back before writing this, so this is confirmed to run clean:
+
+```sql
+create table public.address_rules (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  email_normalized text generated always as (lower(email)) stored,
+  note text,
+  created_at timestamptz not null default now()
+);
+
+comment on table public.address_rules is
+  'Greg-curated address-level exclusion list for the weekly contact scan (src/app/api/cron/scan-contacts/route.ts). Same purpose as domain_rules but for one specific address instead of a whole domain -- a personal address on gig calendar invites, a typo''d internal address, etc. Maintained directly via the Supabase dashboard SQL editor, same as domain_rules -- no app UI. email_normalized is generated (lower(email)), same convention domain_rules uses for domain_normalized.';
+
+alter table public.address_rules enable row level security;
+
+create policy "authenticated users can read address_rules"
+on public.address_rules for select
+to authenticated
+using (true);
+
+insert into public.address_rules (email, note) values
+  ('jmayotte@theridgemusicgroup.co',
+   'Typo''d .co forward of Justin''s real .com address -- not a real contact');
+
+insert into public.domain_rules (domain, rule, note) values
+  ('theridgemusicgroup.co', 'always_exclude',
+   'Typo''d TLD of Ridge''s own domain (theridgemusicgroup.com) -- never a real contact, whoever sends from it');
+```
+
+`email_normalized` is a generated column (`lower(email)`, `STORED`) --
+matches how `domain_normalized` already works on `domain_rules`
+(`generation_expression` confirmed directly against the live table:
+`lower(domain)`), so there's no manual-lowercasing footgun to worry about
+when adding a row; just put the address in `email` as typed.
+
+Deliberately no `rule` column on `address_rules` (unlike `domain_rules`,
+which also supports `always_include`) -- every row here is an exclusion,
+full stop, and a column advertising an `always_include` path the scan
+code doesn't actually act on would be more confusing than not having it.
+If a real need for an address-level override ever comes up, add the
+column and the code to act on it together, not ahead of time.
+
+To add more addresses later, Greg just runs:
+```sql
+insert into public.address_rules (email, note) values
+  ('someone@example.com', 'why this one is excluded');
+```
+
+**To close the gap properly:** same as the entries above -- fold both the
+table/policy and the two data rows into a tracked migration (`supabase
+migration new add_address_rules`) next time a human has the CLI set up.
+Once applied, this is purely bookkeeping -- the live schema will already
+match.

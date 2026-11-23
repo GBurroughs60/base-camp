@@ -134,24 +134,45 @@ export async function GET(req: NextRequest) {
   }
 
   // 2. Filter out anything already a contact, anything on a Greg-curated
-  // always-exclude domain, and anything already "inside" a Ridge artist
-  // relationship -- a new address at a company Ridge already works with
+  // always-exclude domain or address, and anything already "inside" a
+  // Ridge artist relationship -- a new address at a company Ridge already
+  // works with
   // isn't a fresh lead just because that exact address hasn't shown up
   // before (e.g. a second person at an existing artist's management
   // company), and an artist's own personal/promo address is never a lead
   // either even though nothing links it to anything else in the database.
-  const [{ data: existingContacts }, { data: excludedDomains }, { data: teamContacts }, { data: activeArtists }] =
-    await Promise.all([
-      supabase.from("contacts").select("email").not("email", "is", null),
-      supabase.from("domain_rules").select("domain_normalized").eq("rule", "always_exclude"),
-      supabase.from("contact_artists").select("contacts(email)"),
-      supabase.from("artists").select("name").eq("archived", false),
-    ]);
+  const [
+    { data: existingContacts },
+    { data: excludedDomains },
+    { data: excludedAddresses },
+    { data: teamContacts },
+    { data: activeArtists },
+  ] = await Promise.all([
+    supabase.from("contacts").select("email").not("email", "is", null),
+    supabase.from("domain_rules").select("domain_normalized").eq("rule", "always_exclude"),
+    // Address-level counterpart to domain_rules, added 2026-11-23 per
+    // Greg -- for a single address rather than a whole domain (a personal
+    // address that regularly shows up on gig calendar invites: a band
+    // member, a family member). Same "Greg-curated, Supabase-dashboard-
+    // maintained, no app UI" shape as domain_rules -- see
+    // docs/db-schema-tracking-gaps.md for the table's exact DDL (applied
+    // outside tracked migration history, same as domain_rules originally
+    // was). Queried unconditionally -- if the table doesn't exist yet in
+    // a given environment, this just comes back empty rather than
+    // erroring, same tolerant pattern every other query in this
+    // Promise.all already follows (none of them check `error` either).
+    supabase.from("address_rules").select("email_normalized"),
+    supabase.from("contact_artists").select("contacts(email)"),
+    supabase.from("artists").select("name").eq("archived", false),
+  ]);
 
   const existingEmails = new Set(
     (existingContacts ?? []).map((c) => (c.email as string).toLowerCase())
   );
   const excludedDomainSet = new Set((excludedDomains ?? []).map((d) => d.domain_normalized as string));
+  const excludedAddressSet = new Set(
+    (excludedAddresses ?? []).map((a) => (a.email_normalized as string).toLowerCase())
+  );
 
   // Free/consumer webmail providers are deliberately excluded from the
   // team-domain set below -- an artist's manager happening to use Gmail
@@ -193,6 +214,7 @@ export async function GET(req: NextRequest) {
 
   const filtered = scanned.filter((c) => {
     if (existingEmails.has(c.email)) return false;
+    if (excludedAddressSet.has(c.email)) return false;
     const domain = c.email.split("@")[1];
     if (domain && excludedDomainSet.has(domain)) return false;
     if (domain && teamDomains.has(domain)) return false;
