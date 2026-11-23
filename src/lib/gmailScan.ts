@@ -62,14 +62,19 @@ function gmailClientFor(mailbox: string) {
 }
 
 // Ridge's own domain is never a "new contact" -- filtered unconditionally,
-// separate from domain_rules (Greg's own curated exclusion list, which
-// lives in the database and is checked by the cron route, not here).
+// separate from domain_rules/address_rules (Greg's own curated exclusion
+// lists, which live in the database and are checked by the cron route,
+// not here). A mistyped variant of this domain (theridgemusicgroup.co)
+// is NOT handled here -- it's a one-row domain_rules entry instead, same
+// as any other noise domain, see docs/db-schema-tracking-gaps.md.
 const RIDGE_DOMAIN = "theridgemusicgroup.com";
 
 // Generic sender/system addresses that are never a real person to follow
 // up with. This is a plain, hardcoded heuristic -- distinct from
-// domain_rules, which Greg grows over time for domains specific to Ridge's
-// own inbox noise (a particular vendor, a particular mailing list, etc).
+// domain_rules (grown over time for whole noise domains) and address_rules
+// (same idea, one address at a time -- a personal address that shows up
+// on gig calendar invites, say), both of which Greg maintains directly in
+// the database rather than here.
 export const NOISE_DOMAIN_DENYLIST = [
   "docusign.net",
   "docusign.com",
@@ -190,16 +195,82 @@ function newContentOnly(text: string): string {
   return (match ? text.slice(0, match.index) : text).trim();
 }
 
+// A deliberately small, explicit list of generic salutation words that
+// are never a real person's name -- not the same problem as the
+// multi-word case the comma/line-end requirement below handles (an org's
+// whole address used as the greeting, e.g. "Hi Winter Garden Music Fest
+// Team,"), this is for the single-word fillers that slip past that check
+// because they're ALSO comma- or line-terminated on their own: "Hi
+// Team,", "Hi There,", "Hi All,".
+const GENERIC_GREETING_WORDS = new Set([
+  "there",
+  "all",
+  "everyone",
+  "team",
+  "folks",
+  "friend",
+  "friends",
+  "sir",
+  "madam",
+]);
+
+// extractGreetingName, looksLikeNonPersonName, and cleanName below are
+// exported for pure-function test coverage only (see gmailScan.test.ts) --
+// not part of this module's public API otherwise.
+
 // A greeting near the top of the new content ("Hi Mark," / "Dear Sarah,")
 // -- only meaningful for an OUTBOUND message (Ridge addressing someone by
 // name), so this is only invoked that way by the caller below. Scoped to
 // the first ~300 chars so it can't match a name inside the message body
 // itself, just the salutation line.
-function extractGreetingName(text: string): string | null {
-  const m = /^\s*(?:hi|hello|hey|dear)[,]?\s+([A-Z][a-zA-Z'’-]{1,20})\b/im.exec(
+//
+// Requires the captured word to be immediately followed by a comma or the
+// end of the line (not just a word boundary) -- otherwise this matches
+// the FIRST WORD of a multi-word organization/event address used as a
+// generic team greeting, e.g. "Hi Winter Garden Music Fest Team," capturing
+// "Winter" as though it were a person's name. That was the actual source
+// of most of the bad inferred_name values seen in practice (Florida,
+// Infinity, Osceola, Stafford, Summer -- each the lead word of a "Hi <long
+// org address> Team," salutation). A real single-name greeting ("Hi
+// Kimber,") is unaffected since the name there already sits directly
+// before the comma. Trade-off: a genuine greeting that doesn't end in a
+// comma or line break ("Hi Sarah!", "Hi Mark -") is no longer captured --
+// accepted deliberately, since an empty inferred_name is better than a
+// wrong one (Greg fills it in during review either way).
+export function extractGreetingName(text: string): string | null {
+  const m = /^\s*(?:hi|hello|hey|dear)[,]?\s+([A-Z][a-zA-Z'’-]{1,20})(?=[,\n]|\s*$)/im.exec(
     text.slice(0, 300)
   );
-  return m ? m[1] : null;
+  if (!m) return null;
+  const name = m[1];
+  if (GENERIC_GREETING_WORDS.has(name.toLowerCase())) return null;
+  return name;
+}
+
+// True when a name-shaped string clearly isn't a person -- an email
+// address or a bare domain/product name ended up in a Display Name
+// header field. Seen in practice: "jesse@212social.co",
+// "RightSignature.com", "Wix.com" all landed as inferred_name before this
+// existed. Deliberately narrow (just these two shapes, not a general
+// word-list/dictionary check) -- see the gmailScan.test.ts comment for
+// why a broader dictionary approach doesn't hold up here (Stafford,
+// Osceola, Infinity are all real places/venues, not dictionary words, and
+// are legitimate matches when they come from a real "Hi <Name>," line).
+export function looksLikeNonPersonName(s: string): boolean {
+  if (s.includes("@")) return true;
+  if (/\.(com|co|net|org|io|gov|edu)\b/i.test(s)) return true;
+  return false;
+}
+
+// Applies looksLikeNonPersonName to a header-derived Display Name before
+// it's trusted as inferredName. Only needed for the header `name` path --
+// extractGreetingName's own output can never match either check (its
+// regex only ever captures letters/apostrophe/hyphen, no "@" or ".").
+export function cleanName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (!trimmed || looksLikeNonPersonName(trimmed)) return null;
+  return trimmed;
 }
 
 // A plain US phone number pattern, run over the same new-content text --
@@ -375,10 +446,11 @@ export async function scanMailbox(
 
     for (const headerVal of [headerValue("From"), headerValue("To"), headerValue("Cc")]) {
       if (!headerVal) continue;
-      for (const { email, name } of parseAddressList(headerVal)) {
+      for (const { email, name: rawName } of parseAddressList(headerVal)) {
         const normalized = email.toLowerCase();
         if (isNoiseAddress(normalized)) continue;
 
+        const name = cleanName(rawName);
         const isSingleExternal = normalized === singleExternal;
         const existing = found.get(normalized);
         if (existing) {
