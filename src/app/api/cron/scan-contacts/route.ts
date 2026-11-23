@@ -76,17 +76,37 @@ function escapeRegExp(s: string): string {
 // "load once per run, substring-match" shape as companyByDomain. Names
 // under 4 characters are skipped so a short, common word/abbreviation
 // doesn't produce a false positive.
-function matchByNameMention<T extends { id: string; name: string }>(
+//
+// Returns the LONGEST matching name, not the first one encountered --
+// fixed 2026-11-23 after a real false-positive chain: a bulk import had
+// left an event row with the bare placeholder name "Festival" (8 chars,
+// clears the length floor), which matched nearly every outbound pitch
+// (every one has "Festival" in the subject, e.g. "...2027 Rose Show &
+// Festival?") before the loop ever reached the genuinely correct, far
+// more specific event name sitting in the SAME text ("Rose Show &
+// Festival" itself). Confirmed directly against the candidates table:
+// every mismatched row's frozen inferred_event_name was exactly
+// "Festival", never the specific name it should have matched. Preferring
+// the longest match is a general improvement, not a one-off patch for
+// this one record -- specificity should always win over a generic
+// substring, the same way it would for any other short/generic record
+// name that happens to exist in the table.
+// Exported for pure-function test coverage only (see
+// scan-contacts.route.test.ts) -- not part of this route's public API.
+export function matchByNameMention<T extends { id: string; name: string }>(
   text: string,
   records: T[]
 ): T | null {
   if (!text) return null;
+  let best: T | null = null;
   for (const record of records) {
-    if (record.name.trim().length < 4) continue;
-    const re = new RegExp(`\\b${escapeRegExp(record.name.trim())}\\b`, "i");
-    if (re.test(text)) return record;
+    const name = record.name.trim();
+    if (name.length < 4) continue;
+    if (best && name.length <= best.name.trim().length) continue;
+    const re = new RegExp(`\\b${escapeRegExp(name)}\\b`, "i");
+    if (re.test(text)) best = record;
   }
-  return null;
+  return best;
 }
 
 export async function GET(req: NextRequest) {
