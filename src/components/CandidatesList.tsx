@@ -18,6 +18,11 @@ export type CandidateListRow = {
   eventLabel: string | null;
   subject: string | null;
   bodySnippet: string | null;
+  // Other still-pending candidates that share this one's email local part
+  // on a different domain -- e.g. kmarsh@isleofpalms.gov alongside
+  // kmarsh@iop.net. Advisory only (see candidates/page.tsx) -- nothing is
+  // merged or linked automatically, this just surfaces the hint.
+  possibleDuplicateEmails: string[] | null;
 };
 
 // One grid, not one-grid-per-row. The first cut of this used a separate
@@ -102,6 +107,14 @@ export default function CandidatesList({ rows }: { rows: CandidateListRow[] }) {
                       className="mt-0.5 truncate text-xs text-black/40 dark:text-white/40"
                     >
                       {c.subject}
+                    </p>
+                  )}
+                  {c.possibleDuplicateEmails && c.possibleDuplicateEmails.length > 0 && (
+                    <p
+                      title="Same email local part, different domain -- not merged automatically, just a hint"
+                      className="mt-0.5 truncate text-xs text-amber-700 dark:text-amber-400"
+                    >
+                      Possibly also: {c.possibleDuplicateEmails.join(", ")}
                     </p>
                   )}
                 </div>
