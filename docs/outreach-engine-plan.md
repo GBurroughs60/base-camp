@@ -1915,6 +1915,80 @@ it.") executing the prepared write.
   replacement for the monthly task above — it'll need repeating by hand
   each month until the recurring task actually gets created.
 
+**Needs Date, third pass — pill bug, name-cue extension, backfill
+(2026-11-24).** A `NOT IN` construction in the needs-date branch of
+`src/app/(app)/events/page.tsx` had drifted from the `events_needing_attention`
+view — a PostgREST error on that query was being swallowed, rendering as a
+false "No events yet." regardless of the real backlog. Fixed to query the
+view directly (same non-archived + non-pending-review scope,
+`.eq("pending_state_review", false)`), with real error handling so a failed
+query can't silently render empty again.
+
+While confirming the backlog with a fresh resolver dry run (reusing the same
+`events_needing_attention`/keyset-pagination approach as the earlier passes),
+Greg asked for two more name cues to be added to `dateSignalExtraction.ts`:
+an ordinal-weekday embedded directly in an event's own name (e.g. "Third
+Saturday [of the month]"), and a bare "this reads as a standing community
+concert series" catch-all (a title containing "concert"/"music" with no
+other date signal). Both are `estimated` confidence, assume a May–October
+season (not stated — same assumption the existing season-word default
+already uses, widened from meteorological Jun–Aug 2026-11-02), anchor to
+May 1st as a placeholder, and are explicitly excluded for anything that
+reads as venue-programming or a private/personal event
+(`isExcludedFromNameCues`) rather than a real standing series. Full test
+coverage per cue class in `dateSignalExtraction.test.ts`.
+
+**Backfill (2026-11-24), run after Greg's go-ahead — with a changed rule
+this time: only confirmed-tier results get written; everything `estimated`
+comes back as a review list instead of being written automatically.**
+Current backlog (recurrence_rule still null, out of the full
+`events_needing_attention` count of 577): **501**. Ran the real resolver
+(`scripts/resolve-date-signal.ts`) against all 501 (name + notes + last
+known past occurrence date, same input shape as every prior pass):
+
+- **171/501 matched** something — 5 `confirmed_date`, 2 `confirmed_pattern`,
+  164 `estimated`. 330 had no signal at all, matching this round's
+  diminishing-returns shape: the easy wins were already taken by the two
+  prior passes, so what's left skews heavily toward genuinely signal-less
+  events.
+- **Only 3 of the 7 confirmed-tier matches were actually written.** The
+  other 4 technically cleared the resolver's `confirmed_date`/
+  `confirmed_pattern` bar on a literal date string in the text, but their
+  own notes directly contradict treating that date as an annual
+  recurrence — two explicitly concluded "not an established recurring
+  program"/"not a single recurring series" during an earlier research
+  pass, one is a single touring artist's one-off show date at a venue
+  (not a recurring event in its own right), and one (a real series) only
+  had this year's season-closing date on file, not a dependable annual
+  anchor. Held back rather than written; flagged for Greg to decide
+  per-event rather than silently writing or silently dropping them.
+  Written: **Rockin' the Beach** and **Friday's After Five** (both a
+  genuine stated weekly pattern with a season window, sourced from an
+  official town event listing) and **Red White and Blue Festival** (a
+  specific confirmed date for a named recurring community festival).
+  Each written as its own transaction (`recurrence_rule` + one
+  `event_occurrences` row), `research_log`-tagged
+  `[Needs Date backfill, 2026-11-24]`. Spot-checked all 3 (not a sample,
+  since only 3 were written) against `events_needing_attention` afterward
+  — all three correctly dropped out.
+- **Needs Date backlog: 577 → 574.**
+- **164 `estimated` matches — not written, handed to Greg as a review
+  list** (`needs_date_review_estimated.csv`): 94 single-date-fallback
+  (one past occurrence, no stated pattern), 26 the new community-concert-
+  series name cue, 19 month-named-with-no-day, 19 season-named-in-title,
+  the rest smaller one-off cue types. Each row carries the proposed rule,
+  its confidence source, and a notes excerpt so Greg can approve/reject
+  per event rather than this pass guessing on his behalf.
+- **59 of the 330 unmatched events had a month named somewhere in their
+  name/notes that the resolver still couldn't parse into a usable
+  pattern** — handed over separately (`needs_date_review_month_unresolved.csv`)
+  as its own list, since that's a different failure mode (bad/ambiguous
+  text) than genuinely no signal at all.
+- **Next Monday's digest should show ~574** on the needs-date count (down
+  3 from today), not the larger drop earlier passes produced — this pass
+  deliberately wrote far less than it matched, per the new
+  confirmed-only-writes rule above.
+
 ## 13. Financial reporting — Ridge's revenue tracker
 
 A separate initiative from the outreach engines above, started when Greg
